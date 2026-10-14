@@ -263,7 +263,7 @@ flutter run
 
 - [x] DLNA / Chromecast / AirPlay 投屏
 - [x] SMB / FTP / WebDAV 网络存储
-- [x] iOS 27 玻璃质感 UI
+- [x] 玻璃质感 UI
 - [ ] 均衡器 (EQ)
 - [ ] AB 循环播放
 - [ ] 视频截图
