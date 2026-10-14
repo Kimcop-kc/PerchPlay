@@ -1,0 +1,95 @@
+name: Android — 构建 APK + AAB
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送版本标签时触发
+  workflow_dispatch:   # 允许手动触发
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        type: choice
+        options:
+          - apk (分 ABI)
+          - aab (Google Play)
+          - both
+
+jobs:
+  build-android:
+    name: Android 构建 (${{ github.event.inputs.build_type || 'aab' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22'
+          channel: 'stable'
+          cache: true
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 生成代码
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: 创建签名密钥 (调试)
+        run: |
+          keytool -genkey -v \
+            -keystore android/app/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug, OU=VidFlow, O=VidFlow, L=Shenzhen, ST=Guangdong, C=CN" 2>/dev/null || true
+        working-directory: .
+
+      - name: 构建 APK (分 ABI)
+        if: ${{ github.event.inputs.build_type == 'apk (分 ABI)' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' }}
+        run: flutter build apk --split-per-abi --release
+
+      - name: 构建 App Bundle (AAB)
+        if: ${{ github.event.inputs.build_type == 'aab (Google Play)' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' }}
+        run: flutter build appbundle --release
+
+      - name: 列出构建产物
+        run: |
+          echo "=== APK ==="
+          ls -lh build/app/outputs/flutter-apk/*.apk 2>/dev/null || echo "无 APK"
+          echo "=== AAB ==="
+          ls -lh build/app/outputs/bundle/release/*.aab 2>/dev/null || echo "无 AAB"
+
+      - name: 上传 APK 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ github.ref_name }}
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
+
+      - name: 上传 AAB 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-${{ github.ref_name }}
+          path: build/app/outputs/bundle/release/*.aab
+          retention-days: 30
+
+      - name: 上传到 GitHub Release (仅 Tag 触发)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/app/outputs/flutter-apk/*.apk
+            build/app/outputs/bundle/release/*.aab
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

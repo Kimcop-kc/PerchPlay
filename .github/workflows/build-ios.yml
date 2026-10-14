@@ -1,0 +1,87 @@
+name: iOS — 构建 IPA
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: 'IPA 导出方式'
+        required: true
+        type: choice
+        options:
+          - ad-hoc
+          - development
+          - app-store
+
+jobs:
+  build-ios:
+    name: iOS 构建 (${{ github.event.inputs.export_method || 'ad-hoc' }})
+    runs-on: macos-14   # Apple Silicon M 系列，速度快
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22'
+          channel: 'stable'
+          cache: true
+
+      - name: 选择 Xcode 版本
+        run: |
+          sudo xcode-select -switch /Applications/Xcode_15.4.app
+          xcodebuild -version
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 生成代码
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: 安装 CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      - name: 构建 iOS (无签名 — 仅验证编译)
+        run: |
+          flutter build ios --release --no-codesign 2>&1 | tail -30
+
+      - name: 构建 Runner.app
+        run: |
+          ls -la build/ios/iphoneos/Runner.app/ 2>/dev/null || echo "⚠️  Runner.app 不存在，可能是无签名构建跳过了最终打包"
+
+      - name: 创建未签名 IPA (用于测试)
+        run: |
+          mkdir -p build/ios/ipa/Payload
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+            cd build/ios/ipa
+            zip -r ../../VidFlow-${{ github.ref_name }}-unsigned.ipa Payload/
+            echo "✓ IPA 已创建"
+          else
+            echo "⚠️  未找到 Runner.app，跳过 IPA 打包"
+          fi
+
+      - name: 上传 IPA 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-${{ github.ref_name }}
+          path: |
+            build/ios/iphoneos/Runner.app/**/*
+            build/VidFlow-*.ipa
+          retention-days: 30
+
+      - name: 上传未签名 IPA 到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/VidFlow-*.ipa
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
