@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
 
 class ThumbnailService {
   static const _quality = 80;
@@ -7,10 +7,10 @@ class ThumbnailService {
 
   Future<String?> generate(String videoPath) async {
     try {
-      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+      final thumbnailPath = await FlutterVideoThumbnailPlus.thumbnailFile(
         video: videoPath,
         thumbnailPath: Directory.systemTemp.path,
-        imageFormat: ImageFormat.JPEG,
+        imageFormat: ImageFormat.jpeg,
         maxWidth: _size,
         quality: _quality,
       );
