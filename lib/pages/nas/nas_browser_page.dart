@@ -8,6 +8,7 @@ import '../../models/nas_connection_model.dart';
 import '../../providers/nas_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/glass/glass_button.dart';
 
 /// NAS 文件浏览器 — iOS 27 玻璃质感
@@ -384,8 +385,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           backgroundColor: Colors.transparent,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: SafeBackdropFilter(
+              blurSigma: 24,
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(

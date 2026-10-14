@@ -1,10 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
 /// 玻璃面板（Sheet / 侧边栏 / 列表容器）
 ///
-/// BackdropFilter + 彩色着色 + 圆角
+/// 使用 SafeBackdropFilter — Android 自动降级为半透明纯色背景
 class GlassPanel extends StatelessWidget {
   final Widget child;
   final double radius;
@@ -35,8 +36,8 @@ class GlassPanel extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+      child: SafeBackdropFilter(
+        blurSigma: 28,
         child: Container(
           width: width,
           height: height,

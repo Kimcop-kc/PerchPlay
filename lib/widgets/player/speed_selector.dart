@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/constants/app_constants.dart';
+import '../glass/safe_glass.dart';
 
 /// 倍速选择器弹出面板 — 玻璃质感
 class SpeedSelector extends StatelessWidget {
@@ -24,8 +25,8 @@ class SpeedSelector extends StatelessWidget {
         color: Colors.transparent,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: SafeBackdropFilter(
+            blurSigma: 20,
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
 /// iOS 27 风格玻璃进度条 / 滑块
 ///
@@ -71,8 +72,8 @@ class _GlassSliderState extends State<GlassSlider> {
                   right: 0,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(widget.height / 2),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                    child: SafeBackdropFilter(
+                      blurSigma: 2,
                       child: Container(
                         height: widget.height,
                         decoration: BoxDecoration(

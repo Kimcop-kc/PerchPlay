@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/glass_theme.dart';
 import '../../widgets/glass/glass_nav_bar.dart';
+import '../../widgets/glass/safe_glass.dart';
 import 'breakpoints.dart';
 
 /// iOS 27 玻璃质感 自适应导航外壳
@@ -80,8 +81,8 @@ class _TabletGlassScaffold extends StatelessWidget {
             borderRadius: const BorderRadius.horizontal(
               right: Radius.circular(GlassTheme.radiusLg),
             ),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: SafeBackdropFilter(
+              blurSigma: 24,
               child: Container(
                 width: 88,
                 decoration: BoxDecoration(

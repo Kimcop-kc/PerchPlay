@@ -17,6 +17,7 @@ import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_slider.dart';
+import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/keyboard_shortcut_handler.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -474,8 +475,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     return Positioned(
       top: 0, left: 0, right: 0,
       child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: SafeBackdropFilter(
+          blurSigma: 18,
           child: Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             decoration: BoxDecoration(
@@ -529,8 +530,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     return Positioned(
       bottom: 0, left: 0, right: 0,
       child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: SafeBackdropFilter(
+          blurSigma: 18,
           child: Container(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).padding.bottom + 8,

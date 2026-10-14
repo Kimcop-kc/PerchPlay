@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -9,10 +10,29 @@ import 'services/device_info_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+
+  // Release mode 崩溃 → 至少让用户看到错误信息
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    // 致命错误 → 显示红屏而不是黑屏
+    if (details.silent != true) {
+      runApp(_CrashScreen(details: details));
+    }
+  };
+
+  // media_kit native 初始化可能在某些设备上失败
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    debugPrint('[VidFlow] MediaKit init failed: $e');
+  }
 
   // 初始化设备信息
-  await DeviceInfoService.instance.init();
+  try {
+    await DeviceInfoService.instance.init();
+  } catch (e) {
+    debugPrint('[VidFlow] DeviceInfo init failed: $e');
+  }
 
   // iPad Pro 锁定 120Hz
   if (DeviceInfoService.instance.has120Hz) {
@@ -134,5 +154,49 @@ class VideoPlayerApp extends StatelessWidget {
       LogicalKeySet(LogicalKeyboardKey.arrowUp): const ActivateIntent(),
       LogicalKeySet(LogicalKeyboardKey.arrowDown): const ActivateIntent(),
     };
+  }
+}
+
+/// 致命错误时的简易崩溃界面，避免用户看到纯黑屏
+class _CrashScreen extends StatelessWidget {
+  final FlutterErrorDetails details;
+  const _CrashScreen({required this.details});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0A0A0F),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 40),
+                const Icon(Icons.error_outline, color: Color(0xFFFF6B9D), size: 48),
+                const SizedBox(height: 16),
+                const Text('VidFlow 启动失败',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                const Text('请重启应用，如仍失败请联系开发者',
+                    style: TextStyle(color: Colors.white54, fontSize: 14)),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Text(
+                      details.exceptionAsString(),
+                      style: const TextStyle(color: Colors.white30, fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

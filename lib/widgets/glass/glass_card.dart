@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
 /// iOS 27 玻璃质感卡片
 ///
@@ -100,14 +101,11 @@ class _GlassCardState extends State<GlassCard>
                 margin: widget.margin,
                 child: Stack(
                   children: [
-                    // 基础模糊层
+                    // 基础模糊层 (使用 SafeBackdropFilter，Android 自动降级)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(widget.radius),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: 20,
-                          sigmaY: 20,
-                        ),
+                      child: SafeBackdropFilter(
+                        blurSigma: 20,
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius:
