@@ -23,12 +23,14 @@ void main() {
         ),
         GoRoute(
           path: '/folders',
+          name: 'folders',
           builder: (context, state) => const Scaffold(
             body: Center(child: Text('FOLDERS_PAGE')),
           ),
         ),
         GoRoute(
           path: '/nas',
+          name: 'nas',
           builder: (context, state) => const Scaffold(
             body: Center(child: Text('NAS_PAGE')),
           ),
