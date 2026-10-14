@@ -34,6 +34,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 生成 iOS 平台文件
+        run: |
+          flutter create --platforms=ios --org com.vidflow --project-name player .
+          echo "✅ flutter create 完成"
+
+      - name: 覆盖自定义 iOS 文件
+        run: |
+          cp ios/manifest-backup/Info.plist ios/Runner/Info.plist 2>/dev/null || echo "ℹ️ 无需覆盖 Info.plist"
+          echo "✅ 自定义文件已覆盖"
+
       - name: 安装依赖
         run: flutter pub get
 
@@ -53,11 +63,10 @@ jobs:
             cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
             cd build/ios/ipa
             zip -r ../../VidFlow-${{ github.ref_name }}-unsigned.ipa Payload/
-            echo "✓ IPA 打包完成"
+            echo "✅ IPA 打包完成"
           else
-            echo "⚠️ 未找到 Runner.app，搜索构建目录..."
-            find build/ios -maxdepth 4 -name "Runner.app" 2>/dev/null
-            find build/ios -maxdepth 4 -type d 2>/dev/null | head -20
+            echo "⚠️ 未找到 Runner.app"
+            find build/ios -maxdepth 4 -name "Runner.app" 2>/dev/null || echo "搜索失败"
           fi
 
       - name: 上传 IPA

@@ -40,15 +40,18 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      - name: 安装 Android SDK 平台 + NDK
+      - name: 生成 Android 平台文件
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973" 2>&1 | tail -5 || true
+          flutter create --platforms=android --org com.vidflow --project-name player .
+          echo "✅ flutter create 完成"
 
-      - name: 生成 local.properties
+      - name: 覆盖自定义文件
         run: |
-          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
-          echo "flutter.buildMode=release" >> android/local.properties
+          cp android/manifest-backup/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          cp android/manifest-backup/styles.xml android/app/src/main/res/values/styles.xml
+          cp android/manifest-backup/BackgroundAudioService.kt android/app/src/main/kotlin/com/vidflow/player/BackgroundAudioService.kt
+          cp android/manifest-backup/MainActivity.kt android/app/src/main/kotlin/com/vidflow/player/MainActivity.kt
+          echo "✅ 自定义文件已覆盖"
 
       - name: 安装依赖
         run: flutter pub get
