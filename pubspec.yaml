@@ -25,8 +25,8 @@ dependencies:
   go_router: ^14.8.0
 
   # 本地存储
-  sqflite: ^2.4.1
-  shared_preferences: ^2.3.4
+  sqflite: ^2.3.0
+  shared_preferences: ^2.2.2
   path_provider: ^2.1.5
   path: ^1.9.0
 
