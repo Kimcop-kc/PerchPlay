@@ -30,9 +30,53 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: isLarge
-            ? _buildTabletLayout(nasState)
-            : _buildMobileLayout(nasState),
+        child: Column(
+          children: [
+            if (nasState.errorMessage != null)
+              _buildErrorBanner(nasState.errorMessage!),
+            Expanded(
+              child: isLarge
+                  ? _buildTabletLayout(nasState)
+                  : _buildMobileLayout(nasState),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 连接/读取失败的错误横幅
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: GlassTheme.accentPink.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
+        border: Border.all(
+            color: GlassTheme.accentPink.withOpacity(0.3), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: GlassTheme.accentPink, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 13)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded,
+                color: Colors.white38, size: 16),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              ref.read(nasProvider.notifier).clearError();
+            },
+          ),
+        ],
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models/video_model.dart';
@@ -12,27 +13,45 @@ class VideoScannerService {
   final _uuid = const Uuid();
 
   /// 扫描指定目录列表中的所有视频
-  Future<List<VideoModel>> scanDirectories(List<String> dirPaths) async {
+  ///
+  /// [dirPaths] 内若存在父子目录重叠，会先去重为最外层目录，避免重复遍历。
+  /// [removeMissing] 为 true 时，清理数据库中不在本次扫描范围内的记录；
+  /// 调用方必须确保扫描范围与期望保留的范围一致，否则会误删范围外视频。
+  Future<List<VideoModel>> scanDirectories(
+    List<String> dirPaths, {
+    bool removeMissing = true,
+  }) async {
     final List<VideoModel> found = [];
     final List<String> existingPaths = [];
 
-    for (final dirPath in dirPaths) {
+    // 去重：去掉被其他目录包含的子目录，避免重复扫描
+    final normalized = _dedupeDirs(dirPaths);
+
+    for (final dirPath in normalized) {
       final dir = Directory(dirPath);
       if (!await dir.exists()) continue;
 
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is! File) continue;
-        final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
-        if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
+      try {
+        await for (final entity in dir.list(recursive: true)) {
+          if (entity is! File) continue;
+          final ext =
+              p.extension(entity.path).toLowerCase().replaceAll('.', '');
+          if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
 
-        existingPaths.add(entity.path);
-        final video = await _fileToModel(entity);
-        if (video != null) found.add(video);
+          existingPaths.add(entity.path);
+          final video = await _fileToModel(entity);
+          if (video != null) found.add(video);
+        }
+      } catch (e) {
+        // 单个目录读取失败不能中断整次扫描，记录日志后跳过
+        debugPrint('[Scanner] 跳过无法访问的目录 $dirPath: $e');
       }
     }
 
-    // 清理已删除的视频
-    await _db.removeVideosNotInPaths(existingPaths);
+    // 清理已删除的视频（仅当调用方明确要求，且范围一致时）
+    if (removeMissing) {
+      await _db.removeVideosNotInPaths(existingPaths);
+    }
     // 保存新扫描结果
     if (found.isNotEmpty) {
       await _db.insertVideos(found);
@@ -41,19 +60,37 @@ class VideoScannerService {
     return found;
   }
 
-  /// 扫描手机常用视频目录
-  Future<List<VideoModel>> scanCommonDirectories() async {
-    final dirs = <String>[];
-    // Android 常用视频目录
-    dirs.add('/storage/emulated/0/Movies');
-    dirs.add('/storage/emulated/0/DCIM');
-    dirs.add('/storage/emulated/0/Download');
-    dirs.add('/storage/emulated/0/Pictures');
-    dirs.add('/storage/emulated/0/Android/media');
-    // 额外存储
-    dirs.add('/storage/emulated/0');
+  /// 去掉被其他目录包含的子目录，保留最外层目录
+  List<String> dedupeDirsForTest(List<String> dirs) => _dedupeDirs(dirs);
 
-    return scanDirectories(dirs);
+  List<String> _dedupeDirs(List<String> dirs) {
+    final normalized = dirs
+        .map((d) => p.normalize(d).replaceAll('\\', '/'))
+        .where((d) => d.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.length.compareTo(b.length));
+
+    final result = <String>[];
+    for (final dir in normalized) {
+      final isNested = result.any((r) => dir.startsWith('$r/') || dir == r);
+      if (!isNested) result.add(dir);
+    }
+    return result;
+  }
+
+  /// 扫描手机常用视频目录
+  ///
+  /// 只在用户授权后调用；不额外扫描整盘，避免重复遍历子目录。
+  Future<List<VideoModel>> scanCommonDirectories() async {
+    final dirs = <String>[
+      '/storage/emulated/0/Movies',
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Android/media',
+    ];
+    return scanDirectories(dirs, removeMissing: false);
   }
 
   Future<VideoModel?> _fileToModel(File file) async {

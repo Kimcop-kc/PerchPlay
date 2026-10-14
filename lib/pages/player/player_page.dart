@@ -11,6 +11,7 @@ import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../providers/player_provider.dart';
+import '../../services/app_settings_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -118,8 +119,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
     return KeyboardShortcutHandler(
       onPlayPause: () => ref.read(playerProvider.notifier).togglePlayPause(),
-      onSeekForward: () => ref.read(playerProvider.notifier).seekRelative(10),
-      onSeekBackward: () => ref.read(playerProvider.notifier).seekRelative(-10),
+      onSeekForward: () => ref
+          .read(playerProvider.notifier)
+          .seekRelative(AppSettingsService.instance.skipSeconds),
+      onSeekBackward: () => ref
+          .read(playerProvider.notifier)
+          .seekRelative(-AppSettingsService.instance.skipSeconds),
       onVolumeUp: () => ref.read(playerProvider.notifier).setVolume(
           (state.volume + 0.05).clamp(0, 1)),
       onVolumeDown: () => ref.read(playerProvider.notifier).setVolume(
@@ -206,8 +211,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
     return KeyboardShortcutHandler(
       onPlayPause: () => ref.read(playerProvider.notifier).togglePlayPause(),
-      onSeekForward: () => ref.read(playerProvider.notifier).seekRelative(10),
-      onSeekBackward: () => ref.read(playerProvider.notifier).seekRelative(-10),
+      onSeekForward: () => ref
+          .read(playerProvider.notifier)
+          .seekRelative(AppSettingsService.instance.skipSeconds),
+      onSeekBackward: () => ref
+          .read(playerProvider.notifier)
+          .seekRelative(-AppSettingsService.instance.skipSeconds),
       onVolumeUp: () => ref.read(playerProvider.notifier).setVolume(
           (state.volume + 0.05).clamp(0, 1)),
       onVolumeDown: () => ref.read(playerProvider.notifier).setVolume(

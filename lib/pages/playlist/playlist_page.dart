@@ -151,9 +151,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
               label: '新建',
               height: 36,
               foregroundColor: GlassTheme.accentTeal,
-              onTap: () {
-                // TODO: 新建播放列表 dialog
-              },
+              onTap: () => _showCreatePlaylistDialog(),
             ),
           ],
         ),
@@ -180,12 +178,57 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
               icon: Icons.add_rounded,
               label: '新建列表',
               foregroundColor: GlassTheme.accentTeal,
-              onTap: () {},
+              onTap: () => _showCreatePlaylistDialog(),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showCreatePlaylistDialog() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF14141F),
+        title: const Text('新建播放列表',
+            style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: '输入列表名称',
+            hintStyle: TextStyle(color: Colors.grey[500]),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: GlassTheme.accentTeal),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('创建',
+                style: TextStyle(color: GlassTheme.accentTeal)),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    if (name != null && name.isNotEmpty && mounted) {
+      await ref.read(playlistProvider.notifier).createPlaylist(name);
+    }
   }
 
   String _fmtDuration(int ms) {

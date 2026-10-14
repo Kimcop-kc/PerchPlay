@@ -2,10 +2,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
+import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -20,10 +22,15 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  double _defaultSpeed = 1.0;
-  int _skipSeconds = 10;
-  bool _autoPlayNext = true;
-  bool _backgroundPlay = true;
+  final _settings = AppSettingsService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _settings.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +109,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingRow(
             Icons.speed_rounded,
             '默认播放速度',
-            trailing: Text('${_defaultSpeed}x',
+            trailing: Text('${_settings.defaultSpeed}x',
                 style: const TextStyle(
                     color: GlassTheme.accentPurple,
                     fontWeight: FontWeight.w600)),
@@ -112,7 +119,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingRow(
             Icons.fast_forward_rounded,
             '快进/快退秒数',
-            trailing: Text('${_skipSeconds}s',
+            trailing: Text('${_settings.skipSeconds}s',
                 style: const TextStyle(color: Colors.white38)),
             onTap: () => _showSkipPicker(),
           ),
@@ -120,15 +127,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingSwitch(
             Icons.skip_next_rounded,
             '自动播放下一个',
-            _autoPlayNext,
-            (v) => setState(() => _autoPlayNext = v),
+            _settings.autoPlayNext,
+            (v) => _settings.setAutoPlayNext(v).then((_) {
+              if (mounted) setState(() {});
+            }),
           ),
           _divider(),
           _settingSwitch(
             Icons.headphones_rounded,
             '后台播放',
-            _backgroundPlay,
-            (v) => setState(() => _backgroundPlay = v),
+            _settings.backgroundPlay,
+            (v) => _settings.setBackgroundPlay(v).then((_) {
+              if (mounted) setState(() {});
+            }),
           ),
         ],
       ),
@@ -145,27 +156,58 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingRow(
             Icons.palette_rounded,
             '主题风格',
-            trailing: const Text('暗黑玻璃',
-                style: TextStyle(color: Colors.white38)),
-            onTap: () {},
+            trailing: _unsupportedTag('暗黑玻璃'),
+            onTap: () => _showComingSoon('主题风格'),
           ),
           _divider(),
           _settingRow(
             Icons.text_fields_rounded,
             '字幕样式',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: Colors.white24),
-            onTap: () {},
+            trailing: _unsupportedTag(null),
+            onTap: () => _showComingSoon('字幕样式'),
           ),
           _divider(),
           _settingRow(
             Icons.language_rounded,
             '界面语言',
-            trailing: const Text('中文',
-                style: TextStyle(color: Colors.white38)),
-            onTap: () {},
+            trailing: _unsupportedTag('中文'),
+            onTap: () => _showComingSoon('界面语言'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 未实现功能的禁用标签
+  Widget _unsupportedTag(String? currentValue) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (currentValue != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(currentValue,
+                style: const TextStyle(color: Colors.white38)),
+          ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+          ),
+          child: const Text('暂未支持',
+              style: TextStyle(
+                  color: Colors.white38, fontSize: 11)),
+        ),
+      ],
+    );
+  }
+
+  void _showComingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('「$feature」暂未支持，敬请期待'),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -338,8 +380,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   fontSize: 20,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text('v1.0.0 · iOS 27 Glass Edition',
-              style: TextStyle(color: Colors.white38, fontSize: 12)),
+          Text('v${AppConstants.appVersion} · iOS 27 Glass Edition',
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
           const SizedBox(height: 6),
           Text(
             '${DeviceInfoService.instance.brand.displayName} · '
@@ -394,8 +436,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       builder: (ctx) => _pickerSheet(
         title: '播放速度',
         items: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
-        current: _defaultSpeed,
-        onSelect: (v) => setState(() => _defaultSpeed = v),
+        current: _settings.defaultSpeed,
+        onSelect: (v) => _settings.setDefaultSpeed(v).then((_) {
+          if (mounted) setState(() {});
+        }),
         format: (v) => '${v}x',
       ),
     );
@@ -408,8 +452,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       builder: (ctx) => _pickerSheet(
         title: '跳转秒数',
         items: [5, 10, 15, 30, 60],
-        current: _skipSeconds.toDouble(),
-        onSelect: (v) => setState(() => _skipSeconds = v.toInt()),
+        current: _settings.skipSeconds.toDouble(),
+        onSelect: (v) => _settings.setSkipSeconds(v.toInt()).then((_) {
+          if (mounted) setState(() {});
+        }),
         format: (v) => '${v.toInt()}s',
       ),
     );

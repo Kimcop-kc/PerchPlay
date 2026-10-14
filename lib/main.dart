@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -7,15 +6,21 @@ import 'package:media_kit/media_kit.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
+import 'services/app_settings_service.dart';
+
+/// 应用根组件是否已成功挂载。
+/// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
+/// 避免一次可恢复的 UI 错误把整个应用覆盖掉。
+bool _appMounted = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Release mode 崩溃 → 至少让用户看到错误信息
+  // 兜底错误处理：仅记录，不在启动后重复替换根应用。
+  // 真致命错误（首个 build 抛错）仍会在下方 runApp 前被捕获。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    // 致命错误 → 显示红屏而不是黑屏
-    if (details.silent != true) {
+    if (!_appMounted && details.silent != true) {
       runApp(_CrashScreen(details: details));
     }
   };
@@ -32,6 +37,13 @@ void main() async {
     await DeviceInfoService.instance.init();
   } catch (e) {
     debugPrint('[VidFlow] DeviceInfo init failed: $e');
+  }
+
+  // 预加载持久化设置，使播放器读取到正确默认值
+  try {
+    await AppSettingsService.instance.ensureLoaded();
+  } catch (e) {
+    debugPrint('[VidFlow] Settings load failed: $e');
   }
 
   // iPad Pro 锁定 120Hz
@@ -63,6 +75,7 @@ class VideoPlayerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    _appMounted = true;
     return MaterialApp.router(
       title: 'VidFlow',
       debugShowCheckedModeBanner: false,

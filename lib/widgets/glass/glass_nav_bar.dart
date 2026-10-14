@@ -121,7 +121,7 @@ class _NavItemState extends State<_NavItem>
       },
       behavior: HitTestBehavior.opaque,
       child: GlassAnimatedBuilder(
-        animation: _bounce,
+        listenable: _bounce,
         builder: (context, child) => Transform.scale(
           scale: _bounce.value,
           child: Container(
