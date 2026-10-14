@@ -1,7 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../../models/video_model.dart';
-import '../../models/playlist_model.dart';
+import '../models/video_model.dart';
+import '../models/playlist_model.dart';
 
 class DatabaseService {
   DatabaseService._();

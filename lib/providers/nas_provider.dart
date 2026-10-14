@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/nas_connection_model.dart';
-import '../../services/nas_client_service.dart';
+import '../models/nas_connection_model.dart';
+import '../services/nas_client_service.dart';
 
 /// NAS 连接管理状态
 class NasState {

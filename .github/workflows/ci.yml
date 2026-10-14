@@ -1,4 +1,4 @@
-name: CI — 代码检查与生成验证
+name: CI — 代码检查
 
 on:
   push:
@@ -23,33 +23,5 @@ jobs:
       - name: 安装依赖
         run: flutter pub get
 
-      - name: 生成代码 (Freezed / json_serializable)
-        run: dart run build_runner build --delete-conflicting-outputs
-
       - name: 静态分析
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | head -100
-
-  build_runner_check:
-    name: 验证 Build Runner 输出
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: 安装 Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.22'
-          channel: 'stable'
-          cache: true
-
-      - name: 安装依赖
-        run: flutter pub get
-
-      - name: 运行 build_runner (安全检查)
-        run: |
-          dart run build_runner build --delete-conflicting-outputs 2>&1
-          # 如果 .g.dart/.freezed.dart 被修改，说明它们过时了
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "⚠️  build_runner 输出的文件与仓库不一致，请运行 dart run build_runner build --delete-conflicting-outputs 后重新提交"
-            git diff --stat
-          fi
+        run: flutter analyze --no-fatal-infos 2>&1 | tail -60

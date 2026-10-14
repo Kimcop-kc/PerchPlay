@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '../../models/cast_device_model.dart';
+import '../models/cast_device_model.dart';
 
 /// 投屏控制器
 /// 负责连接到设备、发送播放命令

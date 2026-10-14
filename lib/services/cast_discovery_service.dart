@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '../../models/cast_device_model.dart';
+import '../models/cast_device_model.dart';
 
 /// 投屏设备发现服务
 /// 支持: DLNA (SSDP) / Chromecast (mDNS) / AirPlay (mDNS) / Miracast

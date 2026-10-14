@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '../../models/nas_connection_model.dart';
+import '../models/nas_connection_model.dart';
 
 /// NAS 文件服务客户端
 /// 支持 SMB / FTP / WebDAV 三种协议

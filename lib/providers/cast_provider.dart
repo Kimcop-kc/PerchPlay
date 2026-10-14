@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/cast_device_model.dart';
-import '../../services/cast_discovery_service.dart';
-import '../../services/cast_control_service.dart';
+import '../models/cast_device_model.dart';
+import '../services/cast_discovery_service.dart';
+import '../services/cast_control_service.dart';
 
 /// 投屏设备列表状态
 class CastState {
