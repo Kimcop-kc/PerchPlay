@@ -37,8 +37,7 @@ class CastState {
       isDiscovering: isDiscovering ?? this.isDiscovering,
       isConnected: isConnected ?? this.isConnected,
       isPlaying: isPlaying ?? this.isPlaying,
-      errorMessage:
-          clearError ? null : (errorMessage ?? this.errorMessage),
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }

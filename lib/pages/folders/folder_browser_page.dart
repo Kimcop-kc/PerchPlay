@@ -38,8 +38,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       final storage = Directory('/storage/emulated/0');
       if (await storage.exists()) dirs.add(storage);
       final sdcard = Directory('/sdcard');
-      if (await sdcard.exists() &&
-          sdcard.path != storage.path) {
+      if (await sdcard.exists() && sdcard.path != storage.path) {
         dirs.add(sdcard);
       }
 
@@ -66,7 +65,6 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     try {
       final dir = Directory(path);
       _entries = await dir.list().toList();
-      // 排序：文件夹在前，名称 A-Z
       _entries.sort((a, b) {
         final aDir = a is Directory ? 0 : 1;
         final bDir = b is Directory ? 0 : 1;
@@ -88,7 +86,6 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Future<void> _requestStoragePermission() async {
-    // Android 13+ 使用 READ_MEDIA_VIDEO，其余用 storage
     final status = await Permission.storage.request();
     if (status.isGranted || status.isLimited) {
       if (!mounted) return;
@@ -235,8 +232,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey[700]),
             const SizedBox(height: 12),
             const Text('未发现可访问的存储目录',
-                style: TextStyle(
-                    color: Colors.white, fontSize: 16)),
+                style: TextStyle(color: Colors.white, fontSize: 16)),
             const SizedBox(height: 6),
             const Text('请授权存储权限后重试',
                 style: TextStyle(color: Colors.white38, fontSize: 12)),

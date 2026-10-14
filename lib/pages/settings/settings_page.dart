@@ -9,10 +9,8 @@ import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
-import '../../widgets/glass/glass_panel.dart';
-import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_slider.dart';
+import '../../widgets/glass/safe_glass.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -196,8 +194,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
           ),
           child: const Text('暂未支持',
-              style: TextStyle(
-                  color: Colors.white38, fontSize: 11)),
+              style: TextStyle(color: Colors.white38, fontSize: 11)),
         ),
       ],
     );

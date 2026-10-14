@@ -32,9 +32,6 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   // 手势追踪
   int _activePointers = 0;
   Offset? _startPosition;
-  double _startBrightness = 0;
-  double _startVolume = 0;
-  Duration? _startSeekPosition;
 
   // 显示状态
   double? _brightnessValue;
@@ -44,7 +41,6 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   bool _seekForward = true;
 
   // 常量
-  static const double _sensitivity = 0.005;
   static const double _seekSensitivity = 2.0; // 像素/秒
 
   @override

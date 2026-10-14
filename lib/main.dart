@@ -17,7 +17,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 兜底错误处理：仅记录，不在启动后重复替换根应用。
-  // 真致命错误（首个 build 抛错）仍会在下方 runApp 前被捕获。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     if (!_appMounted && details.silent != true) {

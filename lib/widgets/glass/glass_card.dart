@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import 'safe_glass.dart';
@@ -101,7 +101,7 @@ class _GlassCardState extends State<GlassCard>
                 margin: widget.margin,
                 child: Stack(
                   children: [
-                    // 基础模糊层 (使用 SafeBackdropFilter，Android 自动降级)
+                    // 基础模糊层 (SafeBackdropFilter: Android 自动降级)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(widget.radius),
                       child: SafeBackdropFilter(

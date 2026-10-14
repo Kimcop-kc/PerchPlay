@@ -33,7 +33,6 @@ class SafeBackdropFilter extends StatelessWidget {
         child: _buildBackdrop(child),
       );
     }
-    // Android 降级：用纯色叠加替代毛玻璃
     return ClipRRect(
       borderRadius: borderRadius ?? BorderRadius.zero,
       child: Stack(
@@ -90,7 +89,6 @@ class SafeGlassPanel extends StatelessWidget {
     if (SafeBackdropFilter.supportsBackdropBlur) {
       bgColor = Colors.transparent;
     } else {
-      // Android: use visible tinted background
       bgColor = tintColor.withOpacity(opacity * 4);
     }
 

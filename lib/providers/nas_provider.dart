@@ -40,8 +40,7 @@ class NasState {
       currentFiles: currentFiles ?? this.currentFiles,
       currentPath: currentPath ?? this.currentPath,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage:
-          clearError ? null : (errorMessage ?? this.errorMessage),
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isConnected: isConnected ?? this.isConnected,
     );
   }

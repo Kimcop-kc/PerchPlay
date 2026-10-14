@@ -45,12 +45,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void initState() {
     super.initState();
-    _videoController =
-        VideoController(ref.read(playerProvider.notifier).state.player);
-    ref.read(playerProvider.notifier).state =
-        ref.read(playerProvider.notifier).state.copyWith(
-              videoController: _videoController,
-            );
+    final playerNotifier = ref.read(playerProvider.notifier);
+    _videoController = VideoController(playerNotifier.player);
+    playerNotifier.attachVideoController(_videoController);
     _controlsAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),

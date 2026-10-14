@@ -6,7 +6,6 @@ void main() {
     test('未传 errorMessage 时保留原错误（不误清空）', () {
       const state = NasState(errorMessage: '连接失败');
       final updated = state.copyWith(isLoading: true);
-      // 关键：未传 errorMessage 不应清空原错误
       expect(updated.errorMessage, '连接失败');
       expect(updated.isLoading, true);
     });

@@ -8,8 +8,8 @@ import '../../models/nas_connection_model.dart';
 import '../../providers/nas_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
-import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/glass/safe_glass.dart';
 
 /// NAS 文件浏览器 — iOS 27 玻璃质感
 class NasBrowserPage extends ConsumerStatefulWidget {
@@ -20,8 +20,6 @@ class NasBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
-  NasConnection? _selectedConnection;
-
   @override
   Widget build(BuildContext context) {
     final nasState = ref.watch(nasProvider);
@@ -64,8 +62,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 13)),
+                style: const TextStyle(color: Colors.white70, fontSize: 13)),
           ),
           IconButton(
             icon: const Icon(Icons.close_rounded,
@@ -188,7 +185,6 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             selected: isActive,
             tint: isActive ? GlassTheme.tintTeal : GlassTheme.tintWhite,
             onTap: () async {
-              setState(() => _selectedConnection = conn);
               if (!isActive) {
                 await ref.read(nasProvider.notifier).connect(conn);
               }

@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/cast_device_model.dart';
@@ -20,7 +19,6 @@ class CastPage extends ConsumerStatefulWidget {
 
 class _CastPageState extends ConsumerState<CastPage>
     with TickerProviderStateMixin {
-  CastDevice? _selectedDevice;
   late AnimationController _pulseController;
 
   @override
@@ -83,8 +81,7 @@ class _CastPageState extends ConsumerState<CastPage>
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 13)),
+                style: const TextStyle(color: Colors.white70, fontSize: 13)),
           ),
         ],
       ),
@@ -280,7 +277,6 @@ class _CastPageState extends ConsumerState<CastPage>
         selected: isActive,
         tint: isActive ? GlassTheme.tintPurple : GlassTheme.tintWhite,
         onTap: () {
-          setState(() => _selectedDevice = device);
           if (!isActive) ref.read(castProvider.notifier).connect(device);
         },
         child: Row(

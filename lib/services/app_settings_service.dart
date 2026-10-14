@@ -24,7 +24,6 @@ class AppSettingsService {
   bool get autoPlayNext => _autoPlayNext;
   bool get backgroundPlay => _backgroundPlay;
 
-  /// 首次使用前调用，读取持久化值
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     try {
