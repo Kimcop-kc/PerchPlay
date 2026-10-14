@@ -29,3 +29,8 @@ jobs:
         run: |
           set -o pipefail
           flutter analyze --no-fatal-infos 2>&1 | tail -60
+
+      - name: 运行测试
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tail -80
