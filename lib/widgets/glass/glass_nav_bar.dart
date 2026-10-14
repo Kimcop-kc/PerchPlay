@@ -33,12 +33,12 @@ class GlassNavBar extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.white.withOpacity(0.06),
-                Colors.white.withOpacity(0.02),
+                Colors.white.withOpacity(0.5),
+                Colors.white.withOpacity(0.25),
               ],
             ),
-            border: const Border(
-              top: BorderSide(color: Color(0x10FFFFFF), width: 0.5),
+            border: Border(
+              top: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5),
             ),
           ),
           child: Row(
@@ -111,7 +111,7 @@ class _NavItemState extends State<_NavItem>
   Widget build(BuildContext context) {
     final color = widget.isActive
         ? GlassTheme.accentPurple
-        : Colors.grey[500]!;
+        : GlassTheme.textSecondary;
 
     return GestureDetector(
       onTap: () {

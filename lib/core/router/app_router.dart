@@ -14,6 +14,7 @@ class AppRouter {
 
   static final GoRouter router = GoRouter(
     initialLocation: '/home',
+    navigatorKey: _rootNavigatorKey,
     routes: [
       // Shell 路由 — 底栏导航
       ShellRoute(

@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
+import '../../core/responsive/adaptive_scaffold.dart';
 import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/permission_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -17,7 +19,12 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return child;
+    // 从路由取当前路径，驱动玻璃导航栏的选中态
+    final location = GoRouterState.of(context).uri.path;
+    return AdaptiveScaffold(
+      currentRoute: location,
+      child: child,
+    );
   }
 }
 
@@ -40,7 +47,20 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    Future.microtask(() => ref.refresh(libraryProvider));
+    // 延迟到首帧后初始化，避免 provider 在 build 周期内被修改（Riverpod 禁止）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initLibrary();
+    });
+  }
+
+  /// 启动时：检查权限 → 已授权则自动扫描，否则提示授权
+  Future<void> _initLibrary() async {
+    final permissionNotifier = ref.read(permissionProvider.notifier);
+    await permissionNotifier.requestVideoPermission();
+    final hasPermission = ref.read(permissionProvider).hasVideoPermission;
+    if (hasPermission) {
+      await ref.read(libraryProvider.notifier).scan();
+    }
   }
 
   @override
@@ -76,7 +96,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
       ),
       error: (e, _) => Center(
-        child: Text('⚠ $e', style: const TextStyle(color: Colors.white54)),
+        child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
       ),
     );
   }
@@ -144,7 +164,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ],
           ),
         ),
-        const VerticalDivider(width: 0.5, color: Color(0x10FFFFFF)),
+        const VerticalDivider(width: 0.5, color: Color(0x14000000)),
         // 右侧详情
         Expanded(
           child: _selectedVideo != null
@@ -165,7 +185,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             if (!compact) ...[
               const Text('VidFlow',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 36,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -1.2,
@@ -185,12 +205,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             Row(
               children: [
                 Icon(Icons.movie_rounded,
-                    size: compact ? 16 : 18, color: Colors.white38),
+                    size: compact ? 16 : 18, color: GlassTheme.textTertiary),
                 const SizedBox(width: 6),
                 Text(
                   '全部视频',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: GlassTheme.textSecondary,
                     fontWeight: FontWeight.w600,
                     fontSize: compact ? 12 : 13,
                     letterSpacing: 0.4,
@@ -199,8 +219,14 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded, size: 18),
-                  color: Colors.white30,
-                  onPressed: () => ref.refresh(libraryProvider),
+                  color: GlassTheme.textTertiary,
+                  onPressed: () async {
+                    final notifier = ref.read(permissionProvider.notifier);
+                    await notifier.requestVideoPermission();
+                    if (ref.read(permissionProvider).hasVideoPermission) {
+                      await ref.read(libraryProvider.notifier).scan();
+                    }
+                  },
                 ),
               ],
             ),
@@ -249,9 +275,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                           fit: BoxFit.cover,
                         )
                       : Container(
-                          color: Colors.white.withOpacity(0.03),
+                          color: Colors.black.withOpacity(0.05),
                           child: Icon(Icons.movie_rounded,
-                              color: Colors.grey[700], size: 32),
+                              color: GlassTheme.textTertiary, size: 32),
                         ),
                 ),
                 // 渐变遮罩
@@ -311,7 +337,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Colors.white,
+              color: GlassTheme.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -320,7 +346,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           Text(
             _formatDuration(video.durationMs),
             style: TextStyle(
-              color: Colors.grey[500],
+              color: GlassTheme.textSecondary,
               fontSize: 11,
             ),
           ),
@@ -360,7 +386,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 else
                   Center(
                     child: Icon(Icons.movie_rounded,
-                        size: 64, color: Colors.grey[800]),
+                        size: 64, color: GlassTheme.textTertiary),
                   ),
                 Positioned(
                   bottom: 20,
@@ -384,10 +410,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white)),
+                  color: GlassTheme.textPrimary)),
           const SizedBox(height: 8),
           Text(video.folderPath,
-              style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
           // 元数据标签
           Wrap(
@@ -411,7 +437,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('观看进度',
-                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                    style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
                 Text('${(progressPercent * 100).round()}%',
                     style: const TextStyle(
                         color: GlassTheme.accentPurple,
@@ -436,16 +462,17 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.touch_app_rounded, size: 48, color: Colors.grey[800]),
+          Icon(Icons.touch_app_rounded, size: 48, color: GlassTheme.textTertiary),
           const SizedBox(height: 12),
           Text('点击左侧视频查看详情',
-              style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
         ],
       ),
     );
   }
 
   Widget _buildEmptyLibrary(BuildContext context) {
+    final hasPermission = ref.watch(permissionProvider).hasVideoPermission;
     return Center(
       child: GlassPanel(
         padding: const EdgeInsets.all(40),
@@ -453,20 +480,43 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.video_library_rounded,
-                size: 56, color: Colors.grey[700]),
+                size: 56, color: GlassTheme.textTertiary),
             const SizedBox(height: 16),
             const Text('影库为空',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
-              '你的视频将自动出现在这里\n请选择本地文件夹浏览，或前往 NAS',
+              hasPermission
+                  ? '未扫描到视频\n点击下方按钮重新扫描'
+                  : '需要授权读取本地视频\n授权后自动扫描',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[500], fontSize: 14, height: 1.5),
+              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 24),
+            // 授权 / 扫描入口（主操作）
+            Semantics(
+              button: true,
+              label: hasPermission ? '扫描视频' : '授权并扫描',
+              child: GlassButton.filled(
+                icon: hasPermission ? Icons.search_rounded : Icons.lock_open_rounded,
+                label: hasPermission ? '扫描视频' : '授权并扫描',
+                width: double.infinity,
+                height: 48,
+                onTap: () async {
+                  final notifier = ref.read(permissionProvider.notifier);
+                  if (!hasPermission) {
+                    await notifier.requestVideoPermission();
+                  }
+                  if (ref.read(permissionProvider).hasVideoPermission) {
+                    await ref.read(libraryProvider.notifier).scan();
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
             // 本地文件夹入口
             Semantics(
               button: true,
@@ -508,11 +558,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.white38),
+          Icon(icon, size: 13, color: GlassTheme.textTertiary),
           const SizedBox(width: 5),
           Text(label,
               style: const TextStyle(
-                  color: Colors.white60, fontSize: 12)),
+                  color: GlassTheme.textSecondary, fontSize: 12)),
         ],
       ),
     );

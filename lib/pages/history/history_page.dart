@@ -63,10 +63,10 @@ class HistoryPage extends ConsumerWidget {
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(
                                         GlassTheme.radiusXs),
-                                    color: Colors.white.withOpacity(0.04),
+                                    color: Colors.black.withOpacity(0.06),
                                   ),
                                   child: const Icon(Icons.play_circle_rounded,
-                                      size: 28, color: Colors.white24),
+                                      size: 28, color: GlassTheme.textTertiary),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -78,7 +78,7 @@ class HistoryPage extends ConsumerWidget {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                              color: Colors.white,
+                                              color: GlassTheme.textPrimary,
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 4),
@@ -86,12 +86,12 @@ class HistoryPage extends ConsumerWidget {
                                         children: [
                                           Icon(Icons.schedule_rounded,
                                               size: 12,
-                                              color: Colors.white30),
+                                              color: GlassTheme.textTertiary),
                                           const SizedBox(width: 4),
                                           Text(
                                             _formatDate(video.lastPlayed),
                                             style: const TextStyle(
-                                                color: Colors.white38,
+                                                color: GlassTheme.textTertiary,
                                                 fontSize: 11),
                                           ),
                                         ],
@@ -105,7 +105,7 @@ class HistoryPage extends ConsumerWidget {
                                           decoration: BoxDecoration(
                                             borderRadius:
                                                 BorderRadius.circular(2),
-                                            color: Colors.white.withOpacity(0.06),
+                                            color: Colors.black.withOpacity(0.06),
                                           ),
                                           child: FractionallySizedBox(
                                             alignment: Alignment.centerLeft,
@@ -155,7 +155,7 @@ class HistoryPage extends ConsumerWidget {
             child: CircularProgressIndicator(color: GlassTheme.accentPurple),
           ),
           error: (e, _) => Center(
-            child: Text('⚠ $e', style: const TextStyle(color: Colors.white54)),
+            child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
           ),
         ),
       ),
@@ -170,7 +170,7 @@ class HistoryPage extends ConsumerWidget {
           children: [
             const Text('观看历史',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 28,
                     fontWeight: FontWeight.w800)),
             const SizedBox(width: 10),
@@ -196,11 +196,11 @@ class HistoryPage extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_rounded, size: 48, color: Colors.grey[700]),
+            Icon(Icons.history_rounded, size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('暂无观看记录',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600)),
           ],

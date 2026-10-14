@@ -19,8 +19,9 @@ class DatabaseService {
     final path = join(dbPath, 'vidflow.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -38,10 +39,15 @@ class DatabaseService {
         thumbnailPath TEXT DEFAULT '',
         lastPosition REAL DEFAULT 0.0,
         playCount INTEGER DEFAULT 0,
-        isFavorite INTEGER DEFAULT 0
+        isFavorite INTEGER DEFAULT 0,
+        lastPlayed TEXT
       )
     ''');
 
+    await _createOtherTables(db);
+  }
+
+  Future<void> _createOtherTables(Database db) async {
     await db.execute('''
       CREATE TABLE playlists (
         id TEXT PRIMARY KEY,
@@ -61,6 +67,13 @@ class DatabaseService {
         FOREIGN KEY (videoId) REFERENCES videos(id)
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // v1 的 videos 表没有 lastPlayed 列，补上
+      await db.execute('ALTER TABLE videos ADD COLUMN lastPlayed TEXT');
+    }
   }
 
   // ---------- 视频操作 ----------

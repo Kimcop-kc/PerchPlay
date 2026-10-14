@@ -1,7 +1,7 @@
 name: vidflow
 description: VidFlow — 全功能本地视频播放器。iOS 27 玻璃质感 UI。
 publish_to: 'none'
-version: 1.0.12+12
+version: 1.0.13+13
 homepage: https://github.com/Kimcop-kc/vidflow
 repository: https://github.com/Kimcop-kc/vidflow
 

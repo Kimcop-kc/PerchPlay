@@ -115,7 +115,7 @@ class IPadOptimizationService {
 
     return await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: const Color(0xFFF2F2F7),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -131,7 +131,7 @@ class IPadOptimizationService {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.black.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.tablet_mac_rounded,
@@ -143,12 +143,12 @@ class IPadOptimizationService {
                   children: [
                     Text('iPad Pro 已就绪',
                         style: TextStyle(
-                            color: Colors.white,
+                            color: Color(0xFF1C1C1E),
                             fontSize: 18,
                             fontWeight: FontWeight.w700)),
                     Text('M2 芯片 · ProMotion · XDR',
                         style: TextStyle(
-                            color: Colors.white54, fontSize: 13)),
+                            color: Color(0xFF8E8E93), fontSize: 13)),
                   ],
                 ),
               ],
@@ -188,16 +188,16 @@ class IPadOptimizationService {
   Widget _featureRow(IconData icon, String title, String subtitle) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white54, size: 20),
+        Icon(icon, color: const Color(0xFF3C3C43), size: 20),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 14)),
               Text(subtitle,
-                  style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12)),
             ],
           ),
         ),

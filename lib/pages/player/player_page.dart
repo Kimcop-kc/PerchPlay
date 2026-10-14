@@ -47,14 +47,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     super.initState();
     final playerNotifier = ref.read(playerProvider.notifier);
     _videoController = VideoController(playerNotifier.player);
-    playerNotifier.attachVideoController(_videoController);
     _controlsAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
       value: 1,
     );
-    _loadVideo();
-    _startAutoHideTimer();
+    // 延迟到 widget tree 构建完成后绑定 controller / 加载视频，
+    // 避免 PlayerNotifier 在 build 周期内修改 state（Riverpod 禁止）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      playerNotifier.attachVideoController(_videoController);
+      _loadVideo();
+      _startAutoHideTimer();
+    });
   }
 
   void _startAutoHideTimer() {
@@ -268,8 +273,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ],
               ),
             ),
-            const VerticalDivider(width: 0.5, color: Color(0x10FFFFFF)),
-            Expanded(child: _buildGlassSidePanel(context, state)),
+            const VerticalDivider(width: 0.5, color: Color(0x14000000)),
+            Expanded(
+              child: Container(
+                color: GlassTheme.bg,
+                child: _buildGlassSidePanel(context, state),
+              ),
+            ),
           ],
         ),
       ),
@@ -290,7 +300,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
                   onPressed: () => context.pop(),
                 ),
                 const SizedBox(width: 4),
@@ -299,7 +309,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: Colors.white, fontSize: 18,
+                          color: GlassTheme.textPrimary, fontSize: 18,
                           fontWeight: FontWeight.w600)),
                 ),
               ],
@@ -323,9 +333,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_fmtDuration(state.position),
-                      style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 11)),
                   Text(_fmtDuration(state.duration),
-                      style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 11)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -365,10 +375,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             if (state.queue.length > 1) ...[
               Row(
                 children: [
-                  const Icon(Icons.queue_play_next, size: 16, color: Colors.white54),
+                  const Icon(Icons.queue_play_next, size: 16, color: GlassTheme.textSecondary),
                   const SizedBox(width: 6),
                   Text('播放队列 (${state.queue.length})',
-                      style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -387,7 +397,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             child: Text(v.name, maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    color: Colors.white, fontSize: 13)),
+                                    color: GlassTheme.textPrimary, fontSize: 13)),
                           ),
                         ],
                       ),
@@ -433,17 +443,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.white54),
+          Icon(icon, size: 18, color: GlassTheme.textSecondary),
           const SizedBox(width: 10),
           Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 14)),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
           const Spacer(),
           Text(value,
               style: const TextStyle(
                   color: GlassTheme.accentPurple, fontSize: 13)),
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right_rounded,
-              color: Colors.white24, size: 16),
+              color: GlassTheme.textTertiary, size: 16),
         ],
       ),
     );
@@ -456,10 +466,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.white54),
+          Icon(icon, size: 18, color: GlassTheme.textSecondary),
           const SizedBox(width: 10),
           Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 13)),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
           const SizedBox(width: 10),
           Expanded(
             child: GlassSlider(
@@ -697,7 +707,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         style: TextStyle(
                             color: isActive
                                 ? GlassTheme.accentPurple
-                                : Colors.white,
+                                : GlassTheme.textPrimary,
                             fontSize: 13)),
                     trailing: isActive
                         ? const Icon(Icons.check_rounded,

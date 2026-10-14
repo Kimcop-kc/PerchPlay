@@ -62,11 +62,11 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
           ),
           IconButton(
             icon: const Icon(Icons.close_rounded,
-                color: Colors.white38, size: 16),
+                color: GlassTheme.textTertiary, size: 16),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             onPressed: () {
@@ -104,7 +104,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             ],
           ),
         ),
-        const VerticalDivider(width: 0.5, color: Color(0x10FFFFFF)),
+        const VerticalDivider(width: 0.5, color: Color(0x14000000)),
         Expanded(
           child: state.isConnected
               ? _buildFileBrowser(state)
@@ -112,11 +112,11 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dns_rounded, size: 48, color: Colors.grey[800]),
+                      Icon(Icons.dns_rounded, size: 48, color: GlassTheme.textTertiary),
                       const SizedBox(height: 12),
                       Text('选择一个连接以浏览文件',
                           style:
-                              TextStyle(color: Colors.grey[500], fontSize: 15)),
+                              TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
                     ],
                   ),
                 ),
@@ -133,7 +133,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           const Expanded(
             child: Text('NAS 文件',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 26,
                     fontWeight: FontWeight.w800)),
           ),
@@ -199,11 +199,11 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       colors: [
                         (isActive
                                 ? GlassTheme.accentTeal
-                                : Colors.white.withOpacity(0.12))
+                                : Colors.black.withOpacity(0.08))
                             .withOpacity(0.2),
                         (isActive
                                 ? GlassTheme.accentTeal
-                                : Colors.white.withOpacity(0.06))
+                                : Colors.black.withOpacity(0.04))
                             .withOpacity(0.06),
                       ],
                     ),
@@ -212,7 +212,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   ),
                   child: Icon(
                     _protocolIcon(conn.protocol),
-                    color: isActive ? GlassTheme.accentTeal : Colors.white54,
+                    color: isActive ? GlassTheme.accentTeal : GlassTheme.textSecondary,
                     size: 22,
                   ),
                 ),
@@ -225,14 +225,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              color: Colors.white,
+                              color: GlassTheme.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 14)),
                       const SizedBox(height: 2),
                       Text(
                         '${conn.protocol.name.toUpperCase()}://${conn.host}:${conn.port}',
                         style: const TextStyle(
-                            color: Colors.white30, fontSize: 11),
+                            color: GlassTheme.textTertiary, fontSize: 11),
                       ),
                     ],
                   ),
@@ -269,7 +269,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
               : state.currentFiles.isEmpty
                   ? Center(
                       child: Text('此目录为空',
-                          style: TextStyle(color: Colors.grey[600])),
+                          style: TextStyle(color: GlassTheme.textSecondary)),
                     )
                   : _buildFileList(state),
         ),
@@ -290,7 +290,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
               icon: Icons.arrow_upward_rounded,
               compact: true,
               ghost: true,
-              foregroundColor: Colors.white38,
+              foregroundColor: GlassTheme.textTertiary,
               onTap: state.currentPath != '/' && state.currentPath.isNotEmpty
                   ? () => ref.read(nasProvider.notifier).navigateUp()
                   : null,
@@ -301,7 +301,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                 scrollDirection: Axis.horizontal,
                 child: Text(
                   state.currentPath,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 12),
                 ),
               ),
             ),
@@ -333,7 +333,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         ? GlassTheme.accentTeal
         : item.isVideo
             ? GlassTheme.accentPurple
-            : Colors.white38;
+            : GlassTheme.textTertiary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -373,12 +373,12 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: Colors.white,
+                          color: GlassTheme.textPrimary,
                           fontSize: 14,
                           fontWeight: FontWeight.w500)),
                   Text(
                     item.isDirectory ? '文件夹' : _formatSize(item.size),
-                    style: const TextStyle(color: Colors.white30, fontSize: 11),
+                    style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
                   ),
                 ],
               ),
@@ -401,7 +401,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
               )
             else if (item.isDirectory)
               const Icon(Icons.chevron_right_rounded,
-                  color: Colors.white24, size: 18),
+                  color: GlassTheme.textTertiary, size: 18),
           ],
         ),
       ),
@@ -434,13 +434,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withOpacity(0.08),
-                      Colors.white.withOpacity(0.03),
+                      Colors.white.withOpacity(0.8),
+                      Colors.white.withOpacity(0.5),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
                   border: Border.all(
-                      color: Colors.white.withOpacity(0.08), width: 0.5),
+                      color: Colors.black.withOpacity(0.08), width: 0.5),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.4),
@@ -456,7 +456,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     children: [
                       const Text('添加 NAS 连接',
                           style: TextStyle(
-                              color: Colors.white,
+                              color: GlassTheme.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.w700)),
                       const SizedBox(height: 20),
@@ -465,7 +465,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       // 协议选择
                       const Text('协议',
                           style:
-                              TextStyle(color: Colors.white54, fontSize: 13)),
+                              TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -479,7 +479,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                             outlined: !selected,
                             foregroundColor: selected
                                 ? Colors.white
-                                : Colors.white60,
+                                : GlassTheme.textSecondary,
                             onTap: () {
                               setDialogState(() => protocol = p);
                               switch (p) {
@@ -516,7 +516,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                               label: '取消',
                               height: 46,
                               ghost: true,
-                              foregroundColor: Colors.white54,
+                              foregroundColor: GlassTheme.textSecondary,
                               onTap: () => Navigator.pop(ctx),
                             ),
                           ),
@@ -569,19 +569,19 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       controller: ctrl,
       obscureText: isPassword,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.grey[500], fontSize: 13),
+        labelStyle: TextStyle(color: GlassTheme.textTertiary, fontSize: 13),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.04),
+        fillColor: Colors.black.withOpacity(0.04),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.06)),
+          borderSide: BorderSide(color: Colors.black.withOpacity(0.06)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
@@ -603,11 +603,11 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.dns_rounded, size: 48, color: Colors.grey[700]),
+            Icon(Icons.dns_rounded, size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('未添加 NAS 连接',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),

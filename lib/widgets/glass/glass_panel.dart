@@ -46,7 +46,7 @@ class GlassPanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             border: showBorder
                 ? Border.all(
-                    color: Colors.white.withOpacity(0.07),
+                    color: Colors.black.withOpacity(0.06),
                     width: 0.5,
                   )
                 : null,

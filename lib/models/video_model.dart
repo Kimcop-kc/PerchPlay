@@ -75,7 +75,7 @@ class VideoModel {
       'thumbnailPath': thumbnailPath,
       'lastPosition': lastPosition,
       'playCount': playCount,
-      'isFavorite': isFavorite,
+      'isFavorite': isFavorite ? 1 : 0,
       'lastPlayed': lastPlayed?.toIso8601String(),
     };
   }
@@ -97,7 +97,7 @@ class VideoModel {
       thumbnailPath: json['thumbnailPath'] as String? ?? '',
       lastPosition: (json['lastPosition'] as num?)?.toDouble() ?? 0.0,
       playCount: json['playCount'] as int? ?? 0,
-      isFavorite: json['isFavorite'] as bool? ?? false,
+      isFavorite: (json['isFavorite'] as int? ?? 0) == 1,
       lastPlayed: json['lastPlayed'] != null
           ? DateTime.parse(json['lastPlayed'] as String)
           : null,

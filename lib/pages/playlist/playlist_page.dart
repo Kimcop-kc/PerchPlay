@@ -95,14 +95,14 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                     children: [
                                       Text(playlist.name,
                                           style: const TextStyle(
-                                              color: Colors.white,
+                                              color: GlassTheme.textPrimary,
                                               fontSize: 16,
                                               fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 4),
                                       Text(
                                         '${videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
                                         style: const TextStyle(
-                                            color: Colors.white38,
+                                            color: GlassTheme.textTertiary,
                                             fontSize: 12),
                                       ),
                                     ],
@@ -137,7 +137,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             child: CircularProgressIndicator(color: GlassTheme.accentPurple),
           ),
           error: (e, _) => Center(
-            child: Text('⚠ $e', style: const TextStyle(color: Colors.white54)),
+            child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
           ),
         ),
       ),
@@ -152,7 +152,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           children: [
             const Text('播放列表',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 28,
                     fontWeight: FontWeight.w800)),
             const Spacer(),
@@ -176,11 +176,11 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.playlist_add_rounded, size: 48, color: Colors.grey[700]),
+            Icon(Icons.playlist_add_rounded, size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('尚未创建播放列表',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: GlassTheme.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
@@ -201,18 +201,18 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF14141F),
+        backgroundColor: const Color(0xFFF2F2F7),
         title: const Text('新建播放列表',
-            style: TextStyle(color: Colors.white, fontSize: 18)),
+            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 18)),
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: GlassTheme.textPrimary),
           decoration: InputDecoration(
             hintText: '输入列表名称',
-            hintStyle: TextStyle(color: Colors.grey[500]),
+            hintStyle: TextStyle(color: GlassTheme.textTertiary),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.2)),
+              borderSide: BorderSide(color: Colors.black.withOpacity(0.2)),
             ),
             focusedBorder: const UnderlineInputBorder(
               borderSide: BorderSide(color: GlassTheme.accentTeal),
@@ -222,7 +222,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消', style: TextStyle(color: Colors.white54)),
+            child: const Text('取消', style: TextStyle(color: GlassTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
