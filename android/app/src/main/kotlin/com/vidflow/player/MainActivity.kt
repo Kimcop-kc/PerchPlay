@@ -240,7 +240,7 @@ class MainActivity : FlutterActivity() {
             val c = Class.forName("android.os.SystemProperties")
             val get = c.getMethod("get", String::class.java)
             val miuiVersion = get.invoke(c, "ro.miui.ui.version.name") as? String
-            !miuiVersion.isNullOrBlank()
+            miuiVersion != null && miuiVersion.isNotBlank()
         } catch (_: Exception) {
             false
         }
@@ -251,7 +251,7 @@ class MainActivity : FlutterActivity() {
             val c = Class.forName("android.os.SystemProperties")
             val get = c.getMethod("get", String::class.java)
             val emuiVersion = get.invoke(c, "ro.build.version.emui") as? String
-            !emuiVersion.isNullOrBlank()
+            emuiVersion != null && emuiVersion.isNotBlank()
         } catch (_: Exception) {
             false
         }
@@ -262,7 +262,7 @@ class MainActivity : FlutterActivity() {
             val c = Class.forName("android.os.SystemProperties")
             val get = c.getMethod("get", String::class.java)
             val version = get.invoke(c, "ro.build.version.opporom") as? String
-            !version.isNullOrBlank()
+            version != null && version.isNotBlank()
         } catch (_: Exception) {
             false
         }

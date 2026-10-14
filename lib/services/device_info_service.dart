@@ -1,5 +1,4 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
 
 /// 设备品牌枚举
 enum DeviceBrand {

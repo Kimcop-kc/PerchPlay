@@ -7,9 +7,7 @@ import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../widgets/glass/glass_card.dart';
-import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_slider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});

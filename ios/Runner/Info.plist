@@ -21,25 +21,8 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 
-	<!-- ──────── iPad 多窗口 + Stage Manager ──────── -->
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneConfigurationName</key>
-					<string>Default Configuration</string>
-					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-				</dict>
-			</array>
-		</dict>
-	</dict>
-
+	<!-- iPad 多窗口：Flutter 3.22 走的是 AppDelegate 生命周期，不支持多 scene，
+	     这里声明 SceneManifest 但没有 SceneDelegate 类会导致启动即崩溃，故移除。 -->
 	<!-- ──────── 硬件要求 ──────── -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>

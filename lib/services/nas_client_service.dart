@@ -35,7 +35,6 @@ class NasClientService {
         case NasProtocol.nfs:
           return false; // NFS 需要 kernel 支持，不通过 Dart 实现
       }
-      return false; // unreachable, but satisfies exhaustiveness
     } catch (e) {
       debugPrint('[NAS] connect error: $e');
       return false;

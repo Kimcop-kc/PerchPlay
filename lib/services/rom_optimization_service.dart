@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'device_info_service.dart';
+import 'native_bridge_service.dart';
 
 /// 中国品牌 ROM 适配服务
 /// 处理：电池优化白名单、悬浮窗权限、自启动、MIUI/EMUI/ColorOS/OriginOS 差异
@@ -72,6 +73,22 @@ class RomOptimizationService {
     }
     return '';
   }
+
+  // ────────────── 设置页使用的对外别名 / 跳转 ──────────────
+
+  /// 电池优化引导文案（设置页）
+  String get batteryGuide => batteryOptimizationGuideText;
+
+  /// 自启动引导文案（设置页）
+  String get autoStartGuide => autoStartGuideText;
+
+  /// 跳转到系统电池优化设置
+  Future<bool> openBatterySettings() =>
+      NativeBridgeService.instance.requestBatteryOptimization();
+
+  /// 跳转到厂商自启动管理页
+  Future<bool> openAutoStartSettings() =>
+      NativeBridgeService.instance.requestAutoStart();
 
   // ────────────── MIUI 特定 ──────────────
 

@@ -88,6 +88,9 @@ class IPadOptimizationService {
       _device.isIPadPro2022 ||
       (_device.iPadModel == IPadModel.ipadPro2021);
 
+  /// 设置页使用的别名：是否支持 XDR 显示
+  bool get supportXDR => hasXDRDisplay;
+
   /// HDR 内容支持
   bool get supportHDRContent => hasXDRDisplay || _device.capabilities.supportHDR;
 

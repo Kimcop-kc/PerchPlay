@@ -1,7 +1,7 @@
 name: vidflow
 description: VidFlow — 全功能本地视频播放器。iOS 27 玻璃质感 UI。
 publish_to: 'none'
-version: 1.0.10+10
+version: 1.0.11+11
 homepage: https://github.com/Kimcop-kc/vidflow
 repository: https://github.com/Kimcop-kc/vidflow
 
@@ -16,6 +16,10 @@ dependencies:
   media_kit: 1.2.0
   media_kit_video: 1.2.0
   media_kit_libs_video: 1.0.0
+  # 1.3.8 把 compileSdkVersion 提成了 36，而 Flutter 3.22 自带的 AGP 8.1 的 aapt2
+  # 解析不了 API 36 的 android.jar（:verifyReleaseResources 报 RES_TABLE_TYPE_TYPE
+  # entry offsets overlap actual entry data）。1.3.7 仍是 compileSdk 31，钉住它。
+  media_kit_libs_android_video: 1.3.7
 
   # 状态管理
   flutter_riverpod: 2.5.1
@@ -39,7 +43,8 @@ dependencies:
   # 工具
   intl: 0.19.0
   uuid: 4.5.1
-  collection: 1.19.0
+  # Flutter 3.22 的 flutter_test 将 collection 锁定为 1.18.0，这里不能超过它
+  collection: ^1.18.0
 
 dev_dependencies:
   flutter_test:

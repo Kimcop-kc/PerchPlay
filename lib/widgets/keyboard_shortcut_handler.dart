@@ -53,8 +53,6 @@ class _KeyboardShortcutHandlerState
   final _device = DeviceInfoService.instance;
   final _iPadService = IPadOptimizationService.instance;
 
-  // Apple Pencil 悬停预览状态
-  Offset? _pencilHoverPosition;
   bool _showPencilPreview = false;
 
   @override
@@ -87,7 +85,6 @@ class _KeyboardShortcutHandlerState
     }
 
     final key = event.logicalKey;
-    final isRepeat = event is KeyRepeatEvent;
 
     // 空格 → 播放/暂停
     if (key == LogicalKeyboardKey.space) {
@@ -171,7 +168,6 @@ class _KeyboardShortcutHandlerState
       if (kind == PointerDeviceKind.stylus) {
         // Apple Pencil 悬停
         setState(() {
-          _pencilHoverPosition = event.position;
           _showPencilPreview = true;
         });
         // 短暂显示后隐藏

@@ -14,8 +14,6 @@ class CastControlService {
   CastDevice? get activeDevice => _activeDevice;
 
   HttpClient? _httpClient;
-  String _sessionId = '';
-  int _sequence = 0;
 
   bool _isConnected = false;
   bool get isConnected => _isConnected;
@@ -76,7 +74,6 @@ class CastControlService {
     _httpClient = null;
     _activeDevice = null;
     _isConnected = false;
-    _sessionId = '';
 
     _statusController.add(CastControlEvent(type: CastEventType.disconnected));
   }
@@ -85,9 +82,8 @@ class CastControlService {
 
   Future<void> _connectDlna(CastDevice device) async {
     // 获取设备描述 XML
-    final desc = await _fetchDeviceDescription(device.location);
+    await _fetchDeviceDescription(device.location);
     // 解析 AVTransport URL
-    _sessionId = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
   }
 
   Future<String> _fetchDeviceDescription(String location) async {
@@ -158,10 +154,7 @@ class CastControlService {
       final req = await _httpClient!.postUrl(uri);
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode({'v': '1.0'}));
-      final res = await req.close();
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        _sessionId = 'cc_${DateTime.now().millisecondsSinceEpoch}';
-      }
+      await req.close();
     } catch (_) {}
   }
 
@@ -170,8 +163,6 @@ class CastControlService {
   Future<void> _connectAirPlay(CastDevice device) async {
     // AirPlay 通过 RTSP + HTTP 双通道
     // 实际连接由 iOS 原生层 AVPictureInPicture + AVRoutePickerView 处理
-    // 这里标记状态
-    _sessionId = 'ap_${DateTime.now().millisecondsSinceEpoch}';
   }
 
   // ──────────── 通用控制方法 ────────────
@@ -280,7 +271,6 @@ class CastControlService {
   // ──────────── 工具 ────────────
 
   String _buildDlnaMetadata(String title, String url) {
-    final ext = url.split('.').last.toUpperCase();
     return '''<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
  xmlns:dc="http://purl.org/dc/elements/1.1/"
  xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">
