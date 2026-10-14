@@ -37,6 +37,13 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
+      - name: 生成平台文件 (flutter create)
+        run: flutter create --platforms=android --org com.vidflow --project-name vidflow . 2>&1 | tail -5
+
+      - name: 安装 Android SDK 平台
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973" 2>&1 | tail -5 || true
+
       - name: 生成 local.properties
         run: |
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
@@ -48,11 +55,11 @@ jobs:
 
       - name: 构建 APK (分 ABI)
         if: ${{ github.event.inputs.build_type == 'apk (分 ABI)' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' }}
-        run: flutter build apk --split-per-abi --release
+        run: flutter build apk --split-per-abi --release 2>&1 | tail -60
 
       - name: 构建 App Bundle (AAB)
         if: ${{ github.event.inputs.build_type == 'aab (Google Play)' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' }}
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release 2>&1 | tail -60
 
       - name: 列表构建产物
         run: |

@@ -31,11 +31,8 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 选择 Xcode
-        run: |
-          sudo xcode-select -switch /Applications/Xcode_16.0.app 2>/dev/null || \
-          sudo xcode-select -switch /Applications/Xcode_15.4.app 2>/dev/null || true
-          xcodebuild -version
+      - name: 生成平台文件 (flutter create)
+        run: flutter create --platforms=ios --org com.vidflow --project-name vidflow . 2>&1 | tail -10
 
       - name: 安装依赖
         run: flutter pub get
@@ -43,12 +40,12 @@ jobs:
       - name: 安装 CocoaPods
         run: |
           cd ios
-          pod install --repo-update || pod install
+          pod install 2>&1 | tail -10 || pod install --repo-update 2>&1 | tail -10
           cd ..
 
       - name: 构建 iOS (无签名)
         run: |
-          flutter build ios --release --no-codesign 2>&1 | tail -40
+          flutter build ios --release --no-codesign 2>&1 | tail -60
 
       - name: 打包 IPA
         run: |
@@ -59,7 +56,8 @@ jobs:
             zip -r ../../VidFlow-${{ github.ref_name }}-unsigned.ipa Payload/
             echo "✓ IPA 打包完成"
           else
-            echo "⚠️ 未找到 Runner.app，跳过 IPA 打包"
+            echo "⚠️ 未找到 Runner.app"
+            find build/ios -maxdepth 3 -type d 2>/dev/null || true
           fi
 
       - name: 上传 IPA
