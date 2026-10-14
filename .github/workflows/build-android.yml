@@ -45,6 +45,11 @@ jobs:
           flutter create --platforms=android --org com.vidflow --project-name player .
           echo "✅ flutter create 完成"
 
+      - name: 设置 compileSdkVersion 36 (media_kit 要求)
+        run: |
+          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 36/' android/app/build.gradle.kts
+          echo "✅ compileSdkVersion 已设为 36"
+
       - name: 覆盖自定义文件
         run: |
           cp android/manifest-backup/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
