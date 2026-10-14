@@ -1,10 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
-/// iOS 27 风格玻璃进度条 / 滑块
+/// iOS 27 ??????? / ??
 ///
-/// 带光泽流动动画 + 玻璃拖拽 thumb
+/// ??????? + ???? thumb
 class GlassSlider extends StatefulWidget {
   final double value;
   final double min;
@@ -64,15 +65,15 @@ class _GlassSliderState extends State<GlassSlider> {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                // 轨道背景
+                // ????
                 Positioned(
                   top: widget.showThumb ? widget.thumbRadius + 2 : 0,
                   left: 0,
                   right: 0,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(widget.height / 2),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                    child: SafeBackdropFilter(
+                      blurSigma: 2,
                       child: Container(
                         height: widget.height,
                         decoration: BoxDecoration(
@@ -85,7 +86,7 @@ class _GlassSliderState extends State<GlassSlider> {
                   ),
                 ),
 
-                // 活跃轨道
+                // ????
                 if (activeWidth > 0)
                   Positioned(
                     top: widget.showThumb ? widget.thumbRadius + 2 : 0,

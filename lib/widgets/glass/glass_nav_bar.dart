@@ -2,10 +2,11 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
-/// iOS 27 风格玻璃导航底栏
+/// iOS 27 ????????
 ///
-/// 毛玻璃背景 + 选中项弹性动画 + 图标着色
+/// ????? + ??????? + ????
 class GlassNavBar extends StatelessWidget {
   final List<NavBarItem> items;
   final String currentRoute;
@@ -22,8 +23,8 @@ class GlassNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusLg)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+      child: SafeBackdropFilter(
+        blurSigma: 24,
         child: Container(
           height: height + MediaQuery.of(context).padding.bottom,
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
@@ -120,7 +121,7 @@ class _NavItemState extends State<_NavItem>
       },
       behavior: HitTestBehavior.opaque,
       child: GlassAnimatedBuilder(
-        listenable: _bounce,
+        animation: _bounce,
         builder: (context, child) => Transform.scale(
           scale: _bounce.value,
           child: Container(
@@ -178,7 +179,7 @@ class NavBarItem {
   });
 }
 
-/// 弹簧曲线包装器
+/// ???????
 class SpringCurve extends Curve {
   final double mass, stiffness, damping;
   const SpringCurve({
@@ -189,7 +190,7 @@ class SpringCurve extends Curve {
 
   @override
   double transform(double t) {
-    // 简单弹性映射: 使用阻尼弹簧公式
+    // ??????: ????????
     final beta = damping / (2 * mass);
     final omega = math.sqrt(stiffness / mass - beta * beta);
     final envelope = math.exp(-beta * t);

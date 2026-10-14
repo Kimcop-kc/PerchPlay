@@ -1,7 +1,7 @@
-/// 视频播放器页面 — iOS 27 玻璃质感
+/// ??????? - iOS 27 ????
 ///
-/// 手机/竖屏 → 全屏视频 + 玻璃控制栏
-/// 平板横屏 → 左视频 / 右毛玻璃控制面板
+/// ??/?? ? ???? + ?????
+/// ???? ? ??? / ????????
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +17,7 @@ import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_slider.dart';
+import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/keyboard_shortcut_handler.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -43,9 +44,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void initState() {
     super.initState();
-    final playerNotifier = ref.read(playerProvider.notifier);
-    _videoController = VideoController(playerNotifier.player);
-    playerNotifier.attachVideoController(_videoController);
+    _videoController =
+        VideoController(ref.read(playerProvider.notifier).state.player);
+    ref.read(playerProvider.notifier).state =
+        ref.read(playerProvider.notifier).state.copyWith(
+              videoController: _videoController,
+            );
     _controlsAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
@@ -106,7 +110,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     return _buildFullScreenLayout(context, playerState);
   }
 
-  // ═══════════════ 全屏（手机/竖屏） ═══════════════
+  // ??????????????? ??(??/??) ???????????????
 
   Widget _buildFullScreenLayout(BuildContext context, PlayerState state) {
     final isLarge = AppBreakpoints.isLargeScreen(context);
@@ -150,7 +154,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               onSeek: (seconds) =>
                   ref.read(playerProvider.notifier).seekRelative(seconds),
             ),
-            // 字幕
+            // ??
             if (state.subtitleEntries != null &&
                 state.subtitleEntries!.isNotEmpty)
               Positioned(
@@ -162,9 +166,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   activeIndex: state.activeSubtitleIndex,
                 ),
               ),
-            // 弹出面板
+            // ????
             _buildPopupMenus(context, state),
-            // 控制栏（玻璃动画）
+            // ???(????)
             if (_showControls)
               GlassAnimatedBuilder(
                 listenable: _controlsAnim,
@@ -180,7 +184,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                 ),
               ),
-            // 缓冲
+            // ??
             if (state.isBuffering)
               Center(
                 child: CircularProgressIndicator(
@@ -194,7 +198,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ 平板横屏分栏 ═══════════════
+  // ??????????????? ?????? ???????????????
 
   Widget _buildSplitLayout(BuildContext context, PlayerState state) {
     final size = MediaQuery.of(context).size;
@@ -266,7 +270,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ 玻璃侧边面板（平板横屏） ═══════════════
+  // ??????????????? ??????(????) ???????????????
 
   Widget _buildGlassSidePanel(BuildContext context, PlayerState state) {
     return SafeArea(
@@ -276,7 +280,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 标题 + 返回
+            // ?? + ??
             Row(
               children: [
                 IconButton(
@@ -296,7 +300,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             ),
             const SizedBox(height: 20),
 
-            // 进度条
+            // ???
             if (state.duration > Duration.zero) ...[
               GlassSlider(
                 value: state.position.inMilliseconds.toDouble(),
@@ -321,7 +325,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               const SizedBox(height: 16),
             ],
 
-            // 播放控制按钮
+            // ??????
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -351,13 +355,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             ),
             const SizedBox(height: 24),
 
-            // 队列
+            // ??
             if (state.queue.length > 1) ...[
               Row(
                 children: [
                   const Icon(Icons.queue_play_next, size: 16, color: Colors.white54),
                   const SizedBox(width: 6),
-                  Text('播放队列 (${state.queue.length})',
+                  Text('???? (${state.queue.length})',
                       style: const TextStyle(color: Colors.white54, fontSize: 13)),
                 ],
               ),
@@ -386,27 +390,27 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               const SizedBox(height: 20),
             ],
 
-            // 快捷操作
-            _sideGlassRow(Icons.speed_rounded, '速度', '${state.speed}x',
+            // ????
+            _sideGlassRow(Icons.speed_rounded, '??', '${state.speed}x',
                 () => setState(() => _showSpeedSelector = !_showSpeedSelector)),
             const SizedBox(height: 8),
-            _sideGlassRow(Icons.subtitles_rounded, '字幕',
-                state.activeSubtitle?.language ?? '无',
+            _sideGlassRow(Icons.subtitles_rounded, '??',
+                state.activeSubtitle?.language ?? '?',
                 () => setState(() => _showSubtitleSelector = !_showSubtitleSelector)),
             const SizedBox(height: 8),
-            _sideGlassRow(Icons.picture_in_picture_rounded, '画中画', '开启',
+            _sideGlassRow(Icons.picture_in_picture_rounded, '???', '??',
                 _enterPiP),
             const SizedBox(height: 8),
-            _sideGlassRow(Icons.cast_rounded, '投屏', '设备',
+            _sideGlassRow(Icons.cast_rounded, '??', '??',
                 () => context.pushNamed('cast')),
             const SizedBox(height: 20),
 
-            // 音量
-            _sliderRow(Icons.volume_up_rounded, '音量', state.volume,
+            // ??
+            _sliderRow(Icons.volume_up_rounded, '??', state.volume,
                 (v) => ref.read(playerProvider.notifier).setVolume(v)),
             const SizedBox(height: 12),
-            // 亮度
-            _sliderRow(Icons.brightness_6_rounded, '亮度', state.brightness,
+            // ??
+            _sliderRow(Icons.brightness_6_rounded, '??', state.brightness,
                 (v) => ref.read(playerProvider.notifier).setBrightness(v)),
             const SizedBox(height: 30),
           ],
@@ -465,14 +469,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ 玻璃顶栏 ═══════════════
+  // ??????????????? ???? ???????????????
 
   Widget _buildGlassTopBar(BuildContext context, {bool isLarge = false}) {
     return Positioned(
       top: 0, left: 0, right: 0,
       child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: SafeBackdropFilter(
+          blurSigma: 18,
           child: Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             decoration: BoxDecoration(
@@ -519,15 +523,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ 玻璃底部控制栏 ═══════════════
+  // ??????????????? ??????? ???????????????
 
   Widget _buildGlassBottomControls(BuildContext context, PlayerState state,
       {double scale = 1.0}) {
     return Positioned(
       bottom: 0, left: 0, right: 0,
       child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: SafeBackdropFilter(
+          blurSigma: 18,
           child: Container(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).padding.bottom + 8,
@@ -545,7 +549,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 进度条
+                // ???
                 if (state.duration > Duration.zero)
                   Padding(
                     padding: EdgeInsets.symmetric(
@@ -562,7 +566,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     ),
                   ),
                 SizedBox(height: 4 * scale),
-                // 时间
+                // ??
                 if (state.duration > Duration.zero)
                   Padding(
                     padding: EdgeInsets.symmetric(
@@ -582,7 +586,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     ),
                   ),
                 SizedBox(height: 6 * scale),
-                // 按钮行
+                // ???
                 Padding(
                   padding: EdgeInsets.symmetric(
                       horizontal: 12 * scale),
@@ -637,7 +641,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ 弹出面板 ═══════════════
+  // ??????????????? ???? ???????????????
 
   Widget _buildPopupMenus(BuildContext context, PlayerState state) {
     return Stack(
@@ -706,7 +710,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  // ═══════════════ Video Layer ═══════════════
+  // ??????????????? Video Layer ???????????????
 
   Widget _buildVideoLayer(PlayerState state) {
     return Positioned.fill(

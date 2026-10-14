@@ -1,14 +1,15 @@
-import 'dart:ui' show ImageFilter;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import 'safe_glass.dart';
 
-/// iOS 27 玻璃质感卡片
+/// iOS 27 ??????
 ///
-/// 特性：
-///   - BackdropFilter 实时模糊
-///   - 顶部光泽高光
-///   - 1px 白色内边框
-///   - 弹性悬浮动画 (Hover / Tap)
+/// ??:
+///   - BackdropFilter ????
+///   - ??????
+///   - 1px ?????
+///   - ?????? (Hover / Tap)
 class GlassCard extends StatefulWidget {
   final Widget child;
   final double? width;
@@ -100,14 +101,11 @@ class _GlassCardState extends State<GlassCard>
                 margin: widget.margin,
                 child: Stack(
                   children: [
-                    // 基础模糊层
+                    // ????? (?? SafeBackdropFilter,Android ????)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(widget.radius),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: 20,
-                          sigmaY: 20,
-                        ),
+                      child: SafeBackdropFilter(
+                        blurSigma: 20,
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius:
@@ -144,7 +142,7 @@ class _GlassCardState extends State<GlassCard>
                       ),
                     ),
 
-                    // 顶部光泽高光
+                    // ??????
                     Positioned(
                       top: 0,
                       left: 0,
@@ -162,7 +160,7 @@ class _GlassCardState extends State<GlassCard>
                       ),
                     ),
 
-                    // 内容
+                    // ??
                     Padding(
                       padding: widget.padding,
                       child: ClipRRect(

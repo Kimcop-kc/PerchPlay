@@ -8,9 +8,10 @@ import '../../models/nas_connection_model.dart';
 import '../../providers/nas_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/glass/glass_button.dart';
 
-/// NAS 文件浏览器 — iOS 27 玻璃质感
+/// NAS ????? - iOS 27 ????
 class NasBrowserPage extends ConsumerStatefulWidget {
   const NasBrowserPage({super.key});
 
@@ -19,6 +20,8 @@ class NasBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
+  NasConnection? _selectedConnection;
+
   @override
   Widget build(BuildContext context) {
     final nasState = ref.watch(nasProvider);
@@ -34,7 +37,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 手机 ═══════════════
+  // ??????????????? ?? ???????????????
 
   Widget _buildMobileLayout(NasState state) {
     if (state.isConnected) return _buildFileBrowser(state);
@@ -42,7 +45,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     return _buildConnectionList(state);
   }
 
-  // ═══════════════ 平板双栏 ═══════════════
+  // ??????????????? ???? ???????????????
 
   Widget _buildTabletLayout(NasState state) {
     return Row(
@@ -70,7 +73,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     children: [
                       Icon(Icons.dns_rounded, size: 48, color: Colors.grey[800]),
                       const SizedBox(height: 12),
-                      Text('选择一个连接以浏览文件',
+                      Text('???????????',
                           style:
                               TextStyle(color: Colors.grey[500], fontSize: 15)),
                     ],
@@ -87,7 +90,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       child: Row(
         children: [
           const Expanded(
-            child: Text('NAS 文件',
+            child: Text('NAS ??',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 26,
@@ -95,7 +98,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           ),
           GlassButton.outlined(
             icon: Icons.add_link_rounded,
-            label: '添加',
+            label: '??',
             height: 36,
             foregroundColor: GlassTheme.accentTeal,
             onTap: () => _showAddConnectionDialog(context),
@@ -105,7 +108,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 连接列表 ═══════════════
+  // ??????????????? ???? ???????????????
 
   Widget _buildConnectionList(NasState state) {
     return ListView.builder(
@@ -117,7 +120,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             padding: const EdgeInsets.only(bottom: 10, top: 8),
             child: GlassButton.outlined(
               icon: Icons.add_link_rounded,
-              label: '添加 NAS 连接',
+              label: '?? NAS ??',
               width: double.infinity,
               height: 44,
               foregroundColor: GlassTheme.accentTeal,
@@ -141,6 +144,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             selected: isActive,
             tint: isActive ? GlassTheme.tintTeal : GlassTheme.tintWhite,
             onTap: () async {
+              setState(() => _selectedConnection = conn);
               if (!isActive) {
                 await ref.read(nasProvider.notifier).connect(conn);
               }
@@ -211,7 +215,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 文件浏览器 ═══════════════
+  // ??????????????? ????? ???????????????
 
   Widget _buildFileBrowser(NasState state) {
     return Column(
@@ -224,7 +228,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       CircularProgressIndicator(color: GlassTheme.accentPurple))
               : state.currentFiles.isEmpty
                   ? Center(
-                      child: Text('此目录为空',
+                      child: Text('?????',
                           style: TextStyle(color: Colors.grey[600])),
                     )
                   : _buildFileList(state),
@@ -333,7 +337,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           fontSize: 14,
                           fontWeight: FontWeight.w500)),
                   Text(
-                    item.isDirectory ? '文件夹' : _formatSize(item.size),
+                    item.isDirectory ? '???' : _formatSize(item.size),
                     style: const TextStyle(color: Colors.white30, fontSize: 11),
                   ),
                 ],
@@ -364,10 +368,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 添加连接对话框 ═══════════════
+  // ??????????????? ??????? ???????????????
 
   void _showAddConnectionDialog(BuildContext context) {
-    final nameCtrl = TextEditingController(text: '我的 NAS');
+    final nameCtrl = TextEditingController(text: '?? NAS');
     final hostCtrl = TextEditingController();
     final portCtrl = TextEditingController(text: '445');
     final usernameCtrl = TextEditingController();
@@ -381,8 +385,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           backgroundColor: Colors.transparent,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: SafeBackdropFilter(
+              blurSigma: 24,
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -410,16 +414,16 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('添加 NAS 连接',
+                      const Text('?? NAS ??',
                           style: TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.w700)),
                       const SizedBox(height: 20),
-                      _dialogField('名称', nameCtrl),
+                      _dialogField('??', nameCtrl),
                       const SizedBox(height: 14),
-                      // 协议选择
-                      const Text('协议',
+                      // ????
+                      const Text('??',
                           style:
                               TextStyle(color: Colors.white54, fontSize: 13)),
                       const SizedBox(height: 8),
@@ -457,19 +461,19 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                         }).toList(),
                       ),
                       const SizedBox(height: 14),
-                      _dialogField('主机地址', hostCtrl),
+                      _dialogField('????', hostCtrl),
                       const SizedBox(height: 14),
-                      _dialogField('端口', portCtrl, isNumber: true),
+                      _dialogField('??', portCtrl, isNumber: true),
                       const SizedBox(height: 14),
-                      _dialogField('用户名', usernameCtrl),
+                      _dialogField('???', usernameCtrl),
                       const SizedBox(height: 14),
-                      _dialogField('密码', passwordCtrl, isPassword: true),
+                      _dialogField('??', passwordCtrl, isPassword: true),
                       const SizedBox(height: 24),
                       Row(
                         children: [
                           Expanded(
                             child: GlassButton(
-                              label: '取消',
+                              label: '??',
                               height: 46,
                               ghost: true,
                               foregroundColor: Colors.white54,
@@ -479,7 +483,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: GlassButton.filled(
-                              label: '连接',
+                              label: '??',
                               height: 46,
                               onTap: () {
                                 if (hostCtrl.text.trim().isEmpty) return;
@@ -550,7 +554,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 空状态 ═══════════════
+  // ??????????????? ??? ???????????????
 
   Widget _buildEmptyConnections() {
     return Center(
@@ -561,7 +565,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           children: [
             Icon(Icons.dns_rounded, size: 48, color: Colors.grey[700]),
             const SizedBox(height: 12),
-            const Text('未添加 NAS 连接',
+            const Text('??? NAS ??',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -569,7 +573,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             const SizedBox(height: 16),
             GlassButton.outlined(
               icon: Icons.add_link_rounded,
-              label: '添加 SMB / FTP / WebDAV',
+              label: '?? SMB / FTP / WebDAV',
               foregroundColor: GlassTheme.accentTeal,
               onTap: () => _showAddConnectionDialog(context),
             ),
