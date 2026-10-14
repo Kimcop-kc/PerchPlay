@@ -78,7 +78,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         padding: EdgeInsets.fromLTRB(20, 24, 20, 20),
         child: Text('设置',
             style: TextStyle(
-                color: Colors.white,
+                color: GlassTheme.textPrimary,
                 fontSize: 28,
                 fontWeight: FontWeight.w800)),
       ),
@@ -90,7 +90,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       padding: const EdgeInsets.only(bottom: 10, left: 4),
       child: Text(title.toUpperCase(),
           style: const TextStyle(
-              color: Colors.white24,
+              color: GlassTheme.textTertiary,
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2)),
@@ -118,7 +118,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Icons.fast_forward_rounded,
             '快进/快退秒数',
             trailing: Text('${_settings.skipSeconds}s',
-                style: const TextStyle(color: Colors.white38)),
+                style: const TextStyle(color: GlassTheme.textTertiary)),
             onTap: () => _showSkipPicker(),
           ),
           _divider(),
@@ -154,7 +154,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingRow(
             Icons.palette_rounded,
             '主题风格',
-            trailing: _unsupportedTag('暗黑玻璃'),
+            trailing: _unsupportedTag('浅色玻璃'),
             onTap: () => _showComingSoon('主题风格'),
           ),
           _divider(),
@@ -185,16 +185,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Text(currentValue,
-                style: const TextStyle(color: Colors.white38)),
+                style: const TextStyle(color: GlassTheme.textTertiary)),
           ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
+            color: Colors.black.withOpacity(0.06),
             borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
           ),
           child: const Text('暂未支持',
-              style: TextStyle(color: Colors.white38, fontSize: 11)),
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
         ),
       ],
     );
@@ -230,14 +230,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(width: 8),
                   const Text('电池优化白名单',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: GlassTheme.textPrimary,
                           fontWeight: FontWeight.w600)),
                 ],
               ),
               const SizedBox(height: 6),
               Text(rom.batteryGuide,
                   style: const TextStyle(
-                      color: Colors.white54, fontSize: 12, height: 1.4)),
+                      color: GlassTheme.textSecondary, fontSize: 12, height: 1.4)),
               const SizedBox(height: 12),
               GlassButton.outlined(
                 label: '去设置',
@@ -254,14 +254,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(width: 8),
                     const Text('自启动管理',
                         style: TextStyle(
-                            color: Colors.white,
+                            color: GlassTheme.textPrimary,
                             fontWeight: FontWeight.w600)),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(rom.autoStartGuide,
                     style: const TextStyle(
-                        color: Colors.white54, fontSize: 12, height: 1.4)),
+                        color: GlassTheme.textSecondary, fontSize: 12, height: 1.4)),
                 const SizedBox(height: 12),
                 GlassButton.outlined(
                   label: '开启自启动',
@@ -328,10 +328,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Text(label,
                   style: const TextStyle(
-                      color: Colors.white, fontSize: 14)),
+                      color: GlassTheme.textPrimary, fontSize: 14)),
               Text(detail,
                   style: const TextStyle(
-                      color: Colors.white38, fontSize: 11)),
+                      color: GlassTheme.textTertiary, fontSize: 11)),
             ],
           ),
         ),
@@ -373,17 +373,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 12),
           const Text('VidFlow',
               style: TextStyle(
-                  color: Colors.white,
+                  color: GlassTheme.textPrimary,
                   fontSize: 20,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text('v${AppConstants.appVersion} · iOS 27 Glass Edition',
-              style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
           const SizedBox(height: 6),
           Text(
             '${DeviceInfoService.instance.brand.displayName} · '
             '${DeviceInfoService.instance.isIPad ? "iPad" : "Phone"}',
-            style: const TextStyle(color: Colors.white30, fontSize: 11),
+            style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
           ),
         ],
       ),
@@ -395,9 +395,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _settingRow(IconData icon, String title,
       {Widget? trailing, VoidCallback? onTap}) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white54, size: 20),
+      leading: Icon(icon, color: GlassTheme.textSecondary, size: 20),
       title: Text(title,
-          style: const TextStyle(color: Colors.white, fontSize: 15)),
+          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15)),
       trailing: trailing,
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
@@ -407,15 +407,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _settingSwitch(
       IconData icon, String title, bool value, ValueChanged<bool> onChanged) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white54, size: 20),
+      leading: Icon(icon, color: GlassTheme.textSecondary, size: 20),
       title: Text(title,
-          style: const TextStyle(color: Colors.white, fontSize: 15)),
+          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15)),
       trailing: Switch(
         value: value,
         onChanged: onChanged,
         activeColor: GlassTheme.accentPurple,
-        inactiveThumbColor: Colors.white38,
-        inactiveTrackColor: Colors.white.withOpacity(0.08),
+        inactiveThumbColor: GlassTheme.textTertiary,
+        inactiveTrackColor: Colors.black.withOpacity(0.08),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
     );
@@ -423,7 +423,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _divider() {
     return Divider(
-        height: 1, indent: 52, color: Colors.white.withOpacity(0.04));
+        height: 1, indent: 52, color: Colors.black.withOpacity(0.06));
   }
 
   void _showSpeedPicker() {
@@ -475,12 +475,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.08),
-                Colors.white.withOpacity(0.03),
+                Colors.white.withOpacity(0.8),
+                Colors.white.withOpacity(0.5),
               ],
             ),
-            border: const Border(
-              top: BorderSide(color: Color(0x10FFFFFF), width: 0.5),
+            border: Border(
+              top: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5),
             ),
           ),
           child: Column(
@@ -493,14 +493,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.black.withOpacity(0.15),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
               Text(title,
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: GlassTheme.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
@@ -514,7 +514,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   filled: false,
                   foregroundColor: isActive
                       ? GlassTheme.accentPurple
-                      : Colors.white70,
+                      : GlassTheme.textPrimary,
                   onTap: () {
                     onSelect(v);
                     Navigator.pop(context);

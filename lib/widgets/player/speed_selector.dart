@@ -34,13 +34,13 @@ class SpeedSelector extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withOpacity(0.08),
-                    Colors.white.withOpacity(0.03),
+                    Colors.white.withOpacity(0.8),
+                    Colors.white.withOpacity(0.5),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
                 border: Border.all(
-                    color: Colors.white.withOpacity(0.08), width: 0.5),
+                    color: Colors.black.withOpacity(0.06), width: 0.5),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -51,7 +51,7 @@ class SpeedSelector extends StatelessWidget {
                     child: Text(
                       '播放速度',
                       style: TextStyle(
-                        color: Colors.white70,
+                        color: GlassTheme.textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -77,7 +77,7 @@ class SpeedSelector extends StatelessWidget {
                           style: TextStyle(
                             color: isActive
                                 ? GlassTheme.accentPurple
-                                : Colors.white70,
+                                : GlassTheme.textPrimary,
                             fontSize: 15,
                             fontWeight: isActive
                                 ? FontWeight.w700

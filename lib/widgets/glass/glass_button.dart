@@ -40,8 +40,8 @@ class GlassButton extends StatefulWidget {
     this.icon,
     this.label,
     this.compact = false,
-  }) : assert(child != null || (icon != null && label != null),
-            'Provide either child or icon+label');
+  }) : assert(child != null || icon != null || label != null,
+            'Provide child, icon or label');
 
   const GlassButton.filled({
     super.key,
@@ -183,7 +183,7 @@ class _GlassButtonState extends State<GlassButton>
     // ghost
     return BoxDecoration(
       borderRadius: BorderRadius.circular(widget.radius),
-      color: _pressed ? Colors.white.withOpacity(0.06) : Colors.transparent,
+      color: _pressed ? Colors.black.withOpacity(0.06) : Colors.transparent,
     );
   }
 }

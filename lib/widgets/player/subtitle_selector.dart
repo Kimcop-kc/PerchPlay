@@ -38,13 +38,13 @@ class SubtitleSelector extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withOpacity(0.08),
-                    Colors.white.withOpacity(0.03),
+                    Colors.white.withOpacity(0.8),
+                    Colors.white.withOpacity(0.5),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
                 border: Border.all(
-                    color: Colors.white.withOpacity(0.08), width: 0.5),
+                    color: Colors.black.withOpacity(0.06), width: 0.5),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -55,7 +55,7 @@ class SubtitleSelector extends StatelessWidget {
                     child: Text(
                       '字幕选择',
                       style: TextStyle(
-                        color: Colors.white70,
+                        color: GlassTheme.textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -80,14 +80,14 @@ class SubtitleSelector extends StatelessWidget {
                               size: 16,
                               color: activeSubtitle == null
                                   ? GlassTheme.accentPurple
-                                  : Colors.white54),
+                                  : GlassTheme.textSecondary),
                           const SizedBox(width: 6),
                           Text(
                             '关闭',
                             style: TextStyle(
                               color: activeSubtitle == null
                                   ? GlassTheme.accentPurple
-                                  : Colors.white70,
+                                  : GlassTheme.textPrimary,
                               fontSize: 14,
                             ),
                           ),
@@ -102,7 +102,7 @@ class SubtitleSelector extends StatelessWidget {
                       padding: EdgeInsets.all(8),
                       child: Text('未找到外挂字幕',
                           style:
-                              TextStyle(color: Colors.white38, fontSize: 12)),
+                              TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
                     )
                   else
                     ...subtitles.map((sub) {
@@ -128,7 +128,7 @@ class SubtitleSelector extends StatelessWidget {
                                 size: 14,
                                 color: isActive
                                     ? GlassTheme.accentPurple
-                                    : Colors.white54,
+                                    : GlassTheme.textSecondary,
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -136,7 +136,7 @@ class SubtitleSelector extends StatelessWidget {
                                 style: TextStyle(
                                   color: isActive
                                       ? GlassTheme.accentPurple
-                                      : Colors.white70,
+                                      : GlassTheme.textPrimary,
                                   fontSize: 14,
                                 ),
                               ),

@@ -137,7 +137,7 @@ class RomOptimizationService {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: const Color(0xFFF2F2F7),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -152,7 +152,7 @@ class RomOptimizationService {
             Expanded(
               child: Text(
                 '${_brandDisplayName} 手机优化',
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+                style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 18),
               ),
             ),
           ],
@@ -164,7 +164,7 @@ class RomOptimizationService {
             children: [
               const Text(
                 '为确保 VidFlow 正常使用，建议进行以下设置：',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+                style: TextStyle(color: Color(0xFF3C3C43), fontSize: 14),
               ),
               const SizedBox(height: 16),
               if (needsBatteryOptimizationBypass) ...[
@@ -192,7 +192,7 @@ class RomOptimizationService {
               completer.complete(false);
             },
             child: const Text('稍后设置',
-                style: TextStyle(color: Colors.white54)),
+                style: TextStyle(color: Color(0xFF8E8E93))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -217,22 +217,22 @@ class RomOptimizationService {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.black.withOpacity(0.04),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: Colors.black.withOpacity(0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
               style: const TextStyle(
-                  color: Colors.white,
+                  color: Color(0xFF1C1C1E),
                   fontWeight: FontWeight.w600,
                   fontSize: 13)),
           const SizedBox(height: 6),
           Text(content,
               style: const TextStyle(
-                  color: Colors.white54, fontSize: 12, height: 1.5)),
+                  color: Color(0xFF3C3C43), fontSize: 12, height: 1.5)),
         ],
       ),
     );

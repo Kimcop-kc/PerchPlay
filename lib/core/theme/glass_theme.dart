@@ -13,13 +13,17 @@ import 'package:flutter/material.dart';
 class GlassTheme {
   GlassTheme._();
 
-  // ────────── 基础色板（暗色底） ──────────
-  static const bg = Color(0xFF0A0A0F);          // 最深底色
-  static const bgRaised = Color(0xFF14141F);    // 抬高一层
-  static const accentPurple = Color(0xFF9B7EF0); // 主紫
-  static const accentTeal = Color(0xFF45E0D0);   // 主青
-  static const accentPink = Color(0xFFFF6B9D);   // 点缀粉
+  // ────────── 基础色板（浅色玻璃底） ──────────
+  static const bg = Color(0xFFF2F2F7);          // iOS 浅灰底
+  static const bgRaised = Color(0xFFE5E5EA);    // 抬高一层
+  static const accentPurple = Color(0xFF6E5CE7); // 主紫
+  static const accentTeal = Color(0xFF00B8A9);   // 主青
+  static const accentPink = Color(0xFFFF4D6D);   // 点缀粉
   static const surfaceWhite = Color(0xFFFFFFFF);
+  // 浅色主题下文字颜色
+  static const textPrimary = Color(0xFF1C1C1E);
+  static const textSecondary = Color(0xFF3C3C43);
+  static const textTertiary = Color(0xFF8E8E93);
 
   // ────────── 玻璃透明度预设 ──────────
   static const glassLight = 0.06;   // 极透

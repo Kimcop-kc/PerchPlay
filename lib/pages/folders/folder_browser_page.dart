@@ -86,8 +86,18 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Future<void> _requestStoragePermission() async {
-    final status = await Permission.storage.request();
-    if (status.isGranted || status.isLimited) {
+    // Android 13+ 用 videos，≤12 用 storage
+    final status = await Permission.videos.request();
+    final granted = status.isGranted || status.isLimited;
+    if (granted) {
+      if (!mounted) return;
+      setState(() => _errorMessage = null);
+      await _loadRoots();
+      return;
+    }
+    // 回退旧权限
+    final legacy = await Permission.storage.request();
+    if (legacy.isGranted || legacy.isLimited) {
       if (!mounted) return;
       setState(() => _errorMessage = null);
       await _loadRoots();
@@ -140,7 +150,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             child: Text(
               _currentPath.isEmpty ? '文件夹' : _currentPath.split('/').last,
               style: const TextStyle(
-                color: Colors.white,
+                color: GlassTheme.textPrimary,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
@@ -151,7 +161,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             icon: _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
             compact: true,
             ghost: true,
-            foregroundColor: Colors.white54,
+            foregroundColor: GlassTheme.textSecondary,
             onTap: () => setState(() => _gridView = !_gridView),
           ),
         ],
@@ -198,7 +208,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             Text(_errorMessage!,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    color: Colors.white70, fontSize: 14, height: 1.5)),
+                    color: GlassTheme.textPrimary, fontSize: 14, height: 1.5)),
             const SizedBox(height: 16),
             GlassButton.outlined(
               icon: Icons.lock_open_rounded,
@@ -213,7 +223,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
               label: '重试',
               height: 40,
               ghost: true,
-              foregroundColor: Colors.white54,
+              foregroundColor: GlassTheme.textSecondary,
               onTap: _loadRoots,
             ),
           ],
@@ -229,13 +239,13 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey[700]),
+            Icon(Icons.folder_open_rounded, size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('未发现可访问的存储目录',
-                style: TextStyle(color: Colors.white, fontSize: 16)),
+                style: TextStyle(color: GlassTheme.textPrimary, fontSize: 16)),
             const SizedBox(height: 6),
             const Text('请授权存储权限后重试',
-                style: TextStyle(color: Colors.white38, fontSize: 12)),
+                style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
             const SizedBox(height: 16),
             GlassButton.outlined(
               icon: Icons.lock_open_rounded,
@@ -262,20 +272,20 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           children: [
             GestureDetector(
               onTap: _loadRoots,
-              child: const Icon(Icons.folder_rounded, size: 14, color: Colors.white38),
+              child: const Icon(Icons.folder_rounded, size: 14, color: GlassTheme.textTertiary),
             ),
             ...parts.asMap().entries.map((e) {
               final path = '/' + parts.sublist(0, e.key + 1).join('/');
               return Row(
                 children: [
-                  const Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white24),
+                  const Icon(Icons.chevron_right_rounded, size: 14, color: GlassTheme.textTertiary),
                   GestureDetector(
                     onTap: () => _navigate(path),
                     child: Text(e.value,
                         style: TextStyle(
                             color: e.key == parts.length - 1
                                 ? GlassTheme.accentPurple
-                                : Colors.white54,
+                                : GlassTheme.textSecondary,
                             fontSize: 12)),
                   ),
                 ],
@@ -326,7 +336,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 size: 40,
                 color: isDir
                     ? GlassTheme.accentTeal.withOpacity(0.8)
-                    : (isVideo ? GlassTheme.accentPurple : Colors.white38),
+                    : (isVideo ? GlassTheme.accentPurple : GlassTheme.textTertiary),
               ),
               const SizedBox(height: 8),
               Text(
@@ -334,7 +344,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 11),
+                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 11),
               ),
             ],
           ),
@@ -379,10 +389,10 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                   child: Text(entry.path.split('/').last,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 14)),
+                      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
                 ),
                 if (isDir)
-                  const Icon(Icons.chevron_right_rounded, color: Colors.white24),
+                  const Icon(Icons.chevron_right_rounded, color: GlassTheme.textTertiary),
               ],
             ),
           ),

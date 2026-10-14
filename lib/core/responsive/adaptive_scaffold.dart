@@ -40,7 +40,7 @@ class _MobileGlassScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTheme.bg,
       body: child,
       bottomNavigationBar: GlassNavBar(
         currentRoute: currentRoute,
@@ -73,7 +73,7 @@ class _TabletGlassScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: GlassTheme.bg,
       body: Row(
         children: [
           // 左侧毛玻璃导航
@@ -90,12 +90,12 @@ class _TabletGlassScaffold extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.04),
-                      Colors.white.withOpacity(0.01),
+                      Colors.white.withOpacity(0.5),
+                      Colors.white.withOpacity(0.25),
                     ],
                   ),
-                  border: const Border(
-                    right: BorderSide(color: Color(0x10FFFFFF), width: 0.5),
+                  border: Border(
+                    right: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5),
                   ),
                 ),
                 child: Column(
@@ -191,7 +191,7 @@ class _TabletGlassScaffold extends StatelessWidget {
           children: [
             Icon(
               config.icon,
-              color: isActive ? GlassTheme.accentPurple : Colors.grey[500],
+              color: isActive ? GlassTheme.accentPurple : GlassTheme.textSecondary,
               size: 26,
             ),
             const SizedBox(height: 4),
@@ -199,7 +199,7 @@ class _TabletGlassScaffold extends StatelessWidget {
               config.label,
               style: TextStyle(
                 fontSize: 11,
-                color: isActive ? GlassTheme.accentPurple : Colors.grey[500],
+                color: isActive ? GlassTheme.accentPurple : GlassTheme.textSecondary,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
               ),
             ),

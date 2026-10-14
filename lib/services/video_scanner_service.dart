@@ -15,6 +15,9 @@ class VideoScannerService {
   /// [dirPaths] 内若存在父子目录重叠，会先去重为最外层目录，避免重复遍历。
   /// [removeMissing] 为 true 时，清理数据库中不在本次扫描范围内的记录；
   /// 调用方必须确保扫描范围与期望保留的范围一致，否则会误删范围外视频。
+  ///
+  /// 递归遍历对每个子目录单独容错：Android 的 Android/data、Android/obb
+  /// 等目录无权限，若用 list(recursive: true) 一个异常会中断整条流。
   Future<List<VideoModel>> scanDirectories(
     List<String> dirPaths, {
     bool removeMissing = true,
@@ -28,22 +31,7 @@ class VideoScannerService {
     for (final dirPath in normalized) {
       final dir = Directory(dirPath);
       if (!await dir.exists()) continue;
-
-      try {
-        await for (final entity in dir.list(recursive: true)) {
-          if (entity is! File) continue;
-          final ext =
-              p.extension(entity.path).toLowerCase().replaceAll('.', '');
-          if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
-
-          existingPaths.add(entity.path);
-          final video = await _fileToModel(entity);
-          if (video != null) found.add(video);
-        }
-      } catch (e) {
-        // 单个目录读取失败不能中断整次扫描，记录日志后跳过
-        debugPrint('[Scanner] 跳过无法访问的目录 $dirPath: $e');
-      }
+      await _scanDirRecursive(dir, found, existingPaths, 0);
     }
 
     // 清理已删除的视频（仅当调用方明确要求，且范围一致时）
@@ -56,6 +44,40 @@ class VideoScannerService {
     }
 
     return found;
+  }
+
+  /// 最大递归深度，防止符号链接循环 / 超深层级卡死
+  static const _maxDepth = 8;
+
+  Future<void> _scanDirRecursive(
+    Directory dir,
+    List<VideoModel> found,
+    List<String> existingPaths,
+    int depth,
+  ) async {
+    if (depth > _maxDepth) return;
+    List<FileSystemEntity> entries;
+    try {
+      entries = await dir.list().toList();
+    } catch (e) {
+      // 无权限等异常：跳过该目录，不影响其他目录
+      debugPrint('[Scanner] 跳过无法访问的目录 ${dir.path}: $e');
+      return;
+    }
+    for (final entity in entries) {
+      if (entity is Directory) {
+        // 跳过确定无权限/无意义的系统目录
+        final name = p.basename(entity.path);
+        if (name == 'Android' && depth == 0) continue;
+        await _scanDirRecursive(entity, found, existingPaths, depth + 1);
+      } else if (entity is File) {
+        final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
+        if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
+        existingPaths.add(entity.path);
+        final video = await _fileToModel(entity);
+        if (video != null) found.add(video);
+      }
+    }
   }
 
   /// 去掉被其他目录包含的子目录，保留最外层目录
@@ -79,14 +101,11 @@ class VideoScannerService {
 
   /// 扫描手机常用视频目录
   ///
-  /// 只在用户授权后调用；不额外扫描整盘，避免重复遍历子目录。
+  /// 直接扫描共享存储根目录（包含 Movies/DCIM/Download/Pictures 等），
+  /// 去重后只会保留最外层根目录，避免重复遍历。
   Future<List<VideoModel>> scanCommonDirectories() async {
     final dirs = <String>[
-      '/storage/emulated/0/Movies',
-      '/storage/emulated/0/DCIM',
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Pictures',
-      '/storage/emulated/0/Android/media',
+      '/storage/emulated/0',
     ];
     return scanDirectories(dirs, removeMissing: false);
   }

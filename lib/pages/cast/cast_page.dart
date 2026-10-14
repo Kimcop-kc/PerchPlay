@@ -81,7 +81,7 @@ class _CastPageState extends ConsumerState<CastPage>
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
           ),
         ],
       ),
@@ -121,7 +121,7 @@ class _CastPageState extends ConsumerState<CastPage>
             ],
           ),
         ),
-        const VerticalDivider(width: 0.5, color: Color(0x10FFFFFF)),
+        const VerticalDivider(width: 0.5, color: Color(0x14000000)),
         Expanded(
           child: state.isConnected && state.activeDevice != null
               ? _buildConnectedPanel(state)
@@ -138,7 +138,7 @@ class _CastPageState extends ConsumerState<CastPage>
         alignment: Alignment.centerLeft,
         child: Text('投屏',
             style: TextStyle(
-                color: Colors.white,
+                color: GlassTheme.textPrimary,
                 fontSize: 26,
                 fontWeight: FontWeight.w800)),
       ),
@@ -163,7 +163,7 @@ class _CastPageState extends ConsumerState<CastPage>
                 color: state.isDiscovering
                     ? GlassTheme.accentPurple
                         .withOpacity(0.4 + _pulseController.value * 0.6)
-                    : Colors.grey,
+                    : GlassTheme.textTertiary,
                 size: 20,
               ),
             ),
@@ -173,7 +173,7 @@ class _CastPageState extends ConsumerState<CastPage>
               style: TextStyle(
                 color: state.isDiscovering
                     ? GlassTheme.accentPurple
-                    : Colors.white38,
+                    : GlassTheme.textTertiary,
                 fontSize: 12,
               ),
             ),
@@ -182,7 +182,7 @@ class _CastPageState extends ConsumerState<CastPage>
               icon: Icons.refresh_rounded,
               compact: true,
               ghost: true,
-              foregroundColor: Colors.white38,
+              foregroundColor: GlassTheme.textTertiary,
               onTap: () => ref.read(castProvider.notifier).refresh(),
             ),
           ],
@@ -201,15 +201,15 @@ class _CastPageState extends ConsumerState<CastPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.cast_rounded, size: 48, color: Colors.grey[700]),
+              Icon(Icons.cast_rounded, size: 48, color: GlassTheme.textTertiary),
               const SizedBox(height: 12),
               Text(
                 state.isDiscovering ? '搜索中...' : '未发现投屏设备',
-                style: TextStyle(color: Colors.grey[500], fontSize: 15),
+                style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: 6),
               const Text('请确保设备在同一 Wi-Fi 网络',
-                  style: TextStyle(color: Colors.white30, fontSize: 12)),
+                  style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
             ],
           ),
         ),
@@ -258,7 +258,7 @@ class _CastPageState extends ConsumerState<CastPage>
       padding: const EdgeInsets.fromLTRB(6, 16, 6, 6),
       child: Text(title,
           style: const TextStyle(
-              color: Colors.white24,
+              color: GlassTheme.textTertiary,
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2)),
@@ -289,11 +289,11 @@ class _CastPageState extends ConsumerState<CastPage>
                   colors: [
                     (isActive
                             ? GlassTheme.accentPurple
-                            : Colors.white.withOpacity(0.12))
+                            : Colors.black.withOpacity(0.08))
                         .withOpacity(0.2),
                     (isActive
                             ? GlassTheme.accentPurple
-                            : Colors.white.withOpacity(0.06))
+                            : Colors.black.withOpacity(0.04))
                         .withOpacity(0.06),
                   ],
                 ),
@@ -302,7 +302,7 @@ class _CastPageState extends ConsumerState<CastPage>
               child: Icon(_protocolIcon(device.protocol),
                   color: isActive
                       ? GlassTheme.accentPurple
-                      : Colors.white54,
+                      : GlassTheme.textSecondary,
                   size: 22),
             ),
             const SizedBox(width: 12),
@@ -314,14 +314,14 @@ class _CastPageState extends ConsumerState<CastPage>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: Colors.white,
+                          color: GlassTheme.textPrimary,
                           fontWeight: FontWeight.w600,
                           fontSize: 14)),
                   const SizedBox(height: 2),
                   Text(
                       '${device.protocol.name.toUpperCase()} · ${device.host}',
                       style:
-                          const TextStyle(color: Colors.white30, fontSize: 11)),
+                          const TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
                 ],
               ),
             ),
@@ -397,12 +397,12 @@ class _CastPageState extends ConsumerState<CastPage>
           const SizedBox(height: 20),
           Text(device.name,
               style: const TextStyle(
-                  color: Colors.white,
+                  color: GlassTheme.textPrimary,
                   fontSize: 22,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text('${device.protocol.name.toUpperCase()} · ${device.host}',
-              style: const TextStyle(color: Colors.white38, fontSize: 13)),
+              style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 13)),
           const SizedBox(height: 30),
           // 控制按钮
           Row(
@@ -440,7 +440,7 @@ class _CastPageState extends ConsumerState<CastPage>
             child: Text(
               '在播放器页面点击投屏按钮即可将当前视频投射到 ${device.name}',
               style: const TextStyle(
-                  color: Colors.white38, fontSize: 13, height: 1.5),
+                  color: GlassTheme.textTertiary, fontSize: 13, height: 1.5),
               textAlign: TextAlign.center,
             ),
           ),
@@ -454,10 +454,10 @@ class _CastPageState extends ConsumerState<CastPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cast_connected_rounded, size: 48, color: Colors.grey[800]),
+          Icon(Icons.cast_connected_rounded, size: 48, color: GlassTheme.textTertiary),
           const SizedBox(height: 12),
           Text('选择左侧设备开始投屏',
-              style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
         ],
       ),
     );
@@ -490,7 +490,7 @@ class _CastPageState extends ConsumerState<CastPage>
           ),
         ),
         const SizedBox(height: 6),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        Text(label, style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
       ],
     );
   }

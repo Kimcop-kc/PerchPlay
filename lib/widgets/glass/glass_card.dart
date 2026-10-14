@@ -112,8 +112,8 @@ class _GlassCardState extends State<GlassCard>
                             border: Border.all(
                               color: widget.selected
                                   ? GlassTheme.accentPurple.withOpacity(0.4)
-                                  : Colors.white.withOpacity(
-                                      0.06 + _hoverController.value * 0.06),
+                                  : Colors.black.withOpacity(
+                                      0.08 + _hoverController.value * 0.06),
                               width: widget.selected ? 1.2 : 0.6,
                             ),
                             gradient: LinearGradient(
@@ -122,7 +122,7 @@ class _GlassCardState extends State<GlassCard>
                               colors: [
                                 tint.withOpacity(
                                     0.06 + _hoverController.value * 0.04),
-                                Colors.white.withOpacity(
+                                Colors.black.withOpacity(
                                     0.02 + _hoverController.value * 0.02),
                               ],
                             ),
