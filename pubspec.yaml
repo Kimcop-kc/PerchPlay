@@ -16,6 +16,10 @@ dependencies:
   media_kit: 1.2.0
   media_kit_video: 1.2.0
   media_kit_libs_video: 1.0.0
+  # 1.3.8 把 compileSdkVersion 提成了 36，而 Flutter 3.22 自带的 AGP 8.1 的 aapt2
+  # 解析不了 API 36 的 android.jar（:verifyReleaseResources 报 RES_TABLE_TYPE_TYPE
+  # entry offsets overlap actual entry data）。1.3.7 仍是 compileSdk 31，钉住它。
+  media_kit_libs_android_video: 1.3.7
 
   # 状态管理
   flutter_riverpod: 2.5.1
