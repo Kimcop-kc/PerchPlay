@@ -69,10 +69,10 @@ jobs:
         run: |
           cat >> android/app/build.gradle <<'EOF'
 
-dependencies {
-    implementation "androidx.core:core-ktx:1.13.1"
-}
-EOF
+          dependencies {
+              implementation "androidx.core:core-ktx:1.13.1"
+          }
+          EOF
           tail -5 android/app/build.gradle
 
       - name: 计算安全产物名
