@@ -21,7 +21,11 @@ jobs:
           cache: true
 
       - name: 安装依赖
-        run: flutter pub get --verbose 2>&1 | tail -150
+        run: |
+          set -o pipefail
+          flutter pub get --verbose 2>&1 | tail -150
 
       - name: 静态分析
-        run: flutter analyze --no-fatal-infos 2>&1 | tail -60
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos 2>&1 | tail -60

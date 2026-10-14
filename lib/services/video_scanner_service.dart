@@ -4,11 +4,9 @@ import 'package:uuid/uuid.dart';
 import '../models/video_model.dart';
 import '../core/constants/app_constants.dart';
 import 'database_service.dart';
-import 'thumbnail_service.dart';
 
 class VideoScannerService {
   final DatabaseService _db = DatabaseService.instance;
-  final ThumbnailService _thumbnail = ThumbnailService();
   final _uuid = const Uuid();
 
   /// 扫描指定目录列表中的所有视频
@@ -60,7 +58,7 @@ class VideoScannerService {
     try {
       final stat = await file.stat();
       return VideoModel(
-        id: _uuid.v5(Namespace.URL.value, file.path),
+        id: _uuid.v5(Namespace.url.value, file.path),
         path: file.path,
         name: p.basenameWithoutExtension(file.path),
         folderPath: p.dirname(file.path),

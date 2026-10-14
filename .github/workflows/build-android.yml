@@ -40,15 +40,22 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
+      - name: 安装 Android 平台 36
+        run: sdkmanager --install "platforms;android-36" > /dev/null
+
       - name: 生成 Android 平台文件
         run: |
           flutter create --platforms=android --org com.vidflow .
           echo "✅ flutter create 完成"
 
-      - name: 设置 compileSdkVersion 36 (media_kit 要求)
+      - name: 对齐 namespace / applicationId / compileSdk
         run: |
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 36/' android/app/build.gradle.kts
-          echo "✅ compileSdkVersion 已设为 36"
+          # Flutter 3.22 生成的是 Groovy DSL 文件：android/app/build.gradle
+          sed -i 's/^\( *\)namespace = .*/\1namespace = "com.vidflow.player"/' android/app/build.gradle
+          sed -i 's/^\( *\)applicationId = .*/\1applicationId = "com.vidflow.player"/' android/app/build.gradle
+          # media_kit_libs_android_video 1.3.8 的 AAR 要求 compileSdk >= 36
+          sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' android/app/build.gradle
+          grep -nE 'namespace|applicationId|compileSdk' android/app/build.gradle
 
       - name: 覆盖自定义文件
         run: |
@@ -57,6 +64,19 @@ jobs:
           cp android/manifest-backup/BackgroundAudioService.kt android/app/src/main/kotlin/com/vidflow/player/BackgroundAudioService.kt
           cp android/manifest-backup/MainActivity.kt android/app/src/main/kotlin/com/vidflow/player/MainActivity.kt
           echo "✅ 自定义文件已覆盖"
+
+      - name: 补齐 BackgroundAudioService 需要的 androidx.core 依赖
+        run: |
+          cat >> android/app/build.gradle <<'EOF'
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.13.1"
+}
+EOF
+          tail -5 android/app/build.gradle
+
+      - name: 计算安全产物名
+        run: echo "REF_SAFE=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
 
       - name: 安装依赖
         run: flutter pub get
@@ -79,14 +99,14 @@ jobs:
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-${{ github.ref_name }}
+          name: android-apk-${{ env.REF_SAFE }}
           path: build/app/outputs/flutter-apk/**/*.apk
           retention-days: 30
 
       - name: 上传 AAB
         uses: actions/upload-artifact@v4
         with:
-          name: android-aab-${{ github.ref_name }}
+          name: android-aab-${{ env.REF_SAFE }}
           path: build/app/outputs/bundle/**/*.aab
           retention-days: 30
 

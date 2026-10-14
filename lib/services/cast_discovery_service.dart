@@ -109,8 +109,6 @@ class CastDiscoveryService {
     final location = headers['location'] ?? '';
     final server = headers['server'] ?? '';
     final st = headers['st'] ?? headers['nt'] ?? '';
-    final usn = headers['usn'] ?? '';
-
     if (location.isEmpty) return;
 
     final id = location.hashCode.toRadixString(16);

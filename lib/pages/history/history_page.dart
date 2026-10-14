@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
-import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -21,9 +20,15 @@ class HistoryPage extends ConsumerWidget {
         child: library.when(
           data: (videos) {
             final watched = videos
-                .where((v) => v.lastPosition > Duration.zero)
+                .where((v) => v.lastPosition > 0)
                 .toList()
-              ..sort((a, b) => b.lastPlayed.compareTo(a.lastPlayed));
+              ..sort((a, b) {
+                final aTime = a.lastPlayed;
+                final bTime = b.lastPlayed;
+                if (aTime == null) return bTime == null ? 0 : 1;
+                if (bTime == null) return -1;
+                return bTime.compareTo(aTime);
+              });
 
             if (watched.isEmpty) return _buildEmpty();
             return CustomScrollView(
@@ -204,7 +209,8 @@ class HistoryPage extends ConsumerWidget {
     );
   }
 
-  String _formatDate(DateTime dt) {
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return '未知时间';
     final now = DateTime.now();
     final diff = now.difference(dt);
     if (diff.inMinutes < 1) return '刚刚';

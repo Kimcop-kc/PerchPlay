@@ -19,8 +19,6 @@ class NasBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
-  NasConnection? _selectedConnection;
-
   @override
   Widget build(BuildContext context) {
     final nasState = ref.watch(nasProvider);
@@ -143,7 +141,6 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             selected: isActive,
             tint: isActive ? GlassTheme.tintTeal : GlassTheme.tintWhite,
             onTap: () async {
-              setState(() => _selectedConnection = conn);
               if (!isActive) {
                 await ref.read(nasProvider.notifier).connect(conn);
               }

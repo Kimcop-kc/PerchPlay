@@ -4,7 +4,6 @@ import '../models/video_model.dart';
 import '../services/video_scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/thumbnail_service.dart';
-import 'permission_provider.dart';
 
 // 视频列表
 final videoListProvider =

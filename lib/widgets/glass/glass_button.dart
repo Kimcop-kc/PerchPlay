@@ -9,7 +9,7 @@ import '../../core/theme/glass_theme.dart';
 ///   - outlined: 毛玻璃边框
 ///   - ghost: 纯透明 + 悬停玻璃
 class GlassButton extends StatefulWidget {
-  final Widget child;
+  final Widget? child;
   final VoidCallback? onTap;
   final double? width;
   final double height;
@@ -26,7 +26,7 @@ class GlassButton extends StatefulWidget {
 
   const GlassButton({
     super.key,
-    required this.child,
+    this.child,
     this.onTap,
     this.width,
     this.height = 48,
@@ -45,7 +45,7 @@ class GlassButton extends StatefulWidget {
 
   const GlassButton.filled({
     super.key,
-    required this.child,
+    this.child,
     this.onTap,
     this.width,
     this.height = 48,
@@ -60,7 +60,7 @@ class GlassButton extends StatefulWidget {
 
   const GlassButton.outlined({
     super.key,
-    required this.child,
+    this.child,
     this.onTap,
     this.width,
     this.height = 48,
