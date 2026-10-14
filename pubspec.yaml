@@ -15,8 +15,8 @@ dependencies:
   # 播放引擎
   media_kit: any
   media_kit_video: any
+  # media_kit_libs_video 已包含 iOS 音频支持；libs_video + libs_audio 在 iOS 不能共存
   media_kit_libs_video: any
-  media_kit_libs_audio: any
 
   # 状态管理
   flutter_riverpod: any
