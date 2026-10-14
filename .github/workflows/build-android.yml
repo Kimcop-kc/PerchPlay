@@ -42,7 +42,7 @@ jobs:
 
       - name: 生成 Android 平台文件
         run: |
-          flutter create --platforms=android --org com.vidflow --project-name player .
+          flutter create --platforms=android --org com.vidflow .
           echo "✅ flutter create 完成"
 
       - name: 设置 compileSdkVersion 36 (media_kit 要求)
