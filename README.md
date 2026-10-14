@@ -218,7 +218,7 @@ flutter run
 
 ---
 
-## 🎨 UI 设计系统 (iOS 27 Glass Edition)
+## 🎨 UI 设计系统 ( Glass Edition)
 
 ### 设计语言
 - **毛玻璃 BackdropFilter** — 全页面实时模糊背景 (sigmaX/Y: 20-28)
@@ -263,7 +263,7 @@ flutter run
 
 - [x] DLNA / Chromecast / AirPlay 投屏
 - [x] SMB / FTP / WebDAV 网络存储
-- [x] iOS 27 玻璃质感 UI
+- [x] 玻璃质感 UI
 - [ ] 均衡器 (EQ)
 - [ ] AB 循环播放
 - [ ] 视频截图
