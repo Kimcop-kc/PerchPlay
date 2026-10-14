@@ -7,7 +7,10 @@ import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../widgets/glass/glass_card.dart';
+import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/glass/glass_slider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -422,8 +425,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return ClipRRect(
       borderRadius:
           const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+      child: SafeBackdropFilter(
+        blurSigma: 24,
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
