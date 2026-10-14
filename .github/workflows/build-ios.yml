@@ -15,6 +15,9 @@ on:
           - development
           - app-store
 
+permissions:
+  contents: write
+
 jobs:
   build-ios:
     name: iOS 构建 (${{ github.event.inputs.export_method || 'ad-hoc' }})
@@ -31,9 +34,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 生成平台文件 (flutter create)
-        run: flutter create --platforms=ios --org com.vidflow --project-name vidflow . 2>&1 | tail -10
-
       - name: 安装依赖
         run: flutter pub get
 
@@ -44,8 +44,7 @@ jobs:
           cd ..
 
       - name: 构建 iOS (无签名)
-        run: |
-          flutter build ios --release --no-codesign 2>&1 | tail -60
+        run: flutter build ios --release --no-codesign
 
       - name: 打包 IPA
         run: |
@@ -56,8 +55,9 @@ jobs:
             zip -r ../../VidFlow-${{ github.ref_name }}-unsigned.ipa Payload/
             echo "✓ IPA 打包完成"
           else
-            echo "⚠️ 未找到 Runner.app"
-            find build/ios -maxdepth 3 -type d 2>/dev/null || true
+            echo "⚠️ 未找到 Runner.app，搜索构建目录..."
+            find build/ios -maxdepth 4 -name "Runner.app" 2>/dev/null
+            find build/ios -maxdepth 4 -type d 2>/dev/null | head -20
           fi
 
       - name: 上传 IPA
@@ -65,15 +65,13 @@ jobs:
         with:
           name: ios-ipa-${{ github.ref_name }}
           path: |
-            build/ios/iphoneos/Runner.app/**/*
+            build/ios/iphoneos/**/*
             build/VidFlow-*.ipa
           retention-days: 30
 
-      - name: 发布到 GitHub Release (Tag 触发)
+      - name: 发布到 GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: build/VidFlow-*.ipa
           fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
