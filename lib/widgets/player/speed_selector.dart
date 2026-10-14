@@ -4,7 +4,7 @@ import '../../core/theme/glass_theme.dart';
 import '../../core/constants/app_constants.dart';
 import '../glass/safe_glass.dart';
 
-/// ????????? - ????
+/// 倍速选择器弹出面板 — 玻璃质感
 class SpeedSelector extends StatelessWidget {
   final double currentSpeed;
   final void Function(double) onSpeedSelected;
@@ -49,7 +49,7 @@ class SpeedSelector extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.only(left: 8, bottom: 8),
                     child: Text(
-                      '????',
+                      '播放速度',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 13,

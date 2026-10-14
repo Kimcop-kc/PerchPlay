@@ -2,12 +2,12 @@ import 'dart:io' show Platform;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
-/// ???????????
+/// 安全的玻璃模糊背景组件
 ///
-/// Android ??? GPU(Mali/?? Adreno)? BackdropFilter
-/// ????????,??????????
-/// ???? Android ?????????????,
-/// iOS ????? BackdropFilter ???
+/// Android 上某些 GPU（Mali/老款 Adreno）的 BackdropFilter
+/// 会在合成阶段失败，导致整个渲染树变黑。
+/// 本组件在 Android 上自动降级为半透明纯色叠加，
+/// iOS 上保留完整 BackdropFilter 效果。
 class SafeBackdropFilter extends StatelessWidget {
   final Widget child;
   final double blurSigma;
@@ -22,7 +22,7 @@ class SafeBackdropFilter extends StatelessWidget {
     this.borderRadius,
   });
 
-  /// ??????? BackdropFilter
+  /// 是否可使用原生 BackdropFilter
   static bool get supportsBackdropBlur => !Platform.isAndroid;
 
   @override
@@ -33,7 +33,6 @@ class SafeBackdropFilter extends StatelessWidget {
         child: _buildBackdrop(child),
       );
     }
-    // Android ??:??????????
     return ClipRRect(
       borderRadius: borderRadius ?? BorderRadius.zero,
       child: Stack(
@@ -58,7 +57,7 @@ class SafeBackdropFilter extends StatelessWidget {
   }
 }
 
-/// ??????? - GlassPanel ????,Android ????
+/// 安全的玻璃面板 — GlassPanel 的替代品，Android 自动降级
 class SafeGlassPanel extends StatelessWidget {
   final Widget child;
   final double radius;
@@ -90,7 +89,6 @@ class SafeGlassPanel extends StatelessWidget {
     if (SafeBackdropFilter.supportsBackdropBlur) {
       bgColor = Colors.transparent;
     } else {
-      // Android: use visible tinted background
       bgColor = tintColor.withOpacity(opacity * 4);
     }
 

@@ -6,10 +6,10 @@ import '../../widgets/glass/glass_nav_bar.dart';
 import '../../widgets/glass/safe_glass.dart';
 import 'breakpoints.dart';
 
-/// iOS 27 ???? ???????
+/// iOS 27 玻璃质感 自适应导航外壳
 ///
-/// ?? ? ????
-/// ?? ? ????? NavigationRail
+/// 手机 → 玻璃底栏
+/// 平板 → 毛玻璃左侧 NavigationRail
 class AdaptiveScaffold extends StatelessWidget {
   final Widget child;
   final String currentRoute;
@@ -30,7 +30,7 @@ class AdaptiveScaffold extends StatelessWidget {
   }
 }
 
-// ????????????? ??:???? ?????????????
+// ───────────── 手机：玻璃底栏 ─────────────
 
 class _MobileGlassScaffold extends StatelessWidget {
   final Widget child;
@@ -63,7 +63,7 @@ class _MobileGlassScaffold extends StatelessWidget {
   }
 }
 
-// ????????????? ??:??????? ?????????????
+// ───────────── 平板：毛玻璃左侧导航 ─────────────
 
 class _TabletGlassScaffold extends StatelessWidget {
   final Widget child;
@@ -76,7 +76,7 @@ class _TabletGlassScaffold extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: Row(
         children: [
-          // ???????
+          // 左侧毛玻璃导航
           ClipRRect(
             borderRadius: const BorderRadius.horizontal(
               right: Radius.circular(GlassTheme.radiusLg),
@@ -132,7 +132,7 @@ class _TabletGlassScaffold extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // ???(? 6 ?)
+                    // 导航项（前 6 个）
                     ..._NavConfig.all.take(6).map(
                           (c) => _buildTabletNavItem(
                             context,
@@ -141,7 +141,7 @@ class _TabletGlassScaffold extends StatelessWidget {
                           ),
                         ),
                     const Spacer(),
-                    // ????
+                    // 底部设置
                     _buildTabletNavItem(
                       context,
                       config: _NavConfig.settings,
@@ -153,7 +153,7 @@ class _TabletGlassScaffold extends StatelessWidget {
               ),
             ),
           ),
-          // ???
+          // 内容区
           Expanded(child: child),
         ],
       ),
@@ -210,24 +210,24 @@ class _TabletGlassScaffold extends StatelessWidget {
   }
 }
 
-// ????????????? ???? ?????????????
+// ───────────── 导航配置 ─────────────
 
 class _NavConfig {
   _NavConfig._();
 
   static const List<_NavItemConfig> all = [
-    _NavItemConfig(icon: Icons.home_rounded, label: '??', route: '/home'),
-    _NavItemConfig(icon: Icons.folder_rounded, label: '???', route: '/folders'),
-    _NavItemConfig(icon: Icons.playlist_play_rounded, label: '??', route: '/playlist'),
-    _NavItemConfig(icon: Icons.history_rounded, label: '??', route: '/history'),
-    _NavItemConfig(icon: Icons.cast_rounded, label: '??', route: '/cast'),
+    _NavItemConfig(icon: Icons.home_rounded, label: '首页', route: '/home'),
+    _NavItemConfig(icon: Icons.folder_rounded, label: '文件夹', route: '/folders'),
+    _NavItemConfig(icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
+    _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
+    _NavItemConfig(icon: Icons.cast_rounded, label: '投屏', route: '/cast'),
     _NavItemConfig(icon: Icons.dns_rounded, label: 'NAS', route: '/nas'),
     settings,
   ];
 
   static const settings = _NavItemConfig(
     icon: Icons.settings_rounded,
-    label: '??',
+    label: '设置',
     route: '/settings',
   );
 }

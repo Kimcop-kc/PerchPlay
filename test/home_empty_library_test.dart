@@ -46,11 +46,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 两个按钮存在
     expect(find.text('浏览本地文件夹'), findsOneWidget);
     expect(find.text('浏览 NAS'), findsOneWidget);
 
-    // 点击本地文件夹 → 跳转 folders
     await tester.tap(find.text('浏览本地文件夹'));
     await tester.pumpAndSettle();
     expect(find.text('FOLDERS_PAGE'), findsOneWidget);

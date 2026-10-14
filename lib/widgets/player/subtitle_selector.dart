@@ -4,7 +4,7 @@ import '../../core/theme/glass_theme.dart';
 import '../../models/subtitle_model.dart';
 import '../glass/safe_glass.dart';
 
-/// ????????? - ????
+/// 字幕选择器弹出面板 — 玻璃质感
 class SubtitleSelector extends StatelessWidget {
   final List<SubtitleModel> subtitles;
   final SubtitleModel? activeSubtitle;
@@ -53,7 +53,7 @@ class SubtitleSelector extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.only(left: 8, bottom: 8),
                     child: Text(
-                      '????',
+                      '字幕选择',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 13,
@@ -61,7 +61,7 @@ class SubtitleSelector extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // ????
+                  // 关闭字幕
                   GestureDetector(
                     onTap: onDisable,
                     child: Container(
@@ -83,7 +83,7 @@ class SubtitleSelector extends StatelessWidget {
                                   : Colors.white54),
                           const SizedBox(width: 6),
                           Text(
-                            '??',
+                            '关闭',
                             style: TextStyle(
                               color: activeSubtitle == null
                                   ? GlassTheme.accentPurple
@@ -96,11 +96,11 @@ class SubtitleSelector extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // ????
+                  // 字幕列表
                   if (subtitles.isEmpty)
                     const Padding(
                       padding: EdgeInsets.all(8),
-                      child: Text('???????',
+                      child: Text('未找到外挂字幕',
                           style:
                               TextStyle(color: Colors.white38, fontSize: 12)),
                     )

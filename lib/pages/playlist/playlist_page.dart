@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../models/video_model.dart';
+import '../../providers/library_provider.dart';
 import '../../providers/playlist_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -18,6 +20,12 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   @override
   Widget build(BuildContext context) {
     final playlistsAsync = ref.watch(playlistProvider);
+    // Playlist 只保存 videoIds，这里按 id 关联回视频实体
+    final videosById = <String, VideoModel>{
+      for (final video
+          in ref.watch(videoListProvider).valueOrNull ?? const <VideoModel>[])
+        video.id: video,
+    };
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -34,8 +42,12 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final playlist = playlists[index];
-                        final firstVideo = playlist.videos.isNotEmpty
-                            ? playlist.videos.first
+                        final videos = playlist.videoIds
+                            .map((id) => videosById[id])
+                            .whereType<VideoModel>()
+                            .toList();
+                        final firstVideo = videos.isNotEmpty
+                            ? videos.first
                             : null;
 
                         return Padding(
@@ -45,10 +57,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                             tint: GlassTheme.tintTeal,
                             padding: const EdgeInsets.all(14),
                             onTap: () {
-                              if (playlist.videos.isNotEmpty) {
+                              if (videos.isNotEmpty) {
                                 context.pushNamed('player', extra: {
-                                  'videoPath': playlist.videos.first.path,
-                                  'videoTitle': playlist.videos.first.name,
+                                  'videoPath': videos.first.path,
+                                  'videoTitle': videos.first.name,
                                 });
                               }
                             },
@@ -88,7 +100,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                               fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${playlist.videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
+                                        '${videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
                                         style: const TextStyle(
                                             color: Colors.white38,
                                             fontSize: 12),
@@ -101,12 +113,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                   height: 34,
                                   foregroundColor: GlassTheme.accentTeal,
                                   onTap: () {
-                                    if (playlist.videos.isNotEmpty) {
+                                    if (videos.isNotEmpty) {
                                       context.pushNamed('player', extra: {
-                                        'videoPath':
-                                            playlist.videos.first.path,
-                                        'videoTitle':
-                                            playlist.videos.first.name,
+                                        'videoPath': videos.first.path,
+                                        'videoTitle': videos.first.name,
                                       });
                                     }
                                   },
@@ -215,8 +225,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             child: const Text('取消', style: TextStyle(color: Colors.white54)),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('创建',
                 style: TextStyle(color: GlassTheme.accentTeal)),
           ),

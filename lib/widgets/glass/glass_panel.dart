@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import 'safe_glass.dart';
 
-/// ????(Sheet / ??? / ????)
+/// 玻璃面板（Sheet / 侧边栏 / 列表容器）
 ///
-/// ?? SafeBackdropFilter - Android ????????????
+/// 使用 SafeBackdropFilter — Android 自动降级为半透明纯色背景
 class GlassPanel extends StatelessWidget {
   final Widget child;
   final double radius;

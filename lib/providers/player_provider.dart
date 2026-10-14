@@ -98,6 +98,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _setupListeners();
   }
 
+  /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
+  Player get player => state.player;
+
+  /// 绑定播放页创建的 VideoController
+  void attachVideoController(VideoController controller) {
+    state = state.copyWith(videoController: controller);
+  }
+
   void _setupListeners() {
     state.player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
