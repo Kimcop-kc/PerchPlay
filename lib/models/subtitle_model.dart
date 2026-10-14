@@ -1,28 +1,71 @@
-import 'package:freezed_annotation/freezed_annotation.dart';
+/// 字幕轨道
+class SubtitleModel {
+  final String path;
+  final String language;
+  final String title;
+  final int trackIndex;
+  final bool isEmbedded;
 
-part 'subtitle_model.freezed.dart';
-part 'subtitle_model.g.dart';
+  const SubtitleModel({
+    required this.path,
+    required this.language,
+    required this.title,
+    this.trackIndex = 0,
+    this.isEmbedded = false,
+  });
 
-@freezed
-class SubtitleModel with _$SubtitleModel {
-  const factory SubtitleModel({
-    required String path,
-    required String language,
-    required String title,
-    @Default(0) int trackIndex,
-    @Default(false) bool isEmbedded,
-  }) = _SubtitleModel;
+  Map<String, dynamic> toJson() {
+    return {
+      'path': path,
+      'language': language,
+      'title': title,
+      'trackIndex': trackIndex,
+      'isEmbedded': isEmbedded,
+    };
+  }
 
-  factory SubtitleModel.fromJson(Map<String, dynamic> json) =>
-      _$SubtitleModelFromJson(json);
+  factory SubtitleModel.fromJson(Map<String, dynamic> json) {
+    return SubtitleModel(
+      path: json['path'] as String,
+      language: json['language'] as String,
+      title: json['title'] as String,
+      trackIndex: json['trackIndex'] as int? ?? 0,
+      isEmbedded: json['isEmbedded'] as bool? ?? false,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubtitleModel &&
+          runtimeType == other.runtimeType &&
+          path == other.path;
+
+  @override
+  int get hashCode => path.hashCode;
 }
 
-@freezed
-class SubtitleEntry with _$SubtitleEntry {
-  const factory SubtitleEntry({
-    required int index,
-    required Duration start,
-    required Duration end,
-    required String text,
-  }) = _SubtitleEntry;
+/// 单条字幕
+class SubtitleEntry {
+  final int index;
+  final Duration start;
+  final Duration end;
+  final String text;
+
+  const SubtitleEntry({
+    required this.index,
+    required this.start,
+    required this.end,
+    required this.text,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubtitleEntry &&
+          runtimeType == other.runtimeType &&
+          index == other.index;
+
+  @override
+  int get hashCode => index.hashCode;
 }

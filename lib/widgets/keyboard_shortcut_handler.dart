@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/device_info_service.dart';
@@ -150,8 +151,8 @@ class _KeyboardShortcutHandlerState
       return KeyEventResult.handled;
     }
     // 0-9 → 跳转
-    if (key >= LogicalKeyboardKey.digit0 &&
-        key <= LogicalKeyboardKey.digit9) {
+    if (key.keyId >= LogicalKeyboardKey.digit0.keyId &&
+        key.keyId <= LogicalKeyboardKey.digit9.keyId) {
       final index = key.keyId - LogicalKeyboardKey.digit0.keyId;
       final fraction = index == 0 ? 0.0 : index * 0.1;
       widget.onSeekFraction?.call(fraction);
@@ -162,7 +163,7 @@ class _KeyboardShortcutHandlerState
   }
 
   /// 触控板/Apple Pencil 悬停信号
-  void _handlePointerSignal(PointerSignalEvent event) {
+  void _handlePointerSignal(PointerEvent event) {
     if (!_iPadService.supportApplePencilHover) return;
 
     if (event is PointerHoverEvent) {

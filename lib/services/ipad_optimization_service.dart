@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
 import 'device_info_service.dart';
 
+/// iPad 布局模式
+enum IPadLayoutMode {
+  /// 全屏 (full screen) → 标准双栏
+  fullScreen,
+
+  /// 分屏一半 (splitView half) → 默认 ~50% 宽度 → 类手机布局
+  splitHalf,
+
+  /// 分屏 1/3 → 紧凑手机布局
+  splitCompact,
+
+  /// Slide Over 浮窗 → 最紧凑
+  slideOver,
+}
+
 /// iPad 专属优化服务
 /// Stage Manager、分屏、台前调度、Apple Pencil、妙控键盘、120Hz
 class IPadOptimizationService {
@@ -17,21 +32,6 @@ class IPadOptimizationService {
   void Function(Size newSize)? onStageManagerResize;
 
   // ────────────── 布局策略：iPad 尺寸映射 ──────────────
-
-  /// iPad 布局模式
-  enum IPadLayoutMode {
-    /// 全屏 (full screen) → 标准双栏
-    fullScreen,
-
-    /// 分屏一半 (splitView half) → 默认 ~50% 宽度 → 类手机布局
-    splitHalf,
-
-    /// 分屏 1/3 → 紧凑手机布局
-    splitCompact,
-
-    /// Slide Over 浮窗 → 最紧凑
-    slideOver,
-  }
 
   /// 根据当前宽度推断 iPad 布局模式
   IPadLayoutMode inferLayoutMode(double width) {

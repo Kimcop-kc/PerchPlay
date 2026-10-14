@@ -126,7 +126,7 @@ class _CastPageState extends ConsumerState<CastPage>
         child: Row(
           children: [
             GlassAnimatedBuilder(
-              animation: _pulseController,
+              listenable: _pulseController,
               builder: (_, child) => Icon(
                 Icons.sensors_rounded,
                 color: state.isDiscovering

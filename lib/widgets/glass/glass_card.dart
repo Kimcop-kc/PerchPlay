@@ -88,7 +88,7 @@ class _GlassCardState extends State<GlassCard>
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: GlassAnimatedBuilder(
-          animation: _scaleAnimation,
+          listenable: _scaleAnimation,
           builder: (context, child) {
             final scale = _scaleAnimation.value;
 

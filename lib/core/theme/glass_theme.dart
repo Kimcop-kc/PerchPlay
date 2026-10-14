@@ -189,10 +189,10 @@ class GlassAnimations {
   }) {
     final t = CurvedAnimation(
       parent: controller,
-      curve: GlassCurves.staggerCurve(index),
+      curve: Curves.easeOut,
     );
     return GlassAnimatedBuilder(
-      animation: t,
+      listenable: t,
       builder: (_, child) => Opacity(
         opacity: t.value,
         child: Transform.translate(
@@ -212,10 +212,10 @@ class GlassAnimations {
   }) {
     final t = CurvedAnimation(
       parent: controller,
-      curve: GlassCurves.staggerCurve(index),
+      curve: Curves.easeOut,
     );
     return GlassAnimatedBuilder(
-      animation: t,
+      listenable: t,
       builder: (_, child) => Opacity(
         opacity: t.value,
         child: Transform.scale(

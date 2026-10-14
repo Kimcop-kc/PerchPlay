@@ -26,7 +26,7 @@ class GlassButton extends StatefulWidget {
 
   const GlassButton({
     super.key,
-    this.child,
+    required this.child,
     this.onTap,
     this.width,
     this.height = 48,
@@ -45,8 +45,8 @@ class GlassButton extends StatefulWidget {
 
   const GlassButton.filled({
     super.key,
+    required this.child,
     this.onTap,
-    this.child,
     this.width,
     this.height = 48,
     this.radius = GlassTheme.radiusSm,
@@ -56,14 +56,12 @@ class GlassButton extends StatefulWidget {
     this.icon,
     this.label,
     this.compact = false,
-    this.ghost = false,
-    this.outlined = false,
-  }) : filled = true;
+  }) : ghost = false, outlined = false, filled = true;
 
   const GlassButton.outlined({
     super.key,
+    required this.child,
     this.onTap,
-    this.child,
     this.width,
     this.height = 48,
     this.radius = GlassTheme.radiusSm,
@@ -73,9 +71,7 @@ class GlassButton extends StatefulWidget {
     this.icon,
     this.label,
     this.compact = false,
-    this.ghost = false,
-    this.filled = false,
-  }) : outlined = true;
+  }) : ghost = false, filled = false, outlined = true;
 
   @override
   State<GlassButton> createState() => _GlassButtonState();
@@ -160,7 +156,7 @@ class _GlassButtonState extends State<GlassButton>
           BoxShadow(
             color: const Color(0xFF9B7EF0).withOpacity(_pressed ? 0.2 : 0.35),
             blurRadius: _pressed ? 10 : 18,
-            offset: const Offset(0, _pressed ? 2 : 6),
+            offset: Offset(0, (_pressed ? 2.0 : 6.0)),
           ),
         ],
       );

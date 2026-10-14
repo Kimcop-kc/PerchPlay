@@ -62,3 +62,6 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     state = AsyncData(await _db.getAllPlaylists());
   }
 }
+
+// 向后兼容别名
+final playlistProvider = playlistListProvider;

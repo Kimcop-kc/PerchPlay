@@ -54,6 +54,9 @@ final folderListProvider = FutureProvider<List<String>>((ref) async {
   return DatabaseService.instance.getAllFolders();
 });
 
+// 向后兼容别名
+final libraryProvider = videoListProvider;
+
 // 按文件夹筛选的视频
 final folderVideosProvider =
     FutureProvider.family<List<VideoModel>, String>((ref, folderPath) async {

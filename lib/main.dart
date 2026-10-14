@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -66,7 +67,7 @@ class VideoPlayerApp extends StatelessWidget {
             letterSpacing: -0.3,
           ),
         ),
-        cardTheme: CardThemeData(
+        cardTheme: CardTheme(
           color: Colors.transparent,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -112,8 +113,16 @@ class VideoPlayerApp extends StatelessWidget {
   Map<ShortcutActivator, Intent> _buildShortcuts() {
     return {
       LogicalKeySet(LogicalKeyboardKey.space): const ActivateIntent(),
-      for (var i = 0; i <= 9; i++)
-        LogicalKeySet(LogicalKeyboardKey.digit0 + i): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit0): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit1): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit2): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit3): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit4): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit5): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit6): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit7): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit8): const ActivateIntent(),
+      LogicalKeySet(LogicalKeyboardKey.digit9): const ActivateIntent(),
       LogicalKeySet(LogicalKeyboardKey.keyF): const ActivateIntent(),
       LogicalKeySet(LogicalKeyboardKey.keyS): const ActivateIntent(),
       LogicalKeySet(LogicalKeyboardKey.keyR): const ActivateIntent(),

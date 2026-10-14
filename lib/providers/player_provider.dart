@@ -203,6 +203,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  /// 公开的播放下一个
+  Future<void> playNext() => _playNext();
+
   /// 播放上一个
   Future<void> playPrevious() async {
     if (state.currentIndex > 0) {
@@ -211,6 +214,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           queue: state.queue, startIndex: state.currentIndex - 1);
       if (state.isPlaying) await state.player.play();
     }
+  }
+
+  /// 选择字幕轨道
+  void selectSubtitle(SubtitleModel subtitle) {
+    state = state.copyWith(activeSubtitle: subtitle);
   }
 
   /// 字幕相关

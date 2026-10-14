@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
@@ -170,7 +171,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _buildChineseRomOptimization(
       BuildContext context, DeviceInfoService device) {
-    final rom = RomOptimizationService();
+    final rom = RomOptimizationService.instance;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -237,7 +238,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildIPadFeatures(BuildContext context) {
-    final iPad = IPadOptimizationService();
+    final iPad = IPadOptimizationService.instance;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,8 +265,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Icons.edit_rounded, 'Apple Pencil 悬停',
                   'M2 芯片专属'),
               if (iPad.supportXDR)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
                   child: _ipadFeatureRow(Icons.hdr_on_rounded, 'XDR HDR',
                       'Liquid Retina XDR'),
                 ),

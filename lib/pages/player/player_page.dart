@@ -130,8 +130,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onExit: () => context.pop(),
       onSeekFraction: (fraction) {
         ref.read(playerProvider.notifier).seekRelative(
-              ((fraction * state.durationMs / 1000) -
-                      state.positionMs / 1000)
+              ((fraction * state.duration.inMilliseconds / 1000) -
+                      state.position.inMilliseconds / 1000)
                   .round(),
             );
       },
@@ -170,7 +170,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             // 控制栏（玻璃动画）
             if (_showControls)
               GlassAnimatedBuilder(
-                animation: _controlsAnim,
+                listenable: _controlsAnim,
                 builder: (context, _) => Opacity(
                   opacity: _controlsAnim.value,
                   child: Stack(
@@ -218,8 +218,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onExit: () => context.pop(),
       onSeekFraction: (fraction) {
         ref.read(playerProvider.notifier).seekRelative(
-              ((fraction * state.durationMs / 1000) -
-                      state.positionMs / 1000)
+              ((fraction * state.duration.inMilliseconds / 1000) -
+                      state.position.inMilliseconds / 1000)
                   .round(),
             );
       },
@@ -682,8 +682,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               width: 200,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: state.subtitleTracks.map((s) {
-                  final isActive = state.activeSubtitle?.trackId == s.trackId;
+                children: state.availableSubtitles.map((s) {
+                  final isActive = state.activeSubtitle?.path == s.path;
                   return ListTile(
                     dense: true,
                     title: Text(s.language,

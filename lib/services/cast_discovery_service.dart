@@ -128,7 +128,7 @@ class CastDiscoveryService {
       id: id,
       name: name,
       protocol: protocol,
-      host: Uri.tryParse(location)?.host ?? datagram?.address.address ?? '',
+      host: Uri.tryParse(location)?.host ?? '',
       port: Uri.tryParse(location)?.port ?? 0,
       location: location,
       serviceType: st,

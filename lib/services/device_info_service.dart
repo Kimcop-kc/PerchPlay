@@ -234,3 +234,32 @@ class DeviceInfoService {
   bool get has120Hz => _capabilities.has120Hz;
   bool get hasLidar => _capabilities.hasLidar;
 }
+
+/// DeviceBrand 扩展属性
+extension DeviceBrandExtension on DeviceBrand {
+  String get displayName {
+    switch (this) {
+      case DeviceBrand.xiaomi:
+        return '小米';
+      case DeviceBrand.huawei:
+        return '华为';
+      case DeviceBrand.oppo:
+        return 'OPPO';
+      case DeviceBrand.vivo:
+        return 'vivo';
+      case DeviceBrand.samsung:
+        return '三星';
+      case DeviceBrand.apple:
+        return 'iPhone';
+      case DeviceBrand.ipad:
+        return 'iPad';
+      case DeviceBrand.other:
+        return '其他';
+    }
+  }
+
+  bool get isXiaomi => this == DeviceBrand.xiaomi;
+  bool get isHuawei => this == DeviceBrand.huawei;
+  bool get isChineseBrand =>
+      isXiaomi || isHuawei || this == DeviceBrand.oppo || this == DeviceBrand.vivo;
+}

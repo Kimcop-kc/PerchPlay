@@ -35,6 +35,7 @@ class NasClientService {
         case NasProtocol.nfs:
           return false; // NFS 需要 kernel 支持，不通过 Dart 实现
       }
+      return false; // unreachable, but satisfies exhaustiveness
     } catch (e) {
       debugPrint('[NAS] connect error: $e');
       return false;
@@ -185,8 +186,8 @@ class NasClientService {
       final isDir = collectionPattern.hasMatch(block);
 
       // 跳过自身
-      final decodedHref = Uri.decodeFull(href).trimRight('/');
-      final decodedPath = Uri.decodeFull(currentPath).trimRight('/');
+      final decodedHref = Uri.decodeFull(href).replaceAll(RegExp(r'/$'), '');
+      final decodedPath = Uri.decodeFull(currentPath).replaceAll(RegExp(r'/$'), '');
       if (decodedHref == decodedPath) continue;
 
       final sizeStr = sizePattern.firstMatch(block)?.group(1) ?? '0';
@@ -326,6 +327,7 @@ class NasClientService {
 
   Future<String> _readFtpResponse(Socket socket) async {
     return await socket
+        .cast<List<int>>()
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .first;
@@ -334,7 +336,7 @@ class NasClientService {
   Future<String> _readAll(Socket socket) async {
     final completer = Completer<String>();
     final buffer = StringBuffer();
-    socket.transform(utf8.decoder).listen(
+    socket.cast<List<int>>().transform(utf8.decoder).listen(
       buffer.write,
       onDone: () => completer.complete(buffer.toString()),
       onError: (e) => completer.complete(buffer.toString()),
