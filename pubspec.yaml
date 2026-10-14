@@ -1,7 +1,7 @@
 name: vidflow
 description: VidFlow — 全功能本地视频播放器。iOS 27 玻璃质感 UI，支持全格式播放、投屏 (DLNA/Chromecast/AirPlay)、NAS (SMB/FTP/WebDAV) 网络存储、画中画、后台播放。
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 homepage: https://github.com/Kimcop-kc/vidflow
 repository: https://github.com/Kimcop-kc/vidflow
 issue_tracker: https://github.com/Kimcop-kc/vidflow/issues
@@ -13,64 +13,49 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # UI
-  cupertino_icons: ^1.0.6
-  google_fonts: ^6.1.0
-  flutter_svg: ^2.0.9
-  shimmer: ^3.0.0
-  photo_view: ^0.15.0
-
-  # 播放引擎 - 基于 libmpv，功能强大
-  media_kit: ^1.1.10
-  media_kit_video: ^1.2.4
-  media_kit_libs_video: ^1.0.4
-  media_kit_libs_audio: ^1.0.4
+  # 播放引擎 — media_kit (libmpv)
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+  media_kit_libs_audio: ^1.0.5
 
   # 状态管理
-  flutter_riverpod: ^2.4.9
-  riverpod_annotation: ^2.3.3
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
 
   # 路由
-  go_router: ^13.0.0
+  go_router: ^14.2.0
 
   # 本地存储
-  sqflite: ^2.3.2
-  shared_preferences: ^2.2.2
-  path_provider: ^2.1.2
+  sqflite: ^2.3.3
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
   path: ^1.9.0
 
   # 权限
-  permission_handler: ^11.2.0
+  permission_handler: ^11.3.1
 
-  # 视频扫描
+  # 视频缩略图
   video_thumbnail: ^0.5.3
-  flutter_media_metadata: ^1.0.0
-
-  # 字幕解析
-  subtitle_parser: ^0.3.0
-
-  # 画中画
-  flutter_pip: ^1.2.0
 
   # 工具
   intl: ^0.19.0
-  uuid: ^4.3.3
+  uuid: ^4.5.1
   collection: ^1.18.0
-  freezed_annotation: ^2.4.1
-  json_annotation: ^4.8.1
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
-  build_runner: ^2.4.8
-  freezed: ^2.4.7
-  json_serializable: ^6.7.1
-  riverpod_generator: ^2.3.9
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.13
+  freezed: ^2.5.7
+  json_serializable: ^6.8.0
+  riverpod_generator: ^2.4.3
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/icons/
-    - assets/fonts/

@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/glass_theme.dart';
-import '../widgets/glass/glass_nav_bar.dart';
+import '../../widgets/glass/glass_nav_bar.dart';
 import 'breakpoints.dart';
 
 /// iOS 27 玻璃质感 自适应导航外壳
