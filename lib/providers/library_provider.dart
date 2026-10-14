@@ -4,6 +4,7 @@ import '../models/video_model.dart';
 import '../services/video_scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/thumbnail_service.dart';
+import 'permission_provider.dart';
 
 // 视频列表
 final videoListProvider =
@@ -27,13 +28,14 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     state = const AsyncLoading();
     try {
       final videos = await _scanner.scanCommonDirectories();
-      // 生成缩略图
+      // 生成缩略图并持久化到数据库
       final thumbnailService = ThumbnailService();
       for (final video in videos) {
         if (video.thumbnailPath.isEmpty) {
           final thumbPath = await thumbnailService.generate(video.path);
           if (thumbPath != null) {
-            // 更新到数据库...
+            final updated = video.copyWith(thumbnailPath: thumbPath);
+            await _db.insertVideos([updated]);
           }
         }
       }
@@ -44,7 +46,13 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
   }
 
   Future<void> toggleFavorite(String videoId) async {
-    // favorite logic
+    final videos = state.value ?? await _db.getAllVideos();
+    final idx = videos.indexWhere((v) => v.id == videoId);
+    if (idx == -1) return;
+    final video = videos[idx];
+    final updated = video.copyWith(isFavorite: !video.isFavorite);
+    await _db.insertVideos([updated]);
+    state = AsyncData(await _db.getAllVideos());
   }
 }
 

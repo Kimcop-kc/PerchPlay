@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/cast_device_model.dart';
@@ -19,6 +20,7 @@ class CastPage extends ConsumerStatefulWidget {
 
 class _CastPageState extends ConsumerState<CastPage>
     with TickerProviderStateMixin {
+  CastDevice? _selectedDevice;
   late AnimationController _pulseController;
 
   @override
@@ -48,9 +50,43 @@ class _CastPageState extends ConsumerState<CastPage>
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: isLarge
-            ? _buildTabletLayout(castState)
-            : _buildMobileLayout(castState),
+        child: Column(
+          children: [
+            if (castState.errorMessage != null)
+              _buildErrorBanner(castState.errorMessage!),
+            Expanded(
+              child: isLarge
+                  ? _buildTabletLayout(castState)
+                  : _buildMobileLayout(castState),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: GlassTheme.accentPink.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
+        border: Border.all(
+            color: GlassTheme.accentPink.withOpacity(0.3), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: GlassTheme.accentPink, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 13)),
+          ),
+        ],
       ),
     );
   }
@@ -244,6 +280,7 @@ class _CastPageState extends ConsumerState<CastPage>
         selected: isActive,
         tint: isActive ? GlassTheme.tintPurple : GlassTheme.tintWhite,
         onTap: () {
+          setState(() => _selectedDevice = device);
           if (!isActive) ref.read(castProvider.notifier).connect(device);
         },
         child: Row(

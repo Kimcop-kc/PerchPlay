@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -7,39 +6,52 @@ import 'package:media_kit/media_kit.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
+import 'services/app_settings_service.dart';
+
+/// 应用根组件是否已成功挂载。
+/// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
+/// 避免一次可恢复的 UI 错误把整个应用覆盖掉。
+bool _appMounted = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Release mode ?? ? ???????????
+  // 兜底错误处理：仅记录，不在启动后重复替换根应用。
+  // 真致命错误（首个 build 抛错）仍会在下方 runApp 前被捕获。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    // ???? ? ?????????
-    if (details.silent != true) {
+    if (!_appMounted && details.silent != true) {
       runApp(_CrashScreen(details: details));
     }
   };
 
-  // media_kit native ?????????????
+  // media_kit native 初始化可能在某些设备上失败
   try {
     MediaKit.ensureInitialized();
   } catch (e) {
     debugPrint('[VidFlow] MediaKit init failed: $e');
   }
 
-  // ???????
+  // 初始化设备信息
   try {
     await DeviceInfoService.instance.init();
   } catch (e) {
     debugPrint('[VidFlow] DeviceInfo init failed: $e');
   }
 
-  // iPad Pro ?? 120Hz
+  // 预加载持久化设置，使播放器读取到正确默认值
+  try {
+    await AppSettingsService.instance.ensureLoaded();
+  } catch (e) {
+    debugPrint('[VidFlow] Settings load failed: $e');
+  }
+
+  // iPad Pro 锁定 120Hz
   if (DeviceInfoService.instance.has120Hz) {
     await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
   }
 
-  // ??????
+  // 浸入式状态栏
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -48,7 +60,7 @@ void main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
 
-  // ?????????(iOS 27 ??)
+  // 启用边缘到边缘渲染（iOS 27 风格）
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(
@@ -63,6 +75,7 @@ class VideoPlayerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    _appMounted = true;
     return MaterialApp.router(
       title: 'VidFlow',
       debugShowCheckedModeBanner: false,
@@ -118,7 +131,7 @@ class VideoPlayerApp extends StatelessWidget {
 
       routerConfig: AppRouter.router,
 
-      // iPad ?????
+      // iPad 键盘快捷键
       shortcuts: _buildShortcuts(),
       scrollBehavior: DeviceInfoService.instance.isIPad
           ? const MaterialScrollBehavior().copyWith(dragDevices: {
@@ -157,7 +170,7 @@ class VideoPlayerApp extends StatelessWidget {
   }
 }
 
-/// ????????????,?????????
+/// 致命错误时的简易崩溃界面，避免用户看到纯黑屏
 class _CrashScreen extends StatelessWidget {
   final FlutterErrorDetails details;
   const _CrashScreen({required this.details});
@@ -178,10 +191,10 @@ class _CrashScreen extends StatelessWidget {
                 const SizedBox(height: 40),
                 const Icon(Icons.error_outline, color: Color(0xFFFF6B9D), size: 48),
                 const SizedBox(height: 16),
-                const Text('VidFlow ????',
+                const Text('VidFlow 启动失败',
                     style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                const Text('?????,??????????',
+                const Text('请重启应用，如仍失败请联系开发者',
                     style: TextStyle(color: Colors.white54, fontSize: 14)),
                 const SizedBox(height: 24),
                 Expanded(

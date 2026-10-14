@@ -5,6 +5,7 @@ import '../models/video_model.dart';
 import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
 import '../services/database_service.dart';
+import '../services/app_settings_service.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -97,14 +98,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _setupListeners();
   }
 
-  /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
-  Player get player => state.player;
-
-  /// 绑定播放页创建的 VideoController
-  void attachVideoController(VideoController controller) {
-    state = state.copyWith(videoController: controller);
-  }
-
   void _setupListeners() {
     state.player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
@@ -130,8 +123,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.completed.listen((_) {
       state = state.copyWith(isCompleted: true);
-      // 自动播放下一个
-      _playNext();
+      // 自动播放下一个（受设置控制）
+      if (AppSettingsService.instance.autoPlayNext) {
+        _playNext();
+      }
     });
   }
 
@@ -145,7 +140,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       currentIndex: startIndex ?? 0,
       isCompleted: false,
       position: Duration.zero,
+      speed: AppSettingsService.instance.defaultSpeed,
     );
+
+    // 应用默认播放速度
+    await state.player
+        .setRate(AppSettingsService.instance.defaultSpeed);
 
     // 恢复上次播放位置
     if (video.lastPosition > 0) {

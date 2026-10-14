@@ -7,9 +7,9 @@ import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
 import '../../widgets/glass/glass_card.dart';
-import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_slider.dart';
+import '../../widgets/glass/glass_button.dart';
 
 class HomePage extends StatelessWidget {
   final Widget child;
@@ -462,9 +462,37 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
-              '你的视频将自动出现在这里\n前往文件夹或 NAS 浏览',
+              '你的视频将自动出现在这里\n请选择本地文件夹浏览，或前往 NAS',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[500], fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            // 本地文件夹入口
+            Semantics(
+              button: true,
+              label: '浏览本地文件夹',
+              child: GlassButton.outlined(
+                icon: Icons.folder_rounded,
+                label: '浏览本地文件夹',
+                width: double.infinity,
+                height: 48,
+                foregroundColor: GlassTheme.accentPurple,
+                onTap: () => context.pushNamed('folders'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // NAS 入口
+            Semantics(
+              button: true,
+              label: '浏览 NAS',
+              child: GlassButton.outlined(
+                icon: Icons.dns_rounded,
+                label: '浏览 NAS',
+                width: double.infinity,
+                height: 48,
+                foregroundColor: GlassTheme.accentTeal,
+                onTap: () => context.pushNamed('nas'),
+              ),
             ),
           ],
         ),

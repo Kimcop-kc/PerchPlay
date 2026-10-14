@@ -29,6 +29,7 @@ class CastState {
     bool? isConnected,
     bool? isPlaying,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return CastState(
       devices: devices ?? this.devices,
@@ -36,7 +37,8 @@ class CastState {
       isDiscovering: isDiscovering ?? this.isDiscovering,
       isConnected: isConnected ?? this.isConnected,
       isPlaying: isPlaying ?? this.isPlaying,
-      errorMessage: errorMessage,
+      errorMessage:
+          clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -70,7 +72,7 @@ class CastNotifier extends StateNotifier<CastState> {
         state = state.copyWith(
           isConnected: true,
           activeDevice: event.device ?? state.activeDevice,
-          errorMessage: null,
+          clearError: true,
         );
         break;
       case CastEventType.disconnected:

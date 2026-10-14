@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/nas_connection_model.dart';
 import '../services/nas_client_service.dart';
 
@@ -29,6 +31,7 @@ class NasState {
     String? currentPath,
     bool? isLoading,
     String? errorMessage,
+    bool clearError = false,
     bool? isConnected,
   }) {
     return NasState(
@@ -37,7 +40,8 @@ class NasState {
       currentFiles: currentFiles ?? this.currentFiles,
       currentPath: currentPath ?? this.currentPath,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage,
+      errorMessage:
+          clearError ? null : (errorMessage ?? this.errorMessage),
       isConnected: isConnected ?? this.isConnected,
     );
   }
@@ -45,8 +49,34 @@ class NasState {
 
 class NasNotifier extends StateNotifier<NasState> {
   final NasClientService _service = NasClientService.instance;
+  static const _kNasConnectionsKey = 'nas.connections';
 
-  NasNotifier() : super(const NasState());
+  NasNotifier() : super(const NasState()) {
+    _loadSavedConnections();
+  }
+
+  /// 从 SharedPreferences 恢复连接配置
+  Future<void> _loadSavedConnections() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kNasConnectionsKey);
+      if (raw == null || raw.isEmpty) return;
+      final list = (jsonDecode(raw) as List)
+          .map((e) => NasConnection.fromJson(e as Map<String, dynamic>))
+          .toList();
+      state = state.copyWith(connections: list);
+    } catch (_) {
+      // 解析失败时忽略历史配置
+    }
+  }
+
+  Future<void> _persistConnections() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = state.connections.map((c) => c.toJson()).toList();
+      await prefs.setString(_kNasConnectionsKey, jsonEncode(list));
+    } catch (_) {}
+  }
 
   // ──── 连接管理 ────
 
@@ -54,6 +84,7 @@ class NasNotifier extends StateNotifier<NasState> {
     final connections = List<NasConnection>.from(state.connections);
     connections.add(config);
     state = state.copyWith(connections: connections);
+    await _persistConnections();
     return true;
   }
 
@@ -63,10 +94,11 @@ class NasNotifier extends StateNotifier<NasState> {
       await disconnect();
     }
     state = state.copyWith(connections: connections);
+    await _persistConnections();
   }
 
   Future<bool> connect(NasConnection config) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     final ok = await _service.connect(config);
     if (ok) {
@@ -75,6 +107,7 @@ class NasNotifier extends StateNotifier<NasState> {
         isConnected: true,
         activeConnection: config,
         currentPath: config.remotePath,
+        clearError: true,
       );
       await navigateTo(config.remotePath);
     } else {
@@ -99,13 +132,20 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 文件浏览 ────
 
   Future<void> navigateTo(String path) async {
-    state = state.copyWith(isLoading: true);
-    final files = await _service.listDirectory(path);
-    state = state.copyWith(
-      currentFiles: files,
-      currentPath: path,
-      isLoading: false,
-    );
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final files = await _service.listDirectory(path);
+      state = state.copyWith(
+        currentFiles: files,
+        currentPath: path,
+        isLoading: false,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: '读取目录失败，请检查连接或目录权限',
+      );
+    }
   }
 
   void navigateUp() {
@@ -113,6 +153,13 @@ class NasNotifier extends StateNotifier<NasState> {
     if (path == '/' || path.isEmpty) return;
     final parent = path.substring(0, path.lastIndexOf('/'));
     navigateTo(parent.isEmpty ? '/' : parent);
+  }
+
+  /// 清除错误提示
+  void clearError() {
+    if (state.errorMessage != null) {
+      state = state.copyWith(clearError: true);
+    }
   }
 
   // ──── 获取播放 URL ────

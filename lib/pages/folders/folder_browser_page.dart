@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -18,6 +19,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   List<FileSystemEntity> _entries = [];
   bool _loading = true;
   bool _gridView = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -26,31 +28,41 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Future<void> _loadRoots() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
     try {
-      // 列出可用存储根目录
+      // 列出可用存储根目录（不包含应用私有目录）
       final dirs = <FileSystemEntity>[];
-      // 内置存储
       final storage = Directory('/storage/emulated/0');
       if (await storage.exists()) dirs.add(storage);
-      // /sdcard
       final sdcard = Directory('/sdcard');
-      if (await sdcard.exists()) dirs.add(sdcard);
-      // 应用文档目录
-      dirs.add(Directory('/data/data/com.vidflow.player'));
-      
+      if (await sdcard.exists() &&
+          sdcard.path != storage.path) {
+        dirs.add(sdcard);
+      }
+
+      if (!mounted) return;
       setState(() {
         _entries = dirs;
         _currentPath = '';
         _loading = false;
       });
     } catch (e) {
-      setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorMessage = '无法加载存储目录：$e';
+      });
     }
   }
 
   Future<void> _navigate(String path) async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
     try {
       final dir = Directory(path);
       _entries = await dir.list().toList();
@@ -61,15 +73,30 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         if (aDir != bDir) return aDir - bDir;
         return a.path.compareTo(b.path);
       });
-      _currentPath = path;
+      if (!mounted) return;
+      setState(() {
+        _currentPath = path;
+        _loading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法访问: $e')),
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorMessage = '无法访问该目录：$e';
+      });
     }
-    setState(() => _loading = false);
+  }
+
+  Future<void> _requestStoragePermission() async {
+    // Android 13+ 使用 READ_MEDIA_VIDEO，其余用 storage
+    final status = await Permission.storage.request();
+    if (status.isGranted || status.isLimited) {
+      if (!mounted) return;
+      setState(() => _errorMessage = null);
+      await _loadRoots();
+    } else if (mounted) {
+      setState(() => _errorMessage = '未获得存储权限，请到系统设置中开启');
+    }
   }
 
   void _navigateUp() {
@@ -141,6 +168,12 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
       );
     }
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+    if (_entries.isEmpty) {
+      return _buildEmptyState();
+    }
     if (_currentPath.isNotEmpty) {
       // 面包屑路径
       return Column(
@@ -153,6 +186,72 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       );
     }
     return _buildGridView();
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: GlassPanel(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 48, color: GlassTheme.accentPink),
+            const SizedBox(height: 12),
+            Text(_errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 14, height: 1.5)),
+            const SizedBox(height: 16),
+            GlassButton.outlined(
+              icon: Icons.lock_open_rounded,
+              label: '授权存储权限',
+              height: 44,
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: _requestStoragePermission,
+            ),
+            const SizedBox(height: 8),
+            GlassButton(
+              icon: Icons.refresh_rounded,
+              label: '重试',
+              height: 40,
+              ghost: true,
+              foregroundColor: Colors.white54,
+              onTap: _loadRoots,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: GlassPanel(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey[700]),
+            const SizedBox(height: 12),
+            const Text('未发现可访问的存储目录',
+                style: TextStyle(
+                    color: Colors.white, fontSize: 16)),
+            const SizedBox(height: 6),
+            const Text('请授权存储权限后重试',
+                style: TextStyle(color: Colors.white38, fontSize: 12)),
+            const SizedBox(height: 16),
+            GlassButton.outlined(
+              icon: Icons.lock_open_rounded,
+              label: '授权存储权限',
+              height: 44,
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: _requestStoragePermission,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBreadcrumb() {
