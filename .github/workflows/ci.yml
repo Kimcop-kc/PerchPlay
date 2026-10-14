@@ -1,0 +1,31 @@
+name: CI — 代码检查
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  analyze:
+    name: Dart 静态分析
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22'
+          channel: 'stable'
+          cache: true
+
+      - name: 安装依赖
+        run: |
+          set -o pipefail
+          flutter pub get --verbose 2>&1 | tail -150
+
+      - name: 静态分析
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos 2>&1 | tail -60

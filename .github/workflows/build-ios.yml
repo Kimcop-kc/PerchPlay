@@ -1,0 +1,91 @@
+name: iOS — 构建 IPA
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: 'IPA 导出方式'
+        required: true
+        type: choice
+        options:
+          - ad-hoc
+          - development
+          - app-store
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: iOS 构建 (${{ github.event.inputs.export_method || 'ad-hoc' }})
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22'
+          channel: 'stable'
+          cache: true
+
+      - name: 生成 iOS 平台文件
+        run: |
+          flutter create --platforms=ios --org com.vidflow .
+          echo "✅ flutter create 完成"
+
+      - name: 覆盖自定义 iOS 文件
+        run: |
+          # flutter create 只会生成缺失文件、不会覆盖已有文件，这里把自定义版本装回去
+          cp ios/manifest-backup/Podfile ios/Podfile
+          cp ios/manifest-backup/Info.plist ios/Runner/Info.plist
+          echo "✅ 自定义 Podfile / Info.plist 已就位"
+
+      - name: 计算安全产物名
+        run: echo "REF_SAFE=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      - name: 安装 CocoaPods
+        run: |
+          cd ios
+          pod install 2>&1 | tail -10 || pod install --repo-update 2>&1 | tail -10
+          cd ..
+
+      - name: 构建 iOS (无签名)
+        run: flutter build ios --release --no-codesign
+
+      - name: 打包 IPA
+        run: |
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            mkdir -p build/ios/ipa/Payload
+            cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+            cd build/ios/ipa
+            zip -r "../../VidFlow-${REF_SAFE}-unsigned.ipa" Payload/
+            echo "✅ IPA 打包完成"
+          else
+            echo "⚠️ 未找到 Runner.app"
+            find build/ios -maxdepth 4 -name "Runner.app" 2>/dev/null || echo "搜索失败"
+          fi
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-${{ env.REF_SAFE }}
+          path: |
+            build/ios/iphoneos/**/*
+            build/VidFlow-*.ipa
+          retention-days: 30
+
+      - name: 发布到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/VidFlow-*.ipa
+          fail_on_unmatched_files: false
