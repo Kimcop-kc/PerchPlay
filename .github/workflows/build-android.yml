@@ -85,6 +85,16 @@ jobs:
           dependencies {
               implementation "androidx.core:core-ktx:1.13.1"
           }
+
+          // 部分插件带进来的 kotlin-stdlib-jdk7/jdk8 仍为 1.7.x，与 kotlin-stdlib 1.8.22
+          // 产生重复类（:app:checkReleaseDuplicateClasses 会失败）。1.8 起这两个包已并入
+          // kotlin-stdlib，统一强制到 1.8.22 即可。
+          configurations.all {
+              resolutionStrategy {
+                  force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
+                  force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+              }
+          }
           EOF
           tail -5 android/app/build.gradle
 
