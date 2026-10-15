@@ -379,7 +379,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   fontSize: 20,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('v${AppConstants.appVersion} · iOS 27 Glass Edition',
+          Text('v${AppConstants.appVersion}',
               style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
           const SizedBox(height: 6),
           Text(
