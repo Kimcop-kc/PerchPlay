@@ -1,194 +1,214 @@
-# VidFlow — 全功能本地视频播放器
+# PerchPlay
 
-一款基于 Flutter 构建的跨平台本地视频播放器，同时支持 Android 与 iOS / iPadOS。  
-底层使用 **media_kit (libmpv)** 引擎，支持绝大多数视频/音频格式。  
-UI 采用 **玻璃质感设计语言** — 全毛玻璃模糊、紫青色渐变、Spring 弹性动画。
+一个用 Flutter 写的本地视频播放器，同时支持 **Android / iOS / iPadOS**。
+播放内核是 **media_kit（libmpv）**，界面走玻璃拟态（毛玻璃 + 紫青渐变）风格。
 
----
-
-## ✨ 功能列表
-
-### 🎬 核心播放
-- [x] 通用视频格式支持 (MP4 / MKV / AVI / MOV / WMV / FLV / WebM 等)
-- [x] 硬件加速解码 (H.264 / H.265 / HEVC)
-- [x] 倍速播放 (0.25x ~ 2.0x)
-- [x] 多音轨切换 & 外挂字幕 (SRT / ASS / VTT)
-- [x] 播放列表管理
-
-### 🖐 手势控制
-- [x] 左侧上下滑动 → 调节亮度
-- [x] 右侧上下滑动 → 调节音量
-- [x] 水平滑动 → 快进/快退 (±10s)
-- [x] 双击 → 播放/暂停
-- [x] 单击 → 显示/隐藏控制栏
-
-### 📱 平台特性
-- [x] 画中画 (PiP) — Android 8+ / iOS 14+
-- [x] 后台音频播放
-- [x] 锁屏控制 & 耳机线控
-- [x] 记忆播放进度 (断点续播)
-- [x] 观看历史
-
-### 📂 文件管理
-- [x] 自动扫描本地视频
-- [x] 文件夹浏览器
-- [x] 视频缩略图
-- [x] 自定义播放列表
-
-### 📐 响应式布局
-- [x] 手机竖屏（< 600px）→ 底栏导航 + 全屏播放
-- [x] 平板竖屏（600~900px）→ NavigationRail + 放大控件
-- [x] 平板横屏 / 大屏（≥900px）→ 双栏 Master-Detail + 播放器分栏
+当前版本：**1.0.49**（设置页「关于」里也能看到）
 
 ---
 
+## 功能
 
-## 🏗️ 项目架构
+### 播放
+- 常见视频格式：`mp4 / mkv / avi / mov / wmv / flv / webm / m4v / mpg / mpeg / 3gp / ts / m2ts / vob / rmvb …`（共 21 种，见 `AppConstants.supportedVideoFormats`）
+- 硬件解码开关（花屏/黑屏的机型可切软解）
+- 倍速 0.25x ~ 2.0x
+- 内嵌字幕轨选择；外挂字幕 `SRT / ASS / VTT`
+- **双字幕同屏**（内嵌轨走 mpv 的第二字幕，外挂字幕自绘叠在下方，可中英对照）
+- 断点续播（退出/切集自动落盘进度，仅在播到结尾时归零）
+- 播放队列（上一集/下一集，剧集可连播）
+- 视频详情：文件名、分辨率、编码、帧率、音轨、时长、大小、文件时间、所在文件夹、完整路径、内嵌字幕、解码方式、上次播放到
+- 播放页顶栏：返回 / 文件名 / 详情 / 投屏 / 全屏 / 小窗（系统不支持小窗时该按钮不显示）
+
+### 手势（播放页）
+| 手势 | 作用 |
+|---|---|
+| 左侧上下滑 | 调亮度（线性，不会滑一点就过头） |
+| 右侧上下滑 | 调音量 |
+| 水平滑 | 快进/快退，**实时带动底部进度条**并显示目标时间与增量 |
+| 双击 | 播放 / 暂停 |
+| 单击 | 显示 / 隐藏控制栏（隐藏后单击即可唤回） |
+
+### 资源库
+- 扫描优先走 **系统媒体库索引（MediaStore）**，毫秒级出结果，并直接拿到时长/大小
+- 拿不到媒体库时回退为文件系统遍历
+- 视频缩略图（按显示尺寸解码，省内存）
+- **按文件名自动分组播放列表**：识别 `S01E02 / 1x02 / 第2集 / 第1季第3集 / EP05` 等写法，同剧集合成一个列表并按季-集排序；非剧集文件归入「电影」列表
+- 播放列表详情页：点列表进去先看清单（序号/缩略图/时长/大小/上次看到），点哪一集从哪一集开始连播；手动列表可逐条移除，自动列表每次扫描重建
+- 长按视频卡片 → 添加到播放列表 / 从影库移除
+- 文件夹浏览器、观看历史
+
+### 投屏（DLNA）
+- SSDP 发现局域网设备（Android 需要组播锁，已处理）+ **手动填 IP** 兜底
+- 连接时解析设备描述里的真实 `AVTransport` 控制地址；SOAP 用显式 `Content-Length`；命令独立连接并失败重试
+- **内置 HTTP 媒体服务**：把本地文件以 `http://<手机IP>:<端口>/…` 暴露给电视，支持 Range（拖进度必需）——电视读不到 `/storage/...`，缺这一环投屏必然失败
+- 连接后可进投屏遥控面板
+
+> **Chromecast / AirPlay 未实现**：Chromecast 需要 CASTV2（TLS + protobuf），AirPlay 需要原生层支持。界面上不会谎报"已连接"。
+
+### NAS / 网络存储
+- **WebDAV**（推荐：群晖/威联通都支持）、**FTP**
+- **局域网自动发现**：打开 NAS 页即在后台扫描本网段特征端口，按 Server 头与页面内容识别品牌（群晖 / 威联通 / TrueNAS / OpenMediaVault / Unraid / 飞牛 / 极空间 / iStoreOS / WD / 铁威马 / Asustor …），并发 PROPFIND 判断 WebDAV 是否真的可用；**只有真的发现可用连接才显示**
+- 只会列出「确实是 NAS」或「WebDAV 真的可用」的条目，路由器上裸露的 80/445 端口不会混进来
+
+> **SMB / NFS 未实现**（界面上已标注"暂不支持"并给出改用 WebDAV 的指引）。之前 SMB 是用 HTTP 探测冒充的，已改为如实失败。
+
+### 平台相关
+| 能力 | Android | iOS / iPadOS |
+|---|---|---|
+| 画中画（小窗） | ✅ 可用（系统不支持时按钮自动隐藏，不再有"点了没反应"的按钮） | ❌ 未实现（按钮不显示） |
+| 后台播放 | ✅ 前台服务 + 通知（受「后台播放」开关控制） | 声明了 `UIBackgroundModes: audio`（真机未验证） |
+| 所有文件访问权限引导 | ✅ Android 11+ 首次自动跳系统开关页，设置/空库页也可再进 | —（沙盒，需用「文件」App 导入或走 WebDAV） |
+| 高刷新率 | ✅ 取该分辨率下最高的 display mode | ✅ 允许 >60fps（`CADisableMinimumFrameDurationOnPhone`） |
+| 完整键盘快捷键 | ✅ 外接键盘 | ✅ 妙控键盘 |
+
+### 键盘快捷键（全平台生效）
+`Space` 播放/暂停 · `←/→` 快退/快进 10s · `↑/↓` 音量 ±5% · `0–9` 跳转到 0%~90% ·
+`F` 全屏 · `S` 字幕 · `R` 倍速 · `P` 小窗 · `M` 静音 · `[` / `]` 上一集/下一集 · `Esc` 退出
+
+---
+
+## 界面
+
+- 玻璃拟态：毛玻璃卡片/面板/导航栏 + 紫青渐变 + 大圆角 + 顶部高光
+- **导航栏实时模糊可在设置里开关**（默认开启）：关闭只是不做实时模糊、外观不变，供低端机省电
+- Android 上 `BackdropFilter` 会按 GPU 兼容策略自动降级为半透明叠加（导航栏除外，它走真实模糊 + 开关）
+- 响应式：手机（底栏导航 + 全屏播放）／平板竖屏（NavigationRail + 放大控件）／平板横屏（双栏 Master-Detail + 播放器分栏）
+- 导航栏 6 个标签：首页 · 文件夹 · 列表 · 历史 · NAS · 设置（投屏不占底栏，从播放页进入）
+
+---
+
+## 项目结构
 
 ```
 lib/
-├── main.dart                                  # 应用入口
+├── main.dart                                  应用入口
 ├── core/
-│   ├── theme/app_theme.dart                   # 暗色主题
-│   ├── router/app_router.dart                 # GoRouter 路由
-│   ├── constants/app_constants.dart           # 全局常量
+│   ├── constants/app_constants.dart           全局常量（格式白名单/倍速/版本号）
+│   ├── theme/app_theme.dart                   主题
+│   ├── theme/glass_theme.dart                 玻璃设计系统（颜色/圆角/阴影/动画）
+│   ├── router/app_router.dart                 GoRouter 路由（含播放列表详情子路由）
 │   └── responsive/
-│       ├── breakpoints.dart                   # 响应式断点工具
-│       └── adaptive_scaffold.dart             # 自适应导航外壳
-├── models/
-│   ├── video_model.dart                       # 视频数据模型 (Freezed)
-│   ├── subtitle_model.dart                    # 字幕数据模型
-│   └── playlist_model.dart                    # 播放列表模型
+│       ├── breakpoints.dart                   响应式断点
+│       └── adaptive_scaffold.dart             自适应外壳（底栏 / NavigationRail）
+├── models/                                    video / subtitle / playlist / nas / cast
 ├── services/
-│   ├── database_service.dart                  # SQLite 数据库
-│   ├── video_scanner_service.dart             # 视频扫描
-│   ├── thumbnail_service.dart                 # 缩略图生成
-│   ├── subtitle_service.dart                  # 字幕解析 (SRT/VTT)
-│   ├── device_info_service.dart               # 设备品牌/型号检测
-│   ├── rom_optimization_service.dart          # 中国 ROM 权限引导
-│   ├── ipad_optimization_service.dart         # iPad Pro 专属优化
-│   └── native_bridge_service.dart             # MethodChannel 原生桥接
-├── providers/
-│   ├── library_provider.dart                  # 视频库状态 (Riverpod)
-│   ├── player_provider.dart                   # 播放器状态管理
-│   ├── playlist_provider.dart                 # 播放列表状态
-│   └── permission_provider.dart               # 权限管理
+│   ├── database_service.dart                  SQLite（videos / playlists / playback_history）
+│   ├── video_scanner_service.dart             MediaStore 扫描 + 文件系统回退
+│   ├── thumbnail_service.dart                 缩略图
+│   ├── subtitle_service.dart                  字幕解析 SRT/VTT/ASS
+│   ├── media_namer_service.dart               文件名识别（剧集季集 / 电影名清洗）
+│   ├── local_media_server.dart                投屏用内置 HTTP 服务（支持 Range）
+│   ├── cast_discovery_service.dart            DLNA SSDP 发现 + 组播锁
+│   ├── cast_control_service.dart              DLNA SOAP 控制
+│   ├── nas_client_service.dart                WebDAV / FTP 客户端
+│   ├── nas_discovery_service.dart             局域网 NAS 自动发现 + 品牌识别
+│   ├── native_bridge_service.dart             MethodChannel 桥接
+│   ├── app_settings_service.dart              设置持久化（SharedPreferences）
+│   ├── device_info_service.dart               设备/品牌/能力检测
+│   ├── rom_optimization_service.dart          国内 ROM 省电/自启动引导（按机型出现）
+│   └── ipad_optimization_service.dart         iPad 能力检测
+├── providers/                                 library / player / playlist / permission /
+│                                              cast / nas / ui_settings（Riverpod）
 ├── pages/
-│   ├── home/home_page.dart                    # 首页 + 视频网格 (响应式)
-│   ├── player/player_page.dart                # 播放器 (响应式分栏)
-│   ├── folders/folder_browser_page.dart       # 文件夹浏览 (双栏)
-│   ├── playlist/playlist_page.dart            # 播放列表 (双栏)
-│   ├── history/history_page.dart              # 观看历史 (双栏)
-│   └── settings/settings_page.dart            # 设置 (双栏)
+│   ├── home/home_page.dart                    首页网格 + 悬浮小窗
+│   ├── player/player_page.dart                播放器（全屏 + 平板分栏）
+│   ├── folders/ folder_browser_page.dart      文件夹浏览
+│   ├── playlist/playlist_page.dart            播放列表
+│   ├── playlist/playlist_detail_page.dart     列表详情（看清单再播）
+│   ├── history/history_page.dart              观看历史
+│   ├── cast/cast_page.dart                    投屏遥控面板
+│   ├── nas/nas_browser_page.dart              NAS 浏览
+│   └── settings/settings_page.dart            设置
 └── widgets/
-    ├── keyboard_shortcut_handler.dart         # iPad 键盘 + Pencil 悬停
-    └── player/
-        ├── player_gesture_layer.dart          # 手势检测层
-        ├── player_controls_overlay.dart       # 播放控制栏
-        ├── subtitle_overlay.dart              # 字幕渲染
-        ├── speed_selector.dart                # 倍速选择器
-        └── subtitle_selector.dart             # 字幕选择器
+    ├── keyboard_shortcut_handler.dart         键盘快捷键（全平台）
+    ├── glass/                                 GlassCard / GlassPanel / GlassButton /
+    │                                          GlassNavBar / GlassSlider / SafeBackdropFilter
+    └── player/                                player_gesture_layer / subtitle_overlay
+
+test/                                          21 项单元/集成测试
+tools/                                         本地联调用的假服务（见下方"测试"）
+.github/workflows/                             CI：Android APK+AAB / iOS IPA / 代码检查
+android/ · ios/                                平台工程（iOS 含 Xcode 工程与 Podfile）
 ```
 
 ---
 
-## 🚀 快速开始
-
-### 前置条件
-- Flutter SDK >= 3.2.0
-- Android Studio / Xcode
-- Android NDK (用于 media_kit)
-
-### 安装
+## 快速开始
 
 ```bash
-# 1. 进入项目
-cd video_player_app
-
-# 2. 安装依赖
 flutter pub get
-
-# 3. 生成代码 (Freezed / Riverpod)
-flutter pub run build_runner build --delete-conflicting-outputs
-
-# 4. 运行
-flutter run
+flutter run                # 连接设备/模拟器后
 ```
 
-### 平台特定配置
+构建：
 
-**Android** (`android/`):
-- `AndroidManifest.xml` — 存储权限、PiP、前台服务 (mediaPlayback)、电池优化豁免、悬浮窗权限、分屏支持
-- `MainActivity.kt` — ROM 检测 (MIUI/EMUI/ColorOS)、电池白名单引导、自启动引导、悬浮窗权限引导
-- `BackgroundAudioService.kt` — 通知栏媒体控件
-- `styles.xml` — 全面屏凹口适配 (shortEdges)
+```bash
+flutter build apk --release          # 通用 APK
+flutter build apk --split-per-abi    # 分 ABI
+flutter build appbundle --release    # Google Play 用 AAB
+flutter build ios --release          # iOS（需 macOS + Xcode）
+```
 
-**iOS** (`ios/`):
-- `Info.plist` — 后台音频、PiP、多窗口 (Stage Manager)、Apple Pencil、120Hz、HDR
-- `AppDelegate.swift` — 音频会话、远程控制中心、iPad Pro 检测、键盘命令
+Android 的 `release` 构建目前用 debug 签名（`signingConfigs.debug`），自测安装够用；上架前请换成自己的 keystore。
+iOS 首次在 Xcode 里需要改两处：**Bundle ID**（现为 `com.vidflow.vidflow`）和 **Signing Team**，然后打开 `Runner.xcworkspace`（不是 `.xcodeproj`）。
+
+### 权限说明（Android）
+- Android 13+：`READ_MEDIA_VIDEO`（弹窗授权）
+- Android 11+：可另开「所有文件访问权限」，扫描更完整（首次会引导，之后可在设置或空库页进入）
 
 ---
 
+## 测试与 CI
 
-## 📦 技术栈
+```bash
+flutter analyze --no-fatal-infos
+flutter test
+```
 
-| 类别 | 技术 |
-|------|------|
-| 框架 | Flutter 3.x |
-| 播放引擎 | media_kit (libmpv) |
-| 状态管理 | Riverpod |
-| 路由 | GoRouter |
-| 数据库 | SQLite (sqflite) |
-| 代码生成 | Freezed + json_serializable |
+- 当前 **24 项测试**（21 通过 / 3 项在缺少本地假服务时自动跳过，不算失败）；需要跑全量时先起假服务：
+  ```bash
+  python tools/fake_dlna_renderer.py 8099   # 投屏：假 DLNA 渲染器，记录 SOAP 请求
+  python tools/fake_nas.py                  # NAS：:5000 群晖页面 + :5005 WebDAV
+  ```
+- 覆盖内容：本地媒体服务 Range 请求、DLNA「解析 controlURL → SetAVTransportURI → Play」、NAS 品牌与 WebDAV 识别、文件名分类、设置持久化迁移。
+
+CI（GitHub Actions）三个工作流均已通过：
+
+| 工作流 | 内容 |
+|---|---|
+| `CI — 代码检查` | `flutter pub get` + `analyze` + `test` |
+| `Android — 构建 APK + AAB` | analyze/test 快速失败 → 分 ABI APK + AAB → 上传产物（tag 时发 Release） |
+| `iOS — 构建 IPA` | `pod install` → `flutter build ios --no-codesign` → ad-hoc 签名打包 IPA |
+
+---
+
+## 技术栈
+
+| 类别 | 使用 |
+|---|---|
+| 框架 | Flutter 3.22 / Dart 3.4 |
+| 播放引擎 | media_kit 1.2.0（libmpv） |
+| 状态管理 | Riverpod 2.5 |
+| 路由 | GoRouter 14 |
+| 数据库 | sqflite（SQLite） |
+| 设置持久化 | shared_preferences |
 | 权限 | permission_handler |
-| 缩略图 | video_thumbnail |
-| 响应式 | 自定义 Breakpoints + AdaptiveScaffold |
-| 原生桥接 | MethodChannel (Android + iOS) |
-| 设置持久化 | SharedPreferences |
+| 缩略图 | flutter_video_thumbnail_plus |
+| 原生桥接 | MethodChannel（Android Kotlin / iOS Swift） |
 
 ---
 
-## 🎨 UI 设计系统 ( Glass Edition)
+## 尚未实现
 
-### 设计语言
-- **毛玻璃 BackdropFilter** — 全页面实时模糊背景 (sigmaX/Y: 20-28)
-- **紫青渐变** — 主色调 `#9B7EF0` → `#45E0D0`
-- **大圆角** — 10px~32px 玻璃卡片
-- **Spring 弹性动画** — mass=1, stiffness=180~300, damping=14~26
-- **光泽高光** — 卡片顶部 10% 白色渐变模拟玻璃反光
-- **微边框** — 0.5~1px 8% 白色描边
-
-### 玻璃组件库 (`lib/widgets/glass/`)
-
-| 组件 | 文件 | 说明 |
-|------|------|------|
-| `GlassCard` | `glass_card.dart` | 核心卡片：BackdropFilter + 悬浮缩放 + 选中态紫光 |
-| `GlassPanel` | `glass_panel.dart` | 面板/Sheet：彩色着色 + 模糊 + 圆角 |
-| `GlassButton` | `glass_button.dart` | 按钮：filled 渐变 / outlined 边框 / ghost 透明 |
-| `GlassNavBar` | `glass_nav_bar.dart` | 导航底栏：毛玻璃 + 弹性选中动画 |
-| `GlassSlider` | `glass_slider.dart` | 进度条/滑块：光泽轨道 + 放大拖拽 thumb |
-
-### 动画系统 (`lib/core/theme/glass_theme.dart`)
-- `GlassCurves` — springSmooth / springBouncy / springSubtle / iosDecelerate
-- `GlassAnimations` — fadeSlideUp (淡入上浮) / scaleIn (缩放弹出)
-- 交错入场：每项 delay = index/total * 0.25s，总时长 0.6s
-
-
+- Chromecast / AirPlay 投屏（现在只有 DLNA）
+- SMB / NFS 网络存储（现在只有 WebDAV / FTP）
+- iOS 画中画
+- 音轨切换 UI（现在详情里能看到音轨信息）
+- AB 循环、视频截图、均衡器、深浅色主题切换
 
 ---
 
-## 🔜 开发计划
-
-- [x] DLNA / Chromecast / AirPlay 投屏
-- [x] SMB / FTP / WebDAV 网络存储
-- [x] 玻璃质感 UI
-- [ ] 均衡器 (EQ)
-- [ ] AB 循环播放
-- [ ] 视频截图
-- [ ] 深色/浅色主题切换
-
----
-
-## 📝 License
+## License
 
 MIT
