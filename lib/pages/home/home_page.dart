@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/responsive/adaptive_scaffold.dart';
@@ -77,6 +78,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   @override
   Widget build(BuildContext context) {
     final libraryAsync = ref.watch(libraryProvider);
+    // 顶层 watch 播放器状态：后台播放时小窗需要实时跟随
+    final playerState = ref.watch(playerProvider);
     final isLarge = AppBreakpoints.isLargeScreen(context);
     final columns = AppBreakpoints.gridColumns(context);
     final hp = AppBreakpoints.horizontalPadding(context);
@@ -95,7 +98,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         if (isLarge) {
           return _buildTabletLayout(videos, columns, hp);
         }
-        return _buildMobileLayout(videos, columns, hp);
+        return _buildMobileLayout(videos, columns, hp, playerState);
       },
       loading: () => const Center(
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
@@ -107,89 +110,57 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   Widget _buildMobileLayout(
-      List<VideoModel> videos, int columns, double hp) {
-    final nowPlaying = _buildNowPlayingBar(context);
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        _buildHeader(hp),
-        if (nowPlaying != null) nowPlaying,
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(hp, 8, hp, 24),
-          sliver: SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.62,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => GlassAnimations.scaleIn(
-                controller: _listAnimController,
-                index: index,
-                child: _buildVideoCard(videos[index], index),
-              ),
-              childCount: videos.length,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 后台播放时，首页顶部显示「正在播放」悬浮条，点击返回播放器
-  Widget? _buildNowPlayingBar(BuildContext context) {
-    final playerState = ref.watch(playerProvider);
+      List<VideoModel> videos, int columns, double hp, PlayerState playerState) {
     final video = playerState.currentVideo;
-    if (video == null) return null;
+    final miniPlayer = (video != null && playerState.videoController != null)
+        ? _FloatingMiniPlayer(
+            video: video,
+            playerState: playerState,
+            onTap: () => context.pushNamed('player', extra: {
+              'videoPath': video.path,
+              'videoTitle': video.name,
+            }),
+            onClose: () => ref.read(playerProvider.notifier).stop(),
+          )
+        : null;
 
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        child: GlassCard(
-          radius: GlassTheme.radiusSm,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          onTap: () => context.pushNamed('player', extra: {
-            'videoPath': video.path,
-            'videoTitle': video.name,
-          }),
-          child: Row(
-            children: [
-              // 播放动画图标
-              Icon(
-                playerState.isPlaying
-                    ? Icons.equalizer_rounded
-                    : Icons.play_circle_fill_rounded,
-                color: GlassTheme.accentPurple,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  video.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+    return Stack(
+      children: [
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildHeader(hp),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(hp, 8, hp, miniPlayer != null ? 120 : 24),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  // 横向卡片：缩略图宽高比约 16:9，加上下方文字行
+                  childAspectRatio: 1.5,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => GlassAnimations.scaleIn(
+                    controller: _listAnimController,
+                    index: index,
+                    child: _buildVideoCard(videos[index], index),
                   ),
+                  childCount: videos.length,
                 ),
               ),
-              Text(
-                _formatDuration(playerState.position.inMilliseconds),
-                style: const TextStyle(
-                  color: GlassTheme.textTertiary,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded,
-                  color: GlassTheme.textTertiary, size: 18),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
+        // 悬浮小窗：底部导航栏上方（导航栏高约 72 + 安全区 + 间距）
+        if (miniPlayer != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.of(context).padding.bottom + 90,
+            child: miniPlayer,
+          ),
+      ],
     );
   }
 
@@ -211,7 +182,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     crossAxisCount: columns - 1,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childAspectRatio: 0.62,
+                    childAspectRatio: 1.5,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) => GlassAnimations.scaleIn(
@@ -310,7 +281,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
     return GlassCard(
       radius: GlassTheme.radiusLg,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       enableHover: true,
       selected: isSelected,
       tint: GlassTheme.tintPurple,
@@ -324,17 +295,18 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           });
         }
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // 缩略图区
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                  child: video.thumbnailPath.isNotEmpty
+          // 横向小长方形缩略图（16:9）
+          ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+            child: SizedBox(
+              width: 96,
+              height: 54,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  video.thumbnailPath.isNotEmpty
                       ? Image.file(
                           File(video.thumbnailPath),
                           fit: BoxFit.cover,
@@ -342,82 +314,112 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                       : Container(
                           color: Colors.black.withOpacity(0.05),
                           child: Icon(Icons.movie_rounded,
-                              color: GlassTheme.textTertiary, size: 32),
+                              color: GlassTheme.textTertiary, size: 28),
                         ),
-                ),
-                // 渐变遮罩
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 36,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(GlassTheme.radiusSm)),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.5),
-                        ],
+                  // 播放按钮
+                  Center(
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.30),
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                  // 进度条
+                  if (progressPercent > 0 && progressPercent < 1)
+                    Positioned(
+                      bottom: 4,
+                      left: 6,
+                      right: 6,
+                      child: GlassSlider(
+                        value: progressPercent,
+                        height: 2,
+                        activeColor: GlassTheme.accentPurple,
+                        showThumb: false,
                       ),
                     ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // 标题 + 时长 + 删除
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  video.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                // 播放按钮
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.25),
-                    ),
-                    child: const Icon(Icons.play_arrow_rounded,
-                        color: Colors.white, size: 22),
+                const SizedBox(height: 4),
+                Text(
+                  _formatDuration(video.durationMs),
+                  style: TextStyle(
+                    color: GlassTheme.textSecondary,
+                    fontSize: 11,
                   ),
                 ),
-                // 进度条
-                if (progressPercent > 0 && progressPercent < 1)
-                  Positioned(
-                    bottom: 6,
-                    left: 8,
-                    right: 8,
-                    child: GlassSlider(
-                      value: progressPercent,
-                      height: 3,
-                      activeColor: GlassTheme.accentPurple,
-                      showThumb: false,
-                    ),
-                  ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          // 标题
-          Text(
-            video.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: GlassTheme.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _formatDuration(video.durationMs),
-            style: TextStyle(
-              color: GlassTheme.textSecondary,
-              fontSize: 11,
+          // 删除按钮
+          GestureDetector(
+            onTap: () => _confirmDeleteVideo(video),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              child: const Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: GlassTheme.textTertiary,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// 确认删除影库记录（不删磁盘文件）
+  Future<void> _confirmDeleteVideo(VideoModel video) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFFF2F2F7),
+        title: const Text('移除视频',
+            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+        content: Text(
+          '从影库移除「${video.name}」？\n（不会删除手机里的文件）',
+          style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('移除',
+                style: TextStyle(color: GlassTheme.accentPink)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(libraryProvider.notifier).deleteVideo(video.id);
+    }
   }
 
   // ── 右侧详情 ──
@@ -655,5 +657,134 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   String _formatDate(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+}
+
+/// 后台播放悬浮小窗
+///
+/// 显示视频实时画面 + 标题，点击返回播放器；
+/// 按住向左/右滑出屏幕边缘即可关闭小窗并停止播放。
+class _FloatingMiniPlayer extends StatefulWidget {
+  final VideoModel video;
+  final PlayerState playerState;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  const _FloatingMiniPlayer({
+    required this.video,
+    required this.playerState,
+    required this.onTap,
+    required this.onClose,
+  });
+
+  @override
+  State<_FloatingMiniPlayer> createState() => _FloatingMiniPlayerState();
+}
+
+class _FloatingMiniPlayerState extends State<_FloatingMiniPlayer> {
+  // 横向偏移（用于滑出动画）
+  double _dx = 0;
+  bool _dismissing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // 视频画面 + 标题横向小长方形卡片
+    return GestureDetector(
+      onTap: widget.onTap,
+      onHorizontalDragUpdate: (details) {
+        setState(() => _dx += details.delta.dx);
+      },
+      onHorizontalDragEnd: (details) {
+        final width = MediaQuery.of(context).size.width;
+        // 滑出超过屏幕 1/3 则关闭
+        if (_dx.abs() > width / 3) {
+          _dismiss();
+        } else {
+          // 回弹
+          setState(() => _dx = 0);
+        }
+      },
+      child: Transform.translate(
+        offset: Offset(_dx, 0),
+        child: Opacity(
+          opacity: _dismissing ? 0 : 1,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            height: 56,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.5),
+                width: 0.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // 视频画面（横向小长方形）
+                SizedBox(
+                  width: 96,
+                  height: 56,
+                  child: Video(
+                    controller: widget.playerState.videoController!,
+                    fit: BoxFit.cover,
+                    controls: NoVideoControls,
+                  ),
+                ),
+                // 标题 + 关闭按钮
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.video.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: GlassTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        // 关闭按钮
+                        GestureDetector(
+                          onTap: widget.onClose,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: GlassTheme.textTertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _dismiss() {
+    setState(() => _dismissing = true);
+    // 动画完成后触发关闭
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) widget.onClose();
+    });
   }
 }

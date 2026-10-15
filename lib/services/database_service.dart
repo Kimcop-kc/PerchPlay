@@ -94,6 +94,13 @@ class DatabaseService {
     await batch.commit(noResult: true);
   }
 
+  /// 删除单条视频记录（不删除磁盘文件）
+  Future<void> deleteVideo(String id) async {
+    final db = await database;
+    await db.delete('videos', where: 'id = ?', whereArgs: [id]);
+    await db.delete('playback_history', where: 'videoId = ?', whereArgs: [id]);
+  }
+
   Future<void> updatePlayPosition(String videoId, double position) async {
     final db = await database;
     await db.update(

@@ -53,6 +53,12 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     await _db.insertVideos([updated]);
     state = AsyncData(await _db.getAllVideos());
   }
+
+  /// 删除视频（仅移除影库记录，不删磁盘文件）
+  Future<void> deleteVideo(String videoId) async {
+    await _db.deleteVideo(videoId);
+    state = AsyncData(await _db.getAllVideos());
+  }
 }
 
 // 文件夹列表
