@@ -47,18 +47,37 @@ class _MobileGlassScaffold extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // 液态玻璃彩色光斑
+            // 液态玻璃彩色光斑（多重叠加，更强折射感）
             Positioned(
-              top: -80,
-              left: -60,
+              top: -100,
+              left: -80,
               child: Container(
-                width: 220,
-                height: 220,
+                width: 280,
+                height: 280,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentPurple.withOpacity(0.18),
+                      GlassTheme.accentPurple.withOpacity(0.28),
+                      GlassTheme.accentPurple.withOpacity(0.08),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 180,
+              right: -100,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      GlassTheme.accentTeal.withOpacity(0.22),
                       Colors.transparent,
                     ],
                   ),
@@ -66,16 +85,33 @@ class _MobileGlassScaffold extends StatelessWidget {
               ),
             ),
             Positioned(
-              bottom: 60,
-              right: -60,
+              bottom: -80,
+              left: 40,
               child: Container(
-                width: 200,
-                height: 200,
+                width: 240,
+                height: 240,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentTeal.withOpacity(0.15),
+                      GlassTheme.accentPink.withOpacity(0.14),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 120,
+              right: -70,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      GlassTheme.accentTeal.withOpacity(0.20),
                       Colors.transparent,
                     ],
                   ),

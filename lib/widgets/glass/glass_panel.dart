@@ -93,6 +93,44 @@ class GlassPanel extends StatelessWidget {
                 ),
               ),
             ),
+            // 顶部高光条（液态玻璃强烈折射）
+            IgnorePointer(
+              child: Container(
+                width: width,
+                height: height,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(radius),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.center,
+                    colors: [
+                      Colors.white.withOpacity(0.55),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                    stops: const [0.0, 0.35],
+                  ),
+                ),
+              ),
+            ),
+            // 底部反光（玻璃厚度感）
+            IgnorePointer(
+              child: Container(
+                width: width,
+                height: height,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(radius),
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.center,
+                    colors: [
+                      Colors.white.withOpacity(0.18),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                    stops: const [0.0, 0.3],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
