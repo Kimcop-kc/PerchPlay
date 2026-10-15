@@ -4,6 +4,7 @@
 /// 平板横屏 → 左视频 / 右毛玻璃控制面板
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -39,6 +40,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   bool _showControls = true;
   bool _showSpeedSelector = false;
   bool _showSubtitleSelector = false;
+  bool _isFullscreen = false;
   late VideoController _videoController;
   late AnimationController _controlsAnim;
 
@@ -60,6 +62,40 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _loadVideo();
       _startAutoHideTimer();
     });
+  }
+
+  @override
+  void dispose() {
+    _controlsAnim.dispose();
+    // 退出播放器时恢复竖屏 + 非沉浸
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  /// 切换全屏（横屏沉浸）
+  Future<void> _toggleFullscreen() async {
+    if (_isFullscreen) {
+      _isFullscreen = false;
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      _isFullscreen = true;
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+    if (mounted) setState(() {});
   }
 
   void _startAutoHideTimer() {
@@ -358,6 +394,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       : Icons.play_arrow_rounded,
                   width: 52,
                   height: 52,
+                  padding: EdgeInsets.zero,
                   onTap: () =>
                       ref.read(playerProvider.notifier).togglePlayPause(),
                 ),
@@ -525,6 +562,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 IconButton(
                   icon: const Icon(Icons.cast_rounded, color: Colors.white70),
                   onPressed: () => context.pushNamed('cast'),
+                ),
+                IconButton(
+                  icon: Icon(
+                    _isFullscreen
+                        ? Icons.fullscreen_exit_rounded
+                        : Icons.fullscreen_rounded,
+                    color: Colors.white70,
+                  ),
+                  onPressed: _toggleFullscreen,
                 ),
                 IconButton(
                   icon: const Icon(Icons.picture_in_picture_rounded,
@@ -755,11 +801,5 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
     }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  void dispose() {
-    _controlsAnim.dispose();
-    super.dispose();
   }
 }

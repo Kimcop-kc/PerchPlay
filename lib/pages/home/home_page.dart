@@ -176,9 +176,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   Widget _buildHeader(double hp, {bool compact = false}) {
+    // 沉浸式：标题延伸到状态栏下，紧贴安全区顶部
+    final topPad = MediaQuery.of(context).padding.top + (compact ? 8 : 16);
     return SliverToBoxAdapter(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(hp, 24, hp, compact ? 8 : 16),
+        padding: EdgeInsets.fromLTRB(hp, topPad, hp, compact ? 8 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

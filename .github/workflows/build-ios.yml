@@ -42,6 +42,7 @@ jobs:
       - name: 覆盖自定义 iOS 文件
         run: |
           cp ios/manifest-backup/Info.plist ios/Runner/Info.plist 2>/dev/null || echo "ℹ️ 无需覆盖 Info.plist"
+          cp ios/manifest-backup/Podfile ios/Podfile 2>/dev/null || echo "ℹ️ 无需覆盖 Podfile"
           echo "✅ 自定义文件已覆盖"
 
       - name: 安装依赖
@@ -50,11 +51,30 @@ jobs:
       - name: 安装 CocoaPods
         run: |
           cd ios
+          # 若 Podfile 缺失则生成（Flutter 3.22 默认模板）
+          if [ ! -f Podfile ]; then
+            flutter create --platforms=ios --org com.vidflow .
+            cp ../ios/manifest-backup/Info.plist Runner/Info.plist 2>/dev/null || true
+          fi
           pod install 2>&1 | tail -10 || pod install --repo-update 2>&1 | tail -10
           cd ..
 
       - name: 构建 iOS (无签名)
         run: flutter build ios --release --no-codesign
+
+      - name: 修复 ldid 解析 (ad-hoc 签名)
+        run: |
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            # ldid 解析异常通常源于未签名二进制；用 ad-hoc 签名替代
+            APP="build/ios/iphoneos/Runner.app"
+            # 给主二进制和所有 framework 做 ad-hoc 签名
+            codesign --force --sign - --timestamp=none "$APP/Runner" 2>/dev/null || echo "⚠️ Runner 签名跳过"
+            find "$APP/Frameworks" -name "*.framework" -maxdepth 1 2>/dev/null | while read fw; do
+              codesign --force --sign - --timestamp=none "$fw" 2>/dev/null || true
+            done
+            codesign --force --sign - --timestamp=none "$APP" 2>/dev/null || echo "⚠️ App 签名跳过"
+            echo "✅ ad-hoc 签名完成"
+          fi
 
       - name: 打包 IPA
         run: |

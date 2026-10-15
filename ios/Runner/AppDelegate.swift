@@ -7,7 +7,6 @@ import PencilKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
     private var pipController: AVPictureInPictureController?
-    private var pipVideoCallViewController: AVPictureInPictureVideoCallViewController?
 
     override func application(
         _ application: UIApplication,
@@ -178,10 +177,6 @@ import PencilKit
             case "supportHDR":
                 result(self.supportHDR())
 
-            case "requestBatteryOptimization":
-                // iOS: no-op
-                result(true)
-
             case "canDrawOverlays":
                 result(true)
 
@@ -238,14 +233,9 @@ import PencilKit
               AVPictureInPictureController.isPictureInPictureSupported() else { return }
 
         if pipController?.isPictureInPictureActive == true { return }
-
-        // 创建虚拟视频通话 ViewController 作为 PiP 载体
-        let callVC = AVPictureInPictureVideoCallViewController()
-        callVC.preferredContentSize = CGSize(width: 1920, height: 1080)
-
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            // PiP 需要配合 AVPlayerLayer，由 media_kit 插件层处理
-        }
+        // PiP 的实际渲染由 media_kit 插件在原生层接管（AVPlayerLayer）。
+        // 这里只做可用性检查，不引入 iOS 15+ 才有的
+        // AVPictureInPictureVideoCallViewController，否则部署目标低于 iOS 15 会编译报错。
     }
 
     // ──────────────────────────────

@@ -17,6 +17,7 @@ class HistoryPage extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: library.when(
           data: (videos) {
             final watched = videos
@@ -33,7 +34,7 @@ class HistoryPage extends ConsumerWidget {
             if (watched.isEmpty) return _buildEmpty();
             return CustomScrollView(
               slivers: [
-                _buildHeader(watched.length),
+                _buildHeader(context, watched.length),
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   sliver: SliverList(
@@ -162,10 +163,11 @@ class HistoryPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(int count) {
+  Widget _buildHeader(BuildContext context, int count) {
+    final topPad = MediaQuery.of(context).padding.top + 24;
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        padding: EdgeInsets.fromLTRB(20, topPad, 20, 16),
         child: Row(
           children: [
             const Text('观看历史',
