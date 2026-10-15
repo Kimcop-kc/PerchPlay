@@ -14,6 +14,7 @@ import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../models/cast_device_model.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/library_provider.dart';
 import '../../providers/cast_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/subtitle_service.dart';
@@ -30,10 +31,17 @@ import '../../widgets/keyboard_shortcut_handler.dart';
 class PlayerPage extends ConsumerStatefulWidget {
   final String videoPath;
   final String videoTitle;
+
+  /// 播放队列（视频 id 列表，来自播放列表/文件夹），按顺序播放
+  final List<String>? queueIds;
+  final int startIndex;
+
   const PlayerPage({
     super.key,
     required this.videoPath,
     required this.videoTitle,
+    this.queueIds,
+    this.startIndex = 0,
   });
 
   @override
@@ -173,17 +181,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   Future<void> _loadVideo() async {
+    final model = VideoModel(
+      id: widget.videoPath,
+      path: widget.videoPath,
+      name: widget.videoTitle,
+      folderPath: '',
+      size: 0,
+      durationMs: 0,
+      dateAdded: DateTime.now(),
+      dateModified: DateTime.now(),
+    );
+
+    // 有队列时按队列顺序加载（播放列表 / 剧集连播）
+    List<VideoModel>? queue;
+    final ids = widget.queueIds;
+    if (ids != null && ids.isNotEmpty) {
+      final all = ref.read(libraryProvider).valueOrNull ?? const <VideoModel>[];
+      final byId = {for (final v in all) v.id: v};
+      queue = ids
+          .map((id) => byId[id])
+          .whereType<VideoModel>()
+          .toList(growable: false);
+      if (queue.isEmpty) queue = null;
+    }
+
     await ref.read(playerProvider.notifier).loadVideo(
-          VideoModel(
-            id: widget.videoPath,
-            path: widget.videoPath,
-            name: widget.videoTitle,
-            folderPath: '',
-            size: 0,
-            durationMs: 0,
-            dateAdded: DateTime.now(),
-            dateModified: DateTime.now(),
-          ),
+          model,
+          queue: queue,
+          startIndex: queue == null ? 0 : widget.startIndex.clamp(0, queue.length - 1),
         );
   }
 

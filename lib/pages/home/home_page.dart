@@ -7,9 +7,11 @@ import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/responsive/adaptive_scaffold.dart';
 import '../../models/video_model.dart';
+import '../../models/playlist_model.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/permission_provider.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/playlist_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -308,6 +310,223 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
+  /// 长按视频卡片：添加到播放列表 / 移除
+  Future<void> _showVideoActions(VideoModel video) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: GlassTheme.bg,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(video.name,
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(
+              '文件名：${video.path.split('/').last}',
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 11),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 12),
+            GlassButton.outlined(
+              icon: Icons.playlist_add_rounded,
+              label: '添加到播放列表',
+              width: double.infinity,
+              height: 46,
+              foregroundColor: GlassTheme.accentTeal,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAddToPlaylist(video);
+              },
+            ),
+            const SizedBox(height: 10),
+            GlassButton.outlined(
+              icon: Icons.delete_outline_rounded,
+              label: '从影库移除',
+              width: double.infinity,
+              height: 46,
+              foregroundColor: GlassTheme.accentPink,
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteVideo(video);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 选择要加入的播放列表（可现场新建）
+  Future<void> _showAddToPlaylist(VideoModel video) async {
+    // 快照，避免在弹窗里 watch 快速变化的 provider
+    final notifier = ref.read(playlistListProvider.notifier);
+    final playlists = ref.read(playlistListProvider).valueOrNull ??
+        const <Playlist>[];
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6),
+        decoration: const BoxDecoration(
+          color: GlassTheme.bg,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('添加到播放列表',
+                style: TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            // 新建并添加
+            GlassButton.filled(
+              icon: Icons.add_rounded,
+              label: '新建播放列表并添加',
+              width: double.infinity,
+              height: 44,
+              onTap: () async {
+                Navigator.pop(ctx);
+                final name = await _askPlaylistName();
+                if (name == null || name.trim().isEmpty) return;
+                await notifier.createPlaylist(name.trim());
+                final created = notifier.byName(name.trim());
+                if (created != null) {
+                  await notifier.addVideoToPlaylist(created.id, video.id);
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已添加到「${name.trim()}」')),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            if (playlists.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text('还没有播放列表，先新建一个',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 13)),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: playlists.length,
+                  itemBuilder: (_, i) {
+                    final pl = playlists[i];
+                    final added = pl.videoIds.contains(video.id);
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        pl.isAuto
+                            ? Icons.auto_awesome_motion_rounded
+                            : Icons.playlist_play_rounded,
+                        color: pl.isAuto
+                            ? GlassTheme.accentPurple
+                            : GlassTheme.accentTeal,
+                        size: 20,
+                      ),
+                      title: Text(pl.name,
+                          style: const TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '${pl.videoIds.length} 个视频${pl.isAuto ? ' · 自动生成' : ''}',
+                        style: const TextStyle(
+                            color: GlassTheme.textTertiary, fontSize: 11),
+                      ),
+                      trailing: added
+                          ? const Icon(Icons.check_rounded,
+                              color: GlassTheme.accentTeal, size: 18)
+                          : const Icon(Icons.add_rounded,
+                              color: GlassTheme.textTertiary, size: 18),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        if (added) {
+                          await notifier.removeVideoFromPlaylist(
+                              pl.id, video.id);
+                        } else {
+                          await notifier.addVideoToPlaylist(pl.id, video.id);
+                        }
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(added
+                                    ? '已从「${pl.name}」移除'
+                                    : '已添加到「${pl.name}」')),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _askPlaylistName() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GlassTheme.bg,
+        title: const Text('新建播放列表',
+            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: GlassTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: '列表名称',
+            hintStyle: TextStyle(color: GlassTheme.textTertiary),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('创建',
+                style: TextStyle(color: GlassTheme.accentTeal)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVideoCard(VideoModel video, int index,
       {bool showSelect = false}) {
     final progressPercent = video.durationMs > 0
@@ -325,6 +544,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           });
         }
       },
+      onLongPress: () => _showVideoActions(video),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
         child: Stack(

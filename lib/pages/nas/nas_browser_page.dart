@@ -29,6 +29,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         top: false,
+        // 与首页一致：内容铺到屏幕底，避免导航栏下方出现空白层
+        bottom: false,
         child: Column(
           children: [
             if (nasState.errorMessage != null)

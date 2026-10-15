@@ -40,6 +40,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         top: false,
+        // 与首页一致：内容铺到屏幕底，避免导航栏下方出现空白层
+        bottom: false,
         child: CustomScrollView(
           slivers: [
             _buildHeader(),
@@ -63,7 +65,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 24),
                     _sectionHeader('关于'),
                     _buildAbout(),
-                    const SizedBox(height: GlassTheme.navBarOverlay + 16),
+                    const SizedBox(height: GlassTheme.navBarOverlay),
                   ],
                 ),
               ),
@@ -369,29 +371,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  GlassTheme.accentPurple,
-                  GlassTheme.accentTeal,
-                ],
+          // 真正的应用图标（深色底 + 栖木横线 + 播放三角）
+          ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+            child: Image.asset(
+              'assets/branding/perchplay_icon_1024.png',
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 64,
+                height: 64,
+                color: GlassTheme.accentPurple,
+                child: const Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 30),
               ),
-              borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-              boxShadow: [
-                BoxShadow(
-                  color: GlassTheme.accentPurple.withOpacity(0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
             ),
-            child: const Icon(Icons.play_arrow_rounded,
-                color: Colors.white, size: 28),
           ),
           const SizedBox(height: 12),
           const Text('PerchPlay',

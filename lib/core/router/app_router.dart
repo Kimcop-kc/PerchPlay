@@ -98,9 +98,12 @@ class AppRouter {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
+          final queue = extra?['queueIds'];
           return PlayerPage(
             videoPath: extra?['videoPath'] ?? '',
             videoTitle: extra?['videoTitle'] ?? 'Unknown',
+            queueIds: queue is List ? List<String>.from(queue) : null,
+            startIndex: (extra?['startIndex'] as int?) ?? 0,
           );
         },
       ),

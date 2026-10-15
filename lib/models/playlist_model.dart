@@ -6,12 +6,16 @@ class Playlist {
   final DateTime createdAt;
   final int sortOrder;
 
+  /// 是否由扫描自动生成（按文件名分组的剧集/电影），每次扫描会重建
+  final bool isAuto;
+
   const Playlist({
     required this.id,
     required this.name,
     required this.videoIds,
     required this.createdAt,
     this.sortOrder = 0,
+    this.isAuto = false,
   });
 
   Playlist copyWith({
@@ -20,6 +24,7 @@ class Playlist {
     List<String>? videoIds,
     DateTime? createdAt,
     int? sortOrder,
+    bool? isAuto,
   }) {
     return Playlist(
       id: id ?? this.id,
@@ -27,6 +32,7 @@ class Playlist {
       videoIds: videoIds ?? this.videoIds,
       createdAt: createdAt ?? this.createdAt,
       sortOrder: sortOrder ?? this.sortOrder,
+      isAuto: isAuto ?? this.isAuto,
     );
   }
 
@@ -37,6 +43,7 @@ class Playlist {
       'videoIds': videoIds,
       'createdAt': createdAt.toIso8601String(),
       'sortOrder': sortOrder,
+      'isAuto': isAuto ? 1 : 0,
     };
   }
 
@@ -49,6 +56,7 @@ class Playlist {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       sortOrder: json['sortOrder'] as int? ?? 0,
+      isAuto: (json['isAuto'] as int? ?? 0) == 1,
     );
   }
 

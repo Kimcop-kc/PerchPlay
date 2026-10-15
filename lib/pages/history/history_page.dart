@@ -18,6 +18,8 @@ class HistoryPage extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         top: false,
+        // 与首页一致：内容铺到屏幕底，避免导航栏下方出现空白层
+        bottom: false,
         child: library.when(
           data: (videos) {
             final watched = videos

@@ -5,6 +5,7 @@ import '../models/video_model.dart';
 import '../services/video_scanner_service.dart';
 import '../services/database_service.dart';
 import '../services/thumbnail_service.dart';
+import 'playlist_provider.dart';
 
 // 视频列表
 final videoListProvider =
@@ -54,6 +55,12 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
         }
       }
       state = AsyncData(await _db.getAllVideos());
+      // 扫描完成后按文件名自动分组（剧集列表 / 电影列表）
+      if (videos.isNotEmpty) {
+        await ref
+            .read(playlistListProvider.notifier)
+            .syncAutoPlaylists(videos);
+      }
     } catch (e, st) {
       state = AsyncError(e, st);
     }

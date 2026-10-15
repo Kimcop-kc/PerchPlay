@@ -31,6 +31,9 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         top: false,
+        // 不再预留底部安全区：让内容像首页那样一直铺到屏幕底，
+        // 否则导航栏下方会留出一条空白（首页没有这层）
+        bottom: false,
         child: playlistsAsync.when(
           data: (playlists) {
             if (playlists.isEmpty) return _buildEmpty();
@@ -52,20 +55,25 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                             ? videos.first
                             : null;
 
+                        // 带队列播放：整张列表按顺序连播
+                        void playFrom(int index) {
+                          if (videos.isEmpty) return;
+                          final start = index.clamp(0, videos.length - 1);
+                          context.pushNamed('player', extra: {
+                            'videoPath': videos[start].path,
+                            'videoTitle': videos[start].name,
+                            'queueIds': videos.map((v) => v.id).toList(),
+                            'startIndex': start,
+                          });
+                        }
+
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: GlassCard(
                             radius: GlassTheme.radiusMd,
                             tint: GlassTheme.tintTeal,
                             padding: const EdgeInsets.all(14),
-                            onTap: () {
-                              if (videos.isNotEmpty) {
-                                context.pushNamed('player', extra: {
-                                  'videoPath': videos.first.path,
-                                  'videoTitle': videos.first.name,
-                                });
-                              }
-                            },
+                            onTap: () => playFrom(0),
                             child: Row(
                               children: [
                                 // 封面占位
@@ -95,11 +103,42 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(playlist.name,
-                                          style: const TextStyle(
-                                              color: GlassTheme.textPrimary,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700)),
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(playlist.name,
+                                                style: const TextStyle(
+                                                    color:
+                                                        GlassTheme.textPrimary,
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.w700),
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis),
+                                          ),
+                                          if (playlist.isAuto) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: GlassTheme.accentPurple
+                                                    .withOpacity(0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: const Text('自动',
+                                                  style: TextStyle(
+                                                      color: GlassTheme
+                                                          .accentPurple,
+                                                      fontSize: 10)),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                       const SizedBox(height: 4),
                                       Text(
                                         '${videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
@@ -114,14 +153,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                   label: '播放',
                                   height: 34,
                                   foregroundColor: GlassTheme.accentTeal,
-                                  onTap: () {
-                                    if (videos.isNotEmpty) {
-                                      context.pushNamed('player', extra: {
-                                        'videoPath': videos.first.path,
-                                        'videoTitle': videos.first.name,
-                                      });
-                                    }
-                                  },
+                                  onTap: () => playFrom(0),
                                 ),
                               ],
                             ),

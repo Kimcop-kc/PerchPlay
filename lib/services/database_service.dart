@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/video_model.dart';
@@ -19,7 +20,7 @@ class DatabaseService {
     final path = join(dbPath, 'vidflow.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -54,7 +55,8 @@ class DatabaseService {
         name TEXT NOT NULL,
         videoIds TEXT NOT NULL,
         createdAt TEXT NOT NULL,
-        sortOrder INTEGER DEFAULT 0
+        sortOrder INTEGER DEFAULT 0,
+        isAuto INTEGER DEFAULT 0
       )
     ''');
 
@@ -73,6 +75,13 @@ class DatabaseService {
     if (oldVersion < 2) {
       // v1 的 videos 表没有 lastPlayed 列，补上
       await db.execute('ALTER TABLE videos ADD COLUMN lastPlayed TEXT');
+    }
+    if (oldVersion < 3) {
+      // 自动生成的播放列表需要标记，扫描时才能只重建这部分
+      try {
+        await db.execute(
+            'ALTER TABLE playlists ADD COLUMN isAuto INTEGER DEFAULT 0');
+      } catch (_) {}
     }
   }
 
@@ -213,13 +222,47 @@ class DatabaseService {
   Future<List<Playlist>> getAllPlaylists() async {
     final db = await database;
     final maps = await db.query('playlists', orderBy: 'sortOrder ASC');
-    return maps.map((map) => Playlist.fromJson(map)).toList();
+    return maps.map(_playlistFromRow).toList();
+  }
+
+  /// sqflite 只支持基本类型，videoIds 以 JSON 字符串存放
+  Playlist _playlistFromRow(Map<String, dynamic> map) {
+    final raw = map['videoIds'];
+    var ids = <String>[];
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        ids = List<String>.from(jsonDecode(raw) as List);
+      } catch (_) {
+        ids = <String>[];
+      }
+    } else if (raw is List) {
+      ids = List<String>.from(raw);
+    }
+    return Playlist(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      videoIds: ids,
+      createdAt:
+          DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      sortOrder: (map['sortOrder'] as int?) ?? 0,
+      isAuto: ((map['isAuto'] as int?) ?? 0) == 1,
+    );
   }
 
   Future<void> savePlaylist(Playlist playlist) async {
     final db = await database;
-    await db.insert('playlists', playlist.toJson(),
+    final map = playlist.toJson();
+    // 关键：List 不能直接写库（会抛 unsupported type），序列化为字符串
+    map['videoIds'] = jsonEncode(playlist.videoIds);
+    map['isAuto'] = playlist.isAuto ? 1 : 0;
+    await db.insert('playlists', map,
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// 删除所有「自动生成」的列表（每次扫描后重建）
+  Future<void> deleteAutoPlaylists() async {
+    final db = await database;
+    await db.delete('playlists', where: 'isAuto = 1');
   }
 
   Future<void> deletePlaylist(String id) async {
