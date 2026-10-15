@@ -24,30 +24,57 @@ class GlassNavBar extends StatelessWidget {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusLg)),
       child: SafeBackdropFilter(
-        blurSigma: 24,
-        child: Container(
-          height: height + MediaQuery.of(context).padding.bottom,
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.white.withOpacity(0.5),
-                Colors.white.withOpacity(0.25),
-              ],
+        blurSigma: 30,
+        child: Stack(
+          children: [
+            Container(
+              height: height + MediaQuery.of(context).padding.bottom,
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withOpacity(0.62),
+                    Colors.white.withOpacity(0.30),
+                  ],
+                ),
+                border: Border(
+                  top: BorderSide(color: Colors.white.withOpacity(0.55), width: 0.8),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: items.map((item) {
+                  final isActive = currentRoute == item.route;
+                  return _NavItem(item: item, isActive: isActive);
+                }).toList(),
+              ),
             ),
-            border: Border(
-              top: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5),
+            // 液态玻璃顶部高光
+            IgnorePointer(
+              child: Container(
+                height: 20,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withOpacity(0.5),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: items.map((item) {
-              final isActive = currentRoute == item.route;
-              return _NavItem(item: item, isActive: isActive);
-            }).toList(),
-          ),
+          ],
         ),
       ),
     );
