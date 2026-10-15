@@ -24,19 +24,19 @@ class GlassNavBar extends StatefulWidget {
 
 class _GlassNavBarState extends State<GlassNavBar>
     with SingleTickerProviderStateMixin {
-  late AnimationController _slideController;
-  int _activeIndex = 0;
-  double _bubbleX = 0;
+  late AnimationController _slideCtrl;
+  int _currentIndex = 0;
+  int _prevIndex = 0;
 
-  // 气泡尺寸
   static const _bubbleW = 68.0;
   static const _bubbleH = 52.0;
 
   @override
   void initState() {
     super.initState();
-    _activeIndex = _resolveIndex();
-    _slideController = AnimationController(
+    _currentIndex = _resolveIndex();
+    _prevIndex = _currentIndex;
+    _slideCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
       value: 1.0,
@@ -47,9 +47,10 @@ class _GlassNavBarState extends State<GlassNavBar>
   void didUpdateWidget(covariant GlassNavBar old) {
     super.didUpdateWidget(old);
     final newIdx = _resolveIndex();
-    if (newIdx != _activeIndex) {
-      _activeIndex = newIdx;
-      _slideController.forward(from: 0.0);
+    if (newIdx != _currentIndex) {
+      _prevIndex = _currentIndex;
+      _currentIndex = newIdx;
+      _slideCtrl.forward(from: 0.0);
     }
   }
 
@@ -60,18 +61,23 @@ class _GlassNavBarState extends State<GlassNavBar>
     return 0;
   }
 
+  double _slotX(int index, double slotW) {
+    return slotW * index + (slotW - _bubbleW) / 2;
+  }
+
   @override
   void dispose() {
-    _slideController.dispose();
+    _slideCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomSafe = MediaQuery.of(context).padding.bottom;
-    final totalW = MediaQuery.of(context).size.width - 24; // 两侧留白 12
+    final totalW = MediaQuery.of(context).size.width - 24;
     final slotW = totalW / widget.items.length;
-    final targetX = slotW * _activeIndex + (slotW - _bubbleW) / 2;
+    final startX = _slotX(_prevIndex, slotW);
+    final endX = _slotX(_currentIndex, slotW);
 
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, bottomSafe > 0 ? bottomSafe : 8),
@@ -87,18 +93,14 @@ class _GlassNavBarState extends State<GlassNavBar>
                 // ── 轨道：半透明玻璃底板 ──
                 _GlassTrack(height: widget.height),
 
-                // ── 浮起透镜气泡 ──
+                // ── 浮起透镜气泡（startX→endX 平滑滑动）──
                 IgnorePointer(
                   child: AnimatedBuilder(
-                    animation: _slideController,
+                    animation: _slideCtrl,
                     builder: (context, _) {
-                      final eased = Curves.easeOutBack.transform(
-                          _slideController.value);
-                      final x = _bubbleX + (targetX - _bubbleX) * eased;
-                      // 记录当前位置，下次动画起点
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _bubbleX = x;
-                      });
+                      final t = Curves.easeOutBack.transform(
+                          _slideCtrl.value);
+                      final x = startX + (endX - startX) * t;
                       return Positioned(
                         left: x,
                         top: 4,
@@ -117,9 +119,9 @@ class _GlassNavBarState extends State<GlassNavBar>
                     return Expanded(
                       child: _NavLabel(
                         item: widget.items[i],
-                        isActive: i == _activeIndex,
+                        isActive: i == _currentIndex,
                         onTap: () {
-                          if (i != _activeIndex) {
+                          if (i != _currentIndex) {
                             widget.items[i].onTap?.call();
                           }
                         },
