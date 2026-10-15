@@ -100,6 +100,9 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
     final bottomSafe = MediaQuery.of(context).padding.bottom;
     final navH = widget.height + bottomSafe + 8.0;
 
+    // 订阅实时模糊开关：变更后导航栏整体重建（默认开启）
+    final blur = ref.watch(glassBlurProvider);
+
     return Container(
       height: navH,
       padding: EdgeInsets.fromLTRB(12, 6, 12, bottomSafe > 0 ? bottomSafe : 6),
@@ -121,9 +124,13 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
             fit: StackFit.expand,
             children: [
               // ── 轨道：毛玻璃底板 ──
-              // RepaintBoundary：气泡每帧移动时不会强制重算背后的模糊，
-              // 否则每帧都要重新做一次 BackdropFilter，掉帧明显
-              const RepaintBoundary(child: _GlassTrack()),
+              // 注意：Positioned 必须是 Stack 的直接子级，不能再包一层
+              // 别的组件（包了定位会静默失效，轨道会变成全宽直角条）。
+              // RepaintBoundary 放在 Positioned 里面，效果一样：
+              // 气泡每帧移动不会强制重算背后的模糊。
+              Positioned.fill(
+                child: RepaintBoundary(child: _GlassTrack(blur: blur)),
+              ),
 
               // 气泡 + 图标文字统一由同一条动画驱动
               AnimatedBuilder(
@@ -201,20 +208,18 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
 // BackdropFilter 毛玻璃模糊 + 轻薄白色叠加。
 // 所有页面统一这一套参数（首页与其他页一致，避免 UI 割裂感）。
 
-class _GlassTrack extends ConsumerWidget {
-  const _GlassTrack();
+class _GlassTrack extends StatelessWidget {
+  /// 是否做实时模糊（由导航栏顶层 watch 后传入，避免深层订阅漏重绘）
+  final bool blur;
+  const _GlassTrack({required this.blur});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // 实时模糊默认开启（液态玻璃观感核心），低端机可在设置里关闭
-    final blur = ref.watch(glassBlurProvider);
-
-    return Positioned.fill(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: _withOptionalBlur(
-          blur: blur,
-          child: Container(
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: _withOptionalBlur(
+        blur: blur,
+        child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               gradient: LinearGradient(
@@ -266,8 +271,7 @@ class _GlassTrack extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
