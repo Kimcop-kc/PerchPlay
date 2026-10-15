@@ -144,13 +144,14 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
                           child: RepaintBoundary(
                             child: Transform.translate(
                               offset: Offset(cx - _bubbleW / 2, 0),
-                              // 行进中轻微横向拉伸 + 纵向收缩，液态感；
-                              // t 与位移同相，不会出现呼吸和位移错拍
+                              // 液滴形变：沿运动方向拉伸、垂直方向压缩，
+                              // 与位移同一条曲线（sin 一次起落，回位无抖动）
                               child: Transform(
                                 alignment: Alignment.center,
                                 transform: Matrix4.identity()
-                                  ..scale(1.0 + 0.05 * math.sin(math.pi * t),
-                                      1.0 - 0.04 * math.sin(math.pi * t)),
+                                  ..scale(
+                                      1.0 + 0.075 * math.sin(math.pi * t),
+                                      1.0 - 0.055 * math.sin(math.pi * t)),
                                 child: _LensBubble(
                                   width: _bubbleW,
                                   height: _bubbleH,
@@ -260,6 +261,96 @@ class _GlassTrack extends ConsumerWidget {
                     ),
                   ),
                 ),
+
+                // 顶部棱线：一道细亮线 + 两端淡出（光打在玻璃上沿）
+                Positioned(
+                  top: 0,
+                  left: 34,
+                  right: 34,
+                  height: 1.2,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Colors.white.withOpacity(0.0),
+                            Colors.white.withOpacity(0.85),
+                            Colors.white.withOpacity(0.0),
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 底部内侧阴影：玻璃厚度（Flutter 无 inset shadow，用渐变模拟）
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 18,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(28)),
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.07),
+                            Colors.black.withOpacity(0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 色散边缘：极淡暖/冷分离，提示"折射"而非单纯模糊
+                Positioned(
+                  top: 0,
+                  left: 60,
+                  right: 150,
+                  height: 1.0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            const Color(0xFFFFC46B).withOpacity(0.22),
+                            const Color(0xFFFFC46B).withOpacity(0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  left: 150,
+                  right: 60,
+                  height: 1.0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            const Color(0x7B6CF6).withOpacity(0.0),
+                            const Color(0x7B6CF6).withOpacity(0.24),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -289,55 +380,157 @@ class _LensBubble extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(r),
-        // 白色玻璃主体：上亮下暗 → 玻璃厚度
+        // 玻璃主体：左上受光偏亮、右下偏暗 → 体积感
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Colors.white.withOpacity(0.85),
-            Colors.white.withOpacity(0.55),
-            Colors.white.withOpacity(0.30),
+            Colors.white.withOpacity(0.88),
+            Colors.white.withOpacity(0.60),
+            Colors.white.withOpacity(0.34),
           ],
-          stops: const [0.0, 0.45, 1.0],
-        ),
-        // 白色描边：玻璃边缘高光
-        border: Border.all(
-          width: 1.0,
-          color: Colors.white.withOpacity(0.85),
+          stops: const [0.0, 0.42, 1.0],
         ),
         boxShadow: [
-          // 投影 — 玻璃浮起
+          // 投影：玻璃浮在内容之上
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
-          // 顶部内发光
+          // 下方近距离接触阴影，压出"贴合"感
           BoxShadow(
-            color: Colors.white.withOpacity(0.6),
-            blurRadius: 6,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(r - 1),
+        borderRadius: BorderRadius.circular(r),
         child: Stack(
           children: [
-            // ── 顶部高光带（凸透镜反光） ──
+            // ── 边缘镜面高光：顶部一道细亮弧（两端淡出，像光打在玻璃棱上）──
             Positioned(
-              top: 2,
-              left: 8,
-              right: 8,
-              height: 6,
+              top: 0,
+              left: r * 0.55,
+              right: r * 0.55,
+              height: 1.4,
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(2),
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                     colors: [
-                      Colors.white.withOpacity(0.85),
+                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.95),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 高光晕（棱线下方柔和扩散）──
+            Positioned(
+              top: 1,
+              left: r * 0.4,
+              right: r * 0.4,
+              height: height * 0.34,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0.55),
+                        Colors.white.withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 厚度：底部内侧阴影（Flutter 没有 inset shadow，用渐变模拟）──
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: height * 0.42,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.10),
+                        Colors.black.withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 色散：边缘极淡的冷/暖色分离，模拟玻璃折射边缘 ──
+            Positioned(
+              top: 0,
+              left: r * 0.3,
+              right: r * 0.9,
+              height: 1.0,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFFFFC46B).withOpacity(0.30), // 暖（琥珀）
+                        const Color(0xFFFFC46B).withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: r * 0.9,
+              right: r * 0.3,
+              height: 1.0,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0x7B6CF6).withOpacity(0.0), // 冷（蓝紫）
+                        const Color(0x7B6CF6).withOpacity(0.32),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 左上角聚光斑（caustic）：玻璃厚处的亮点 ──
+            Positioned(
+              left: r * 0.18,
+              top: -height * 0.22,
+              child: Container(
+                width: width * 0.42,
+                height: height * 0.62,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.42),
                       Colors.white.withOpacity(0.0),
                     ],
                   ),
@@ -345,22 +538,37 @@ class _LensBubble extends StatelessWidget {
               ),
             ),
 
-            // ── 底部微反光 ──
+            // ── 底部微反光（内容透过玻璃后的回光）──
             Positioned(
               bottom: 1,
               left: 10,
               right: 10,
-              height: 3,
-              child: Container(
+              height: 2.5,
+              child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      Colors.white.withOpacity(0.30),
+                      Colors.white.withOpacity(0.28),
                       Colors.white.withOpacity(0.0),
                     ],
+                  ),
+                ),
+              ),
+            ),
+
+            // 内描边（贴边一圈极淡白线，闭合并强化边缘）
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(r),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.55),
+                      width: 0.8,
+                    ),
                   ),
                 ),
               ),
