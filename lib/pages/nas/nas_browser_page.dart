@@ -155,7 +155,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   Widget _buildConnectionList(NasState state) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
       itemCount: state.connections.length + 1, // +1 for add button on mobile
       itemBuilder: (context, index) {
         if (index == 0 && !AppBreakpoints.isLargeScreen(context)) {
@@ -321,7 +321,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       });
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
       itemCount: sorted.length,
       itemBuilder: (context, index) {
         final item = sorted[index];

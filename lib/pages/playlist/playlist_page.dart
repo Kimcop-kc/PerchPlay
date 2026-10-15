@@ -38,7 +38,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
               slivers: [
                 _buildHeader(playlists.length),
                 SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.fromLTRB(
+                      12, 0, 12, GlassTheme.navBarOverlay),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {

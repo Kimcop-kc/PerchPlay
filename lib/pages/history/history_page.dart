@@ -36,7 +36,8 @@ class HistoryPage extends ConsumerWidget {
               slivers: [
                 _buildHeader(context, watched.length),
                 SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.fromLTRB(
+                      12, 0, 12, GlassTheme.navBarOverlay),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {

@@ -62,7 +62,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 24),
                     _sectionHeader('关于'),
                     _buildAbout(),
-                    const SizedBox(height: 80),
+                    const SizedBox(height: GlassTheme.navBarOverlay + 16),
                   ],
                 ),
               ),
