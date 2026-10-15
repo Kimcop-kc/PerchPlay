@@ -130,13 +130,13 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   void _handleBrightnessGesture(double dy, double screenHeight) {
     final delta = -dy / screenHeight;
     _brightnessValue = ((_brightnessValue ?? 0.5) + delta).clamp(0.0, 1.0);
-    widget.onBrightnessChange(delta);
+    widget.onBrightnessChange(_brightnessValue!);
   }
 
   void _handleVolumeGesture(double dy, double screenHeight) {
     final delta = -dy / screenHeight;
     _volumeValue = ((_volumeValue ?? 0.5) + delta).clamp(0.0, 1.0);
-    widget.onVolumeChange(delta);
+    widget.onVolumeChange(_volumeValue!);
   }
 
   void _handleSeekGesture(double dx) {

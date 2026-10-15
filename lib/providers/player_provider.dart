@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import '../models/video_model.dart';
 import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
@@ -192,15 +193,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 设置音量
+  /// 设置音量（0-1，控制 media_kit 播放器音量）
   Future<void> setVolume(double vol) async {
-    state = state.copyWith(volume: vol.clamp(0.0, 1.0));
-    await state.player.setVolume(vol.clamp(0.0, 1.0) * 100);
+    final v = vol.clamp(0.0, 1.0);
+    state = state.copyWith(volume: v);
+    await state.player.setVolume(v * 100);
   }
 
-  /// 设置亮度
-  void setBrightness(double brightness) {
-    state = state.copyWith(brightness: brightness.clamp(0.0, 1.0));
+  /// 设置亮度（0-1，控制系统屏幕亮度）
+  Future<void> setBrightness(double brightness) async {
+    final b = brightness.clamp(0.0, 1.0);
+    state = state.copyWith(brightness: b);
+    try {
+      await ScreenBrightness().setScreenBrightness(b);
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Brightness] 设置系统亮度失败: $e');
+    }
   }
 
   /// 设置倍速

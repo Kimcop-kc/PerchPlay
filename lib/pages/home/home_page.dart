@@ -8,6 +8,7 @@ import '../../core/responsive/adaptive_scaffold.dart';
 import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/permission_provider.dart';
+import '../../providers/player_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -53,12 +54,16 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     });
   }
 
-  /// 启动时：检查权限 → 已授权则自动扫描，否则提示授权
+  /// 启动时：检查权限 → 仅当影库为空（首次）才自动扫描，否则只加载缓存
   Future<void> _initLibrary() async {
     final permissionNotifier = ref.read(permissionProvider.notifier);
     await permissionNotifier.requestVideoPermission();
     final hasPermission = ref.read(permissionProvider).hasVideoPermission;
-    if (hasPermission) {
+    if (!hasPermission) return;
+
+    // 已有缓存视频则不重复全盘扫描（避免每次进首页都扫）
+    final current = ref.read(libraryProvider).valueOrNull;
+    if (current == null || current.isEmpty) {
       await ref.read(libraryProvider.notifier).scan();
     }
   }
@@ -103,10 +108,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   Widget _buildMobileLayout(
       List<VideoModel> videos, int columns, double hp) {
+    final nowPlaying = _buildNowPlayingBar(context);
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
         _buildHeader(hp),
+        if (nowPlaying != null) nowPlaying,
         SliverPadding(
           padding: EdgeInsets.fromLTRB(hp, 8, hp, 24),
           sliver: SliverGrid(
@@ -127,6 +134,62 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           ),
         ),
       ],
+    );
+  }
+
+  /// 后台播放时，首页顶部显示「正在播放」悬浮条，点击返回播放器
+  Widget? _buildNowPlayingBar(BuildContext context) {
+    final playerState = ref.watch(playerProvider);
+    final video = playerState.currentVideo;
+    if (video == null) return null;
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: GlassCard(
+          radius: GlassTheme.radiusSm,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          onTap: () => context.pushNamed('player', extra: {
+            'videoPath': video.path,
+            'videoTitle': video.name,
+          }),
+          child: Row(
+            children: [
+              // 播放动画图标
+              Icon(
+                playerState.isPlaying
+                    ? Icons.equalizer_rounded
+                    : Icons.play_circle_fill_rounded,
+                color: GlassTheme.accentPurple,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  video.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                _formatDuration(playerState.position.inMilliseconds),
+                style: const TextStyle(
+                  color: GlassTheme.textTertiary,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded,
+                  color: GlassTheme.textTertiary, size: 18),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

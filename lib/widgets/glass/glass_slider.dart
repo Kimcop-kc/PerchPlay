@@ -36,24 +36,37 @@ class GlassSlider extends StatefulWidget {
 
 class _GlassSliderState extends State<GlassSlider> {
   bool _dragging = false;
+  double? _dragValue;
 
   @override
   Widget build(BuildContext context) {
-    final fraction = ((widget.value - widget.min) /
+    // 拖动时用内部值（跟手），否则用外部 value（反映真实进度）
+    final effectiveValue = _dragValue ?? widget.value;
+    final fraction = ((effectiveValue - widget.min) /
             (widget.max - widget.min))
         .clamp(0.0, 1.0);
 
     return GestureDetector(
       onPanDown: (details) {
         setState(() => _dragging = true);
-        _updateValue(details.localPosition.dx, context);
+        _dragValue = _valueAt(details.localPosition.dx, context);
       },
       onPanUpdate: (details) {
-        _updateValue(details.localPosition.dx, context);
+        setState(() {
+          _dragValue = _valueAt(details.localPosition.dx, context);
+        });
+        // 拖动过程中实时回调（用于进度预览）
+        widget.onChanged?.call(_dragValue!);
       },
       onPanEnd: (_) {
         setState(() => _dragging = false);
-        widget.onChangeEnd?.call(widget.value);
+        // 松手时提交最终值
+        widget.onChangeEnd?.call(_dragValue ?? widget.value);
+        _dragValue = null;
+      },
+      onPanCancel: () {
+        setState(() => _dragging = false);
+        _dragValue = null;
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -170,11 +183,11 @@ class _GlassSliderState extends State<GlassSlider> {
     );
   }
 
-  void _updateValue(double dx, BuildContext context) {
+  double _valueAt(double dx, BuildContext context) {
     final RenderBox box = context.findRenderObject() as RenderBox;
     final width = box.size.width;
+    if (width <= 0) return widget.value;
     final fraction = (dx / width).clamp(0.0, 1.0);
-    final newValue = widget.min + fraction * (widget.max - widget.min);
-    widget.onChanged?.call(newValue);
+    return widget.min + fraction * (widget.max - widget.min);
   }
 }

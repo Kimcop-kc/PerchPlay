@@ -73,6 +73,13 @@ class VideoScannerService {
       } else if (entity is File) {
         final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
         if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
+        // 过滤损坏/封面缓存等碎片文件（< 20KB 基本不是完整视频）
+        try {
+          final len = await entity.length();
+          if (len < 20 * 1024) continue;
+        } catch (_) {
+          continue;
+        }
         existingPaths.add(entity.path);
         final video = await _fileToModel(entity);
         if (video != null) found.add(video);
