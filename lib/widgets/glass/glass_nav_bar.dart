@@ -225,16 +225,16 @@ class _GlassTrack extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                // 关闭态做成明显更实的磨砂板（不是"薄一点的玻璃"）：
-                // 否则在纯色背景上开关前后几乎看不出区别，会被当成开关无效
+                // 外观与开关无关：关闭只去掉实时模糊，白色叠加/描边/投影
+                // 保持一致，避免"关掉就换了个样子"
                 colors: [
-                  Colors.white.withOpacity(blur ? 0.55 : 0.94),
-                  Colors.white.withOpacity(blur ? 0.35 : 0.86),
+                  Colors.white.withOpacity(0.55),
+                  Colors.white.withOpacity(0.35),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withOpacity(blur ? 0.60 : 0.95),
-                width: blur ? 0.7 : 1.0,
+                color: Colors.white.withOpacity(0.60),
+                width: 0.7,
               ),
               boxShadow: [
                 BoxShadow(

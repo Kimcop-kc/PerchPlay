@@ -212,8 +212,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),          const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              '开启：导航栏实时模糊背后的内容（首页滚动视频卡片时最明显）。'
-              '关闭：变成不透明的磨砂条，省电、防低端机发烫。',
+              '只影响是否对背后内容做实时模糊，导航栏外观不变。'
+              '关闭可省电、防止低端机发烫。',
               style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
             ),
           ),
