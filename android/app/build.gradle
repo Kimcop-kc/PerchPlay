@@ -35,7 +35,8 @@ android {
 
     defaultConfig {
         applicationId = "com.vidflow.player"
-        minSdk = flutter.minSdkVersion
+        // 最低支持 Android 14 (API 34)
+        minSdk = 34
         targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName

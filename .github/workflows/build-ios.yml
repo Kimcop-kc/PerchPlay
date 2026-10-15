@@ -39,6 +39,13 @@ jobs:
           flutter create --platforms=ios --org com.vidflow .
           echo "✅ flutter create 完成"
 
+      - name: 设置最低 iOS 18 部署目标
+        run: |
+          # 把 Xcode 工程的 IPHONEOS_DEPLOYMENT_TARGET 统一设为 18.0
+          grep -rl 'IPHONEOS_DEPLOYMENT_TARGET' ios/Runner.xcodeproj/project.pbxproj 2>/dev/null | xargs -r sed -i 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g'
+          grep 'IPHONEOS_DEPLOYMENT_TARGET' ios/Runner.xcodeproj/project.pbxproj | head -5 || echo "ℹ️ 未找到部署目标配置"
+          echo "✅ 部署目标已设为 iOS 18"
+
       - name: 覆盖自定义 iOS 文件
         run: |
           cp ios/manifest-backup/Info.plist ios/Runner/Info.plist 2>/dev/null || echo "ℹ️ 无需覆盖 Info.plist"
