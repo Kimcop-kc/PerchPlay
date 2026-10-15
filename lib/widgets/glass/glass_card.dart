@@ -157,6 +157,24 @@ class _GlassCardState extends State<GlassCard>
                       ),
                     ),
 
+                    // 底部反光（玻璃厚度感）
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: widget.radius * 0.6,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(widget.radius),
+                        ),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            gradient: GlassTheme.bottomGlare,
+                          ),
+                        ),
+                      ),
+                    ),
+
                     // 内容
                     Padding(
                       padding: widget.padding,
