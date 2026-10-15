@@ -131,7 +131,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           slivers: [
             _buildHeader(hp),
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(hp, 8, hp, miniPlayer != null ? 120 : 24),
+              // 底部预留：导航栏(72)+手势条(24)=96 为基线；
+              // 有 miniPlayer 时再多留 miniPlayer 高度(56)+间距(8)
+              padding: EdgeInsets.fromLTRB(
+                  hp, 8, hp, miniPlayer != null ? 160 : 96),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
@@ -152,12 +155,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ),
           ],
         ),
-        // 悬浮小窗：底部导航栏上方（导航栏高约 72 + 安全区 + 间距）
+        // 悬浮小窗：底部导航栏上方（padding.bottom 已含导航栏高度，+8 为间距）
         if (miniPlayer != null)
           Positioned(
             left: 0,
             right: 0,
-            bottom: MediaQuery.of(context).padding.bottom + 90,
+            bottom: MediaQuery.of(context).padding.bottom + 8,
             child: miniPlayer,
           ),
       ],

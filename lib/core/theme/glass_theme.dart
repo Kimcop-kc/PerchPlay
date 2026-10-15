@@ -37,6 +37,11 @@ class GlassTheme {
   static const tintPink = Color(0x14FF6B9D);
   static const tintWhite = Color(0x0AFFFFFF);
 
+  /// 底部玻璃导航栏遮挡内容的高度（不含系统手势条）。
+  /// = 导航栏轨道高(64+2) + 顶部 padding(6) = 72。
+  /// 各滚动页面在底部预留此高度，避免最后一项被导航栏遮住。
+  static const double navBarOverlay = 72.0;
+
   // ────────── 圆角 ──────────
   static const radiusXs = 10.0;
   static const radiusSm = 14.0;

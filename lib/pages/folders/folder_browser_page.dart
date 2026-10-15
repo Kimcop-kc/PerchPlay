@@ -301,7 +301,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
 
   Widget _buildGridView() {
     return GridView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12 + GlassTheme.navBarOverlay),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 10,
@@ -357,7 +357,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
 
   Widget _buildListView() {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
       itemCount: _entries.length,
       itemBuilder: (context, index) {
         final entry = _entries[index];

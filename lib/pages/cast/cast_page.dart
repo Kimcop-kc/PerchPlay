@@ -233,7 +233,7 @@ class _CastPageState extends ConsumerState<CastPage>
         .toList();
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
       children: [
         if (dlna.isNotEmpty) ...[
           _sectionHeader('DLNA / UPnP'),
