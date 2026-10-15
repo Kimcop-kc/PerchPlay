@@ -98,12 +98,15 @@ class _CastPageState extends ConsumerState<CastPage>
       switchOutCurve: Curves.easeIn,
       child: state.isConnected && state.activeDevice != null
           ? _buildConnectedPanel(state)
-          : Column(
-              children: [
-                _buildScanHeader(state),
-                Expanded(child: _buildDeviceList(state)),
-              ],
-            ),
+          // 没有设备时不显示顶部扫描条，整块内容居中（含扫描状态与重新搜索）
+          : state.devices.isEmpty
+              ? _buildEmptyDeviceList(state)
+              : Column(
+                  children: [
+                    _buildScanHeader(state),
+                    Expanded(child: _buildDeviceList(state)),
+                  ],
+                ),
     );
   }
 
@@ -194,6 +197,47 @@ class _CastPageState extends ConsumerState<CastPage>
   }
 
   // ═══════════════ 设备列表 ═══════════════
+
+  /// 无设备时的居中空状态（扫描状态 + 重新搜索）
+  Widget _buildEmptyDeviceList(CastState state) {
+    return Center(
+      child: GlassPanel(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (state.isDiscovering)
+              const SizedBox(
+                width: 44,
+                height: 44,
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, color: GlassTheme.accentPurple),
+              )
+            else
+              Icon(Icons.cast_rounded,
+                  size: 48, color: GlassTheme.textTertiary),
+            const SizedBox(height: 14),
+            Text(
+              state.isDiscovering ? '正在搜索投屏设备…' : '未发现投屏设备',
+              style:
+                  const TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
+            ),
+            const SizedBox(height: 6),
+            const Text('请确保设备与手机在同一 Wi-Fi 网络',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
+            const SizedBox(height: 18),
+            GlassButton.outlined(
+              icon: Icons.refresh_rounded,
+              label: '重新搜索',
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: () => ref.read(castProvider.notifier).refresh(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildDeviceList(CastState state) {
     if (state.devices.isEmpty) {

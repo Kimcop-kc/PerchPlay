@@ -1,18 +1,29 @@
 import 'package:flutter/material.dart';
 
 /// 视频播放器手势层
-/// 左侧上下滑动: 调节亮度
-/// 右侧上下滑动: 调节音量
-/// 水平滑动: 快进/快退
-/// 单击: 显示/隐藏控制栏
-/// 双击: 播放/暂停
+///
+/// 左半屏上下滑动：亮度   右半屏上下滑动：音量
+/// 水平滑动：快进/快退     单击：显示/隐藏控制栏   双击：播放/暂停
+///
+/// 数值按「手势起点值 + 累计位移」线性计算（不做逐帧累加），
+/// 否则位移会被平方放大，稍微一滑就调到底。
 class PlayerGestureLayer extends StatefulWidget {
   final Widget? child;
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
-  final void Function(double delta) onBrightnessChange;
-  final void Function(double delta) onVolumeChange;
+
+  /// 绝对亮度 0..1
+  final ValueChanged<double> onBrightnessChange;
+
+  /// 绝对音量 0..1
+  final ValueChanged<double> onVolumeChange;
+
+  /// 相对快进秒数（可为负）
   final void Function(int seconds) onSeek;
+
+  /// 手势开始时的当前亮度/音量，作为滑动基准
+  final double initialBrightness;
+  final double initialVolume;
 
   const PlayerGestureLayer({
     super.key,
@@ -22,33 +33,44 @@ class PlayerGestureLayer extends StatefulWidget {
     required this.onBrightnessChange,
     required this.onVolumeChange,
     required this.onSeek,
+    this.initialBrightness = 0.5,
+    this.initialVolume = 0.5,
   });
 
   @override
   State<PlayerGestureLayer> createState() => _PlayerGestureLayerState();
 }
 
-class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
-  // 手势追踪
-  int _activePointers = 0;
-  Offset? _startPosition;
+enum _GestureAxis { none, vertical, horizontal }
 
-  // 显示状态
+class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
+  Offset? _startPosition;
+  _GestureAxis _axis = _GestureAxis.none;
+
+  // 手势基准值
+  double _baseBrightness = 0.5;
+  double _baseVolume = 0.5;
+
+  // 指示器状态
   double? _brightnessValue;
   double? _volumeValue;
   int? _seekSeconds;
-  bool _showSeekIndicator = false;
   bool _seekForward = true;
 
-  // 常量
-  static const double _seekSensitivity = 2.0; // 像素/秒
+  /// 纵向：需要滑动「屏幕高度 × 该系数」才走完 100%，避免过于灵敏
+  static const double _verticalDamping = 1.25;
+
+  /// 横向：滑过整屏宽度对应 180 秒
+  static const double _seekSecondsPerScreen = 180.0;
+
+  /// 判定手势方向的最小位移
+  static const double _axisThreshold = 12.0;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 手势检测
         GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: widget.onTap,
@@ -59,7 +81,6 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           child: widget.child ?? const SizedBox.expand(),
         ),
 
-        // 亮度指示器
         if (_brightnessValue != null)
           _buildIndicator(
             icon: Icons.brightness_6_rounded,
@@ -67,7 +88,6 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             label: '亮度',
           ),
 
-        // 音量指示器
         if (_volumeValue != null)
           _buildIndicator(
             icon: Icons.volume_up_rounded,
@@ -75,75 +95,85 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             label: '音量',
           ),
 
-        // 快进/快退指示器
-        if (_showSeekIndicator && _seekSeconds != null)
-          _buildSeekIndicator(),
+        if (_seekSeconds != null && _seekSeconds != 0) _buildSeekIndicator(),
       ],
     );
   }
 
   void _onScaleStart(ScaleStartDetails details) {
-    _activePointers++;
-    if (_activePointers == 1) {
-      _startPosition = details.localFocalPoint;
-    }
+    _startPosition = details.localFocalPoint;
+    _axis = _GestureAxis.none;
+    // 以当前实际值作为基准，避免每次都从 50% 起算
+    _baseBrightness = widget.initialBrightness;
+    _baseVolume = widget.initialVolume;
+    _brightnessValue = null;
+    _volumeValue = null;
+    _seekSeconds = null;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
-    if (_startPosition == null) return;
+    // 双指（缩放）不参与亮度/音量/进度调节
+    if (details.pointerCount > 1 || _startPosition == null) return;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isLeftSide = _startPosition!.dx < screenWidth / 2;
+    final size = MediaQuery.of(context).size;
     final dx = details.localFocalPoint.dx - _startPosition!.dx;
     final dy = details.localFocalPoint.dy - _startPosition!.dy;
 
-    // 判断手势方向
-    if (dx.abs() > dy.abs() && dx.abs() > 8) {
-      // 水平滑动 -> 快进/快退
-      _handleSeekGesture(dx);
-    } else if (dy.abs() > 8) {
-      // 垂直滑动
-      if (isLeftSide) {
-        _handleBrightnessGesture(dy, screenHeight);
-      } else {
-        _handleVolumeGesture(dy, screenHeight);
-      }
+    // 锁定手势方向，避免中途在横向/纵向之间来回跳
+    if (_axis == _GestureAxis.none) {
+      if (dx.abs() < _axisThreshold && dy.abs() < _axisThreshold) return;
+      _axis = dx.abs() > dy.abs() ? _GestureAxis.horizontal : _GestureAxis.vertical;
+    }
+
+    switch (_axis) {
+      case _GestureAxis.horizontal:
+        _handleSeekGesture(dx, size.width);
+      case _GestureAxis.vertical:
+        final isLeftSide = _startPosition!.dx < size.width / 2;
+        if (isLeftSide) {
+          _handleBrightnessGesture(dy, size.height);
+        } else {
+          _handleVolumeGesture(dy, size.height);
+        }
+      case _GestureAxis.none:
+        break;
     }
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
-    _activePointers = 0;
-
-    // 执行实际的 seek
-    if (_seekSeconds != null && _seekSeconds != 0) {
+    if (_axis == _GestureAxis.horizontal &&
+        _seekSeconds != null &&
+        _seekSeconds != 0) {
       widget.onSeek(_seekSeconds!);
     }
-
     _startPosition = null;
-    _brightnessValue = null;
-    _volumeValue = null;
-    _seekSeconds = null;
-    _showSeekIndicator = false;
+    _axis = _GestureAxis.none;
+    setState(() {
+      _brightnessValue = null;
+      _volumeValue = null;
+      _seekSeconds = null;
+    });
   }
 
   void _handleBrightnessGesture(double dy, double screenHeight) {
-    final delta = -dy / screenHeight;
-    _brightnessValue = ((_brightnessValue ?? 0.5) + delta).clamp(0.0, 1.0);
-    widget.onBrightnessChange(_brightnessValue!);
+    // 向上滑变亮：位移相对基准值一次性换算，不做累加
+    final delta = -dy / (screenHeight * _verticalDamping);
+    final value = (_baseBrightness + delta).clamp(0.0, 1.0);
+    setState(() => _brightnessValue = value);
+    widget.onBrightnessChange(value);
   }
 
   void _handleVolumeGesture(double dy, double screenHeight) {
-    final delta = -dy / screenHeight;
-    _volumeValue = ((_volumeValue ?? 0.5) + delta).clamp(0.0, 1.0);
-    widget.onVolumeChange(_volumeValue!);
+    final delta = -dy / (screenHeight * _verticalDamping);
+    final value = (_baseVolume + delta).clamp(0.0, 1.0);
+    setState(() => _volumeValue = value);
+    widget.onVolumeChange(value);
   }
 
-  void _handleSeekGesture(double dx) {
-    _showSeekIndicator = true;
+  void _handleSeekGesture(double dx, double screenWidth) {
     _seekForward = dx > 0;
-    final seconds = (dx * _seekSensitivity).round();
-    _seekSeconds = seconds;
+    final seconds = (dx / screenWidth * _seekSecondsPerScreen).round();
+    setState(() => _seekSeconds = seconds);
   }
 
   Widget _buildIndicator({
@@ -169,7 +199,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             ),
             Text(
               label,
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ],
         ),
@@ -189,7 +219,9 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              _seekForward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+              _seekForward
+                  ? Icons.fast_forward_rounded
+                  : Icons.fast_rewind_rounded,
               color: Colors.white,
               size: 28,
             ),

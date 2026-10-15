@@ -8,6 +8,7 @@ import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
+import '../../providers/player_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -140,6 +141,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             (v) => _settings.setBackgroundPlay(v).then((_) {
               if (mounted) setState(() {});
             }),
+          ),
+          _divider(),
+          // 解码方式：硬解（省电、4K 流畅）/ 软解（兼容花屏、黑屏的机型）
+          _settingSwitch(
+            Icons.memory_rounded,
+            '硬件解码',
+            _settings.hardwareDecoding,
+            (v) => _settings.setHardwareDecoding(v).then((_) {
+              // 立即对当前播放器生效
+              ref.read(playerProvider.notifier).applyDecodingMode();
+              if (mounted) setState(() {});
+            }),
+          ),
+          _divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '遇到花屏 / 黑屏 / 无法播放时，可关闭硬件解码改用软件解码',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
           ),
         ],
       ),
