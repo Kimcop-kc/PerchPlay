@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 
@@ -28,9 +29,9 @@ class _GlassNavBarState extends State<GlassNavBar>
   int _currentIndex = 0;
   int _prevIndex = 0;
 
-  // 气泡尺寸
-  static const _bubbleW = 72.0;
-  static const _bubbleH = 48.0;
+  // 气泡尺寸（随 slotW 动态计算，见 build）
+  double _bubbleW = 56.0;
+  double _bubbleH = 40.0;
 
   @override
   void initState() {
@@ -83,37 +84,50 @@ class _GlassNavBarState extends State<GlassNavBar>
       child: LayoutBuilder(
         builder: (context, box) {
           final trackW = box.maxWidth;
+          final trackH = box.maxHeight;
           final slotW = trackW / widget.items.length;
+          // 气泡宽度 = slot 的 72%（留出 tab 间距），高度 = 宽 × 0.72
+          _bubbleW = (slotW * 0.72).clamp(40.0, 72.0);
+          _bubbleH = (_bubbleW * 0.72).clamp(32.0, 52.0);
           final startCx = _slotCenterX(_prevIndex, slotW);
           final endCx = _slotCenterX(_currentIndex, slotW);
 
+          // fit: expand 让轨道填满完整高度（否则 Stack 高度被 Row 的
+          // 32px 图标文字撑起，轨道会塌缩成一条细线）
           return Stack(
             clipBehavior: Clip.none,
+            fit: StackFit.expand,
             children: [
               // ── 轨道：毛玻璃底板 ──
               _GlassTrack(),
 
               // ── 浮起透镜气泡 ──
-              IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _slideCtrl,
-                  builder: (context, _) {
-                    final t = _springEval(_slideCtrl.value);
-                    final cx = startCx + (endCx - startCx) * t;
-                    return Positioned(
-                      left: cx - _bubbleW / 2,
-                      top: (widget.height - _bubbleH) / 2,
-                      child: const _LensBubble(
-                        width: _bubbleW,
-                        height: _bubbleH,
-                      ),
-                    );
-                  },
+              // Positioned 必须是 Stack 直接子级才能生效；
+              // 动画在内部用 Transform.translate 做水平滑动。
+              Positioned(
+                left: 0,
+                top: (trackH - _bubbleH) / 2,
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _slideCtrl,
+                    builder: (context, _) {
+                      final t = _springEval(_slideCtrl.value);
+                      final cx = startCx + (endCx - startCx) * t;
+                      return Transform.translate(
+                        offset: Offset(cx - _bubbleW / 2, 0),
+                        child: _LensBubble(
+                          width: _bubbleW,
+                          height: _bubbleH,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
 
               // ── 图标文字层 ──
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: List.generate(widget.items.length, (i) {
                   return Expanded(
                     child: _NavLabel(
@@ -140,14 +154,16 @@ class _GlassNavBarState extends State<GlassNavBar>
     const beta = 18.0 / 2; // damping/2mass
     const omega = 14.0; // sqrt(stiffness/mass - beta^2)
     final envelope = math.exp(-beta * t);
-    return 1 - envelope * (math.cos(omega * t) + beta / omega * math.sin(omega * t));
+    final v = 1 -
+        envelope * (math.cos(omega * t) + beta / omega * math.sin(omega * t));
+    return v.clamp(0.0, 1.0);
   }
 }
 
 // ═══════════════ 毛玻璃轨道 ═══════════════
 //
-// Android 不用 BackdropFilter（GPU 兼容问题），
-// 改用多层半透明白色渐变 + 彩色光斑模拟毛玻璃折射。
+// 真正的 BackdropFilter 毛玻璃模糊 + 轻薄白色叠加。
+// 白色叠加保持低透明度，让背后滚动的内容透过模糊显现出来。
 
 class _GlassTrack extends StatelessWidget {
   @override
@@ -155,119 +171,57 @@ class _GlassTrack extends StatelessWidget {
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            // 多层半透明白色 → 模拟毛玻璃折射
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.72),
-                Colors.white.withOpacity(0.48),
-                Colors.white.withOpacity(0.35),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              // 轻薄白色叠加 → 毛玻璃（不盖死背后的内容）
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white.withOpacity(0.40),
+                  Colors.white.withOpacity(0.18),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.45),
+                width: 0.7,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.10),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
               ],
-              stops: const [0.0, 0.5, 1.0],
             ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.55),
-              width: 0.8,
+            child: Stack(
+              children: [
+                // 顶部高光带（玻璃反光）
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 16,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(28)),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withOpacity(0.40),
+                          Colors.white.withOpacity(0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.10),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-              // 底部微光
-              BoxShadow(
-                color: Colors.white.withOpacity(0.25),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              // 顶部高光带
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 18,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(28)),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withOpacity(0.50),
-                        Colors.white.withOpacity(0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // 底部微反光
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: 10,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(28)),
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.white.withOpacity(0.18),
-                        Colors.white.withOpacity(0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // 左侧彩色光斑（模拟折射）
-              Positioned(
-                top: -20,
-                left: -30,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        GlassTheme.accentPurple.withOpacity(0.08),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // 右侧彩色光斑
-              Positioned(
-                bottom: -20,
-                right: -30,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        GlassTheme.accentTeal.withOpacity(0.06),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),
@@ -277,7 +231,9 @@ class _GlassTrack extends StatelessWidget {
 
 // ═══════════════ 透镜气泡 ═══════════════
 //
-// 浮起凸透镜：白色半透主体 + 彩虹折射色散边缘 + 投影 + 内高光
+// 干净的白色液态玻璃气泡（参考 iOS Liquid Glass 选中态）：
+// 白色半透主体（上亮下暗的玻璃厚度）+ 白色描边 + 顶部高光 + 投影。
+// 无彩虹色，靠白色高光和投影塑造「凸起透镜」质感。
 
 class _LensBubble extends StatelessWidget {
   final double width;
@@ -286,105 +242,57 @@ class _LensBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const r = 20.0; // 气泡圆角
+    final r = height * 0.5;
 
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(r),
-        // 透镜主体：上亮下暗 → 玻璃厚度
+        // 白色玻璃主体：上亮下暗 → 玻璃厚度
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withOpacity(0.78),
-            Colors.white.withOpacity(0.45),
-            Colors.white.withOpacity(0.20),
+            Colors.white.withOpacity(0.85),
+            Colors.white.withOpacity(0.55),
+            Colors.white.withOpacity(0.30),
           ],
-          stops: const [0.0, 0.5, 1.0],
+          stops: const [0.0, 0.45, 1.0],
         ),
-        // 外框：白色半透
+        // 白色描边：玻璃边缘高光
         border: Border.all(
           width: 1.0,
-          color: Colors.white.withOpacity(0.60),
+          color: Colors.white.withOpacity(0.85),
         ),
         boxShadow: [
-          // 投影 — 玻璃厚度浮起感
+          // 投影 — 玻璃浮起
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-          // 上方内发光 — 透镜中心亮
-          BoxShadow(
-            color: Colors.white.withOpacity(0.70),
+            color: Colors.black.withOpacity(0.16),
             blurRadius: 10,
-            offset: const Offset(0, -3),
+            offset: const Offset(0, 5),
           ),
-          // 微扩散光晕
+          // 顶部内发光
           BoxShadow(
-            color: GlassTheme.accentPurple.withOpacity(0.10),
-            blurRadius: 16,
-            offset: Offset.zero,
+            color: Colors.white.withOpacity(0.6),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(r),
+        borderRadius: BorderRadius.circular(r - 1),
         child: Stack(
           children: [
-            // ── 彩虹色散边缘（chromatic aberration） ──
-            // 上边缘
+            // ── 顶部高光带（凸透镜反光） ──
             Positioned(
-              top: 0,
-              left: 4,
-              right: 4,
-              height: 2.0,
-              child: _chromaticBar(
-                [Color(0xCC00E5FF), Color(0xCCB388FF), Color(0xCCFF80AB)],
-              ),
-            ),
-            // 下边缘
-            Positioned(
-              bottom: 0,
-              left: 4,
-              right: 4,
-              height: 2.0,
-              child: _chromaticBar(
-                [Color(0xCCFF80AB), Color(0xCCFFD740), Color(0xCC00E5FF)],
-              ),
-            ),
-            // 左边缘
-            Positioned(
-              top: 4,
-              bottom: 4,
-              left: 0,
-              width: 2.0,
-              child: _chromaticBarV(
-                [Color(0xCCB388FF), Color(0xCCFF80AB)],
-              ),
-            ),
-            // 右边缘
-            Positioned(
-              top: 4,
-              bottom: 4,
-              right: 0,
-              width: 2.0,
-              child: _chromaticBarV(
-                [Color(0xCC00E5FF), Color(0xCCFFD740)],
-              ),
-            ),
-
-            // ── 气泡内部高光（透镜凸起质感） ──
-            Positioned(
-              top: 3,
-              left: 12,
-              right: 12,
+              top: 2,
+              left: 8,
+              right: 8,
+              height: 6,
               child: Container(
-                height: 8,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -399,13 +307,13 @@ class _LensBubble extends StatelessWidget {
 
             // ── 底部微反光 ──
             Positioned(
-              bottom: 2,
-              left: 16,
-              right: 16,
+              bottom: 1,
+              left: 10,
+              right: 10,
+              height: 3,
               child: Container(
-                height: 4,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
@@ -418,26 +326,6 @@ class _LensBubble extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _chromaticBar(List<Color> colors) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors),
-      ),
-    );
-  }
-
-  static Widget _chromaticBarV(List<Color> colors) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: colors,
         ),
       ),
     );
