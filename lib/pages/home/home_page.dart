@@ -140,8 +140,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   crossAxisCount: columns,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  // 横向卡片：缩略图宽高比约 16:9，加上下方文字行
-                  childAspectRatio: 1.5,
+                  // 横向卡片（16:9），缩略图铺满整张卡片
+                  childAspectRatio: 1.7,
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => GlassAnimations.scaleIn(
@@ -185,7 +185,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     crossAxisCount: columns - 1,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childAspectRatio: 1.5,
+                    childAspectRatio: 1.7,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) => GlassAnimations.scaleIn(
@@ -277,17 +277,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   Widget _buildVideoCard(VideoModel video, int index,
       {bool showSelect = false}) {
-    final isSelected = _selectedVideo?.id == video.id;
     final progressPercent = video.durationMs > 0
         ? (video.lastPosition / video.durationMs).clamp(0.0, 1.0)
         : 0.0;
 
-    return GlassCard(
-      radius: GlassTheme.radiusLg,
-      padding: const EdgeInsets.all(8),
-      enableHover: true,
-      selected: isSelected,
-      tint: GlassTheme.tintPurple,
+    return GestureDetector(
       onTap: () {
         if (showSelect) {
           setState(() => _selectedVideo = video);
@@ -298,98 +292,138 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           });
         }
       },
-      child: Row(
-        children: [
-          // 横向小长方形缩略图（16:9）
-          ClipRRect(
-            borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-            child: SizedBox(
-              width: 96,
-              height: 54,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  video.thumbnailPath.isNotEmpty
-                      ? Image.file(
-                          File(video.thumbnailPath),
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          color: Colors.black.withOpacity(0.05),
-                          child: Icon(Icons.movie_rounded,
-                              color: GlassTheme.textTertiary, size: 28),
-                        ),
-                  // 播放按钮
-                  Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // ── 缩略图铺满整张卡片 ──
+            video.thumbnailPath.isNotEmpty
+                ? Image.file(
+                    File(video.thumbnailPath),
+                    fit: BoxFit.cover,
+                  )
+                : Container(
+                    color: Colors.black.withOpacity(0.08),
+                    child: const Center(
+                      child: Icon(Icons.movie_rounded,
+                          color: GlassTheme.textTertiary, size: 40),
+                    ),
+                  ),
+
+            // 播放按钮（居中）
+            Center(
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withOpacity(0.35),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.7),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 26),
+              ),
+            ),
+
+            // 右上角删除按钮
+            Positioned(
+              top: 6,
+              right: 6,
+              child: GestureDetector(
+                onTap: () => _confirmDeleteVideo(video),
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.4),
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 底部渐变遮罩 + 标题 + 时长 ──
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 24, 10, 8),
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(GlassTheme.radiusLg)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.75),
+                    ],
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      video.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatDuration(video.durationMs),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 底部进度条（静态，避免 LinearProgressIndicator 动画在 S/W 渲染崩溃）
+            if (progressPercent > 0 && progressPercent < 1)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(GlassTheme.radiusLg)),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: progressPercent,
                     child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.30),
-                      ),
-                      child: const Icon(Icons.play_arrow_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                  ),
-                  // 进度条
-                  if (progressPercent > 0 && progressPercent < 1)
-                    Positioned(
-                      bottom: 4,
-                      left: 6,
-                      right: 6,
-                      child: GlassSlider(
-                        value: progressPercent,
-                        height: 2,
-                        activeColor: GlassTheme.accentPurple,
-                        showThumb: false,
+                      decoration: const BoxDecoration(
+                        color: GlassTheme.accentPurple,
+                        borderRadius: BorderRadius.horizontal(
+                            left: Radius.circular(GlassTheme.radiusLg)),
                       ),
                     ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // 标题 + 时长 + 删除
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  video.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDuration(video.durationMs),
-                  style: TextStyle(
-                    color: GlassTheme.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 删除按钮
-          GestureDetector(
-            onTap: () => _confirmDeleteVideo(video),
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              child: const Icon(
-                Icons.delete_outline_rounded,
-                size: 18,
-                color: GlassTheme.textTertiary,
               ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
