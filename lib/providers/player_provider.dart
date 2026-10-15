@@ -29,6 +29,16 @@ class PlayerState {
   final List<SubtitleEntry>? subtitleEntries;
   final int activeSubtitleIndex;
 
+  /// 视频画面尺寸（分辨率），未知为 0
+  final int videoWidth;
+  final int videoHeight;
+
+  /// 内嵌字幕轨道（来自容器）
+  final List<SubtitleTrack> embeddedSubtitles;
+
+  /// 当前选中的内嵌轨道 id
+  final String? activeTrackId;
+
   const PlayerState({
     required this.player,
     this.videoController,
@@ -47,6 +57,10 @@ class PlayerState {
     this.activeSubtitle,
     this.subtitleEntries,
     this.activeSubtitleIndex = 0,
+    this.videoWidth = 0,
+    this.videoHeight = 0,
+    this.embeddedSubtitles = const [],
+    this.activeTrackId,
   });
 
   PlayerState copyWith({
@@ -67,6 +81,12 @@ class PlayerState {
     SubtitleModel? activeSubtitle,
     List<SubtitleEntry>? subtitleEntries,
     int? activeSubtitleIndex,
+    int? videoWidth,
+    int? videoHeight,
+    List<SubtitleTrack>? embeddedSubtitles,
+    String? activeTrackId,
+    bool clearActiveSubtitle = false,
+    bool clearTrackId = false,
   }) {
     return PlayerState(
       player: player ?? this.player,
@@ -83,9 +103,14 @@ class PlayerState {
       queue: queue ?? this.queue,
       currentIndex: currentIndex ?? this.currentIndex,
       availableSubtitles: availableSubtitles ?? this.availableSubtitles,
-      activeSubtitle: activeSubtitle ?? this.activeSubtitle,
+      activeSubtitle:
+          clearActiveSubtitle ? null : (activeSubtitle ?? this.activeSubtitle),
       subtitleEntries: subtitleEntries ?? this.subtitleEntries,
       activeSubtitleIndex: activeSubtitleIndex ?? this.activeSubtitleIndex,
+      videoWidth: videoWidth ?? this.videoWidth,
+      videoHeight: videoHeight ?? this.videoHeight,
+      embeddedSubtitles: embeddedSubtitles ?? this.embeddedSubtitles,
+      activeTrackId: clearTrackId ? null : (activeTrackId ?? this.activeTrackId),
     );
   }
 }
@@ -102,6 +127,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _globalController = VideoController(state.player);
     state = state.copyWith(videoController: _globalController);
     _setupListeners();
+    applyDecodingMode();
+  }
+
+  /// 应用硬解/软解设置（mpv hwdec）
+  Future<void> applyDecodingMode() async {
+    final on = AppSettingsService.instance.hardwareDecoding;
+    try {
+      final platform = state.player.platform;
+      if (platform is NativePlayer) {
+        await platform.setProperty('hwdec', on ? 'auto-safe' : 'no');
+      }
+    } catch (e) {
+      debugPrint('[Player] set hwdec failed: $e');
+    }
   }
 
   /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
@@ -141,6 +180,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.buffering.listen((buffering) {
       state = state.copyWith(isBuffering: buffering);
+    });
+
+    // 画面分辨率（详情展示用）
+    state.player.stream.width.listen((w) {
+      if (w != null && w > 0) state = state.copyWith(videoWidth: w);
+    });
+    state.player.stream.height.listen((h) {
+      if (h != null && h > 0) state = state.copyWith(videoHeight: h);
+    });
+
+    // 字幕/音轨等轨道信息（内嵌字幕识别）
+    state.player.stream.tracks.listen((tracks) {
+      final subs = tracks.subtitle
+          .where((t) => t.id != 'auto' && t.id != 'no')
+          .toList();
+      state = state.copyWith(embeddedSubtitles: subs);
     });
 
     state.player.stream.completed.listen((_) {
@@ -201,8 +256,19 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       isCompleted: false,
       position: Duration.zero,
       speed: AppSettingsService.instance.defaultSpeed,
+      // 换片时清掉上一部的字幕状态（内嵌轨道会由 tracks 流重新推送）
+      clearActiveSubtitle: true,
+      clearTrackId: true,
+      subtitleEntries: null,
+      embeddedSubtitles: const [],
+      videoWidth: 0,
+      videoHeight: 0,
+      availableSubtitles: const [],
     );
     _lastSaveAt = DateTime.now();
+
+    // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
+    await applyDecodingMode();
 
     // 应用默认播放速度
     await state.player
@@ -315,29 +381,83 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 选择字幕轨道
-  void selectSubtitle(SubtitleModel subtitle) {
-    state = state.copyWith(activeSubtitle: subtitle);
+  // ═══════════════ 字幕 ═══════════════
+
+  /// 选择内嵌字幕轨道（容器内的字幕流）
+  Future<void> selectEmbeddedSubtitle(SubtitleTrack track) async {
+    try {
+      await state.player.setSubtitleTrack(track);
+    } catch (e) {
+      debugPrint('[Subtitle] 选择内嵌轨道失败: $e');
+    }
+    state = state.copyWith(
+      activeTrackId: track.id,
+      clearActiveSubtitle: true,
+      subtitleEntries: null,
+    );
   }
 
-  /// 字幕相关
-  Future<void> loadSubtitle(SubtitleModel subtitle) async {
-    // media_kit 自带字幕支持，也可手动解析
-    final isEmbedded = false; // media_kit handles embedded
-    if (!isEmbedded) {
-      final entries = await _parseSubtitle(subtitle);
+  /// 关闭字幕
+  Future<void> disableSubtitles() async {
+    try {
+      await state.player.setSubtitleTrack(SubtitleTrack.no());
+    } catch (_) {}
+    state = state.copyWith(
+      clearTrackId: true,
+      clearActiveSubtitle: true,
+      subtitleEntries: null,
+    );
+  }
+
+  /// 加载外挂字幕文件并立即生效
+  Future<void> loadExternalSubtitle(String path,
+      {String? title, String? language}) async {
+    try {
+      await state.player.setSubtitleTrack(
+        SubtitleTrack.uri(path, title: title, language: language),
+      );
+    } catch (e) {
+      debugPrint('[Subtitle] 载入外挂字幕失败: $e');
+    }
+    final model = SubtitleModel(
+      path: path,
+      language: language ?? '外挂字幕',
+      title: title ?? path.split('/').last,
+    );
+    final entries = await _parseSubtitle(model);
+    state = state.copyWith(
+      activeSubtitle: model,
+      clearTrackId: true,
+      subtitleEntries: entries,
+      activeSubtitleIndex: 0,
+    );
+    // 记录到可选项，便于再次切换
+    if (!state.availableSubtitles.any((s) => s.path == path)) {
       state = state.copyWith(
-        activeSubtitle: subtitle,
-        subtitleEntries: entries,
+        availableSubtitles: [...state.availableSubtitles, model],
       );
     }
   }
 
+  /// 兼容旧调用
+  Future<void> selectSubtitle(SubtitleModel subtitle) =>
+      loadExternalSubtitle(subtitle.path, language: subtitle.language);
+
+  Future<void> loadSubtitle(SubtitleModel subtitle) =>
+      loadExternalSubtitle(subtitle.path, language: subtitle.language);
+
   Future<List<SubtitleEntry>?> _parseSubtitle(SubtitleModel subtitle) async {
-    if (subtitle.path.endsWith('.srt')) {
-      return SubtitleService.parseSrt(subtitle.path);
-    } else if (subtitle.path.endsWith('.vtt')) {
-      return SubtitleService.parseVtt(subtitle.path);
+    final lower = subtitle.path.toLowerCase();
+    try {
+      if (lower.endsWith('.srt')) {
+        return SubtitleService.parseSrt(subtitle.path);
+      } else if (lower.endsWith('.vtt')) {
+        return SubtitleService.parseVtt(subtitle.path);
+      } else if (lower.endsWith('.ass') || lower.endsWith('.ssa')) {
+        return SubtitleService.parseAss(subtitle.path);
+      }
+    } catch (e) {
+      debugPrint('[Subtitle] 解析失败: $e');
     }
     return null;
   }

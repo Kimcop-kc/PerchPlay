@@ -52,6 +52,95 @@ class SubtitleService {
     return languageMap[suffix.toLowerCase()] ?? 'Unknown';
   }
 
+  /// 列出某个目录下的字幕文件
+  static Future<List<SubtitleModel>> listSubtitleFilesInDir(
+      String dirPath) async {
+    final out = <SubtitleModel>[];
+    final dir = Directory(dirPath);
+    if (!await dir.exists()) return out;
+    try {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
+        if (!AppConstants.supportedSubtitleFormats.contains(ext)) continue;
+        out.add(SubtitleModel(
+          path: entity.path,
+          language: ext.toUpperCase(),
+          title: p.basename(entity.path),
+        ));
+      }
+    } catch (_) {}
+    out.sort((a, b) => a.title.compareTo(b.title));
+    return out;
+  }
+
+  /// 汇总候选字幕文件：视频同目录优先，其次常见下载/影片目录
+  static Future<List<SubtitleModel>> findCandidateSubtitles(
+      String videoPath) async {
+    final dirs = <String>[
+      p.dirname(videoPath),
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Downloads',
+      '/storage/emulated/0/Movies',
+      '/storage/emulated/0/Documents',
+    ];
+    final out = <SubtitleModel>[];
+    final seen = <String>{};
+    for (final dir in dirs) {
+      for (final sub in await listSubtitleFilesInDir(dir)) {
+        if (seen.add(sub.path)) out.add(sub);
+      }
+    }
+    return out;
+  }
+
+  /// 解析 ASS / SSA 字幕
+  static Future<List<SubtitleEntry>> parseAss(String subtitlePath) async {
+    final file = File(subtitlePath);
+    final content = await file.readAsString();
+    final entries = <SubtitleEntry>[];
+    int index = 0;
+
+    for (final raw in content.split('\n')) {
+      final line = raw.trim();
+      if (!line.startsWith('Dialogue:')) continue;
+      final parts = line.substring('Dialogue:'.length).split(',');
+      if (parts.length < 10) continue;
+      final start = _parseAssTime(parts[1].trim());
+      final end = _parseAssTime(parts[2].trim());
+      var text = parts.sublist(9).join(',');
+      // 去掉 {\...} 样式标记与换行符
+      text = text
+          .replaceAll(RegExp(r'\{[^}]*\}'), '')
+          .replaceAll(r'\N', ' ')
+          .replaceAll(r'\n', ' ')
+          .replaceAll(r'\h', ' ')
+          .trim();
+      if (text.isEmpty) continue;
+      index++;
+      entries.add(SubtitleEntry(
+        index: index,
+        start: start,
+        end: end,
+        text: text,
+      ));
+    }
+    return entries;
+  }
+
+  /// "0:00:01.00" / "0:00:01.000"
+  static Duration _parseAssTime(String time) {
+    final parts = time.split(':');
+    if (parts.length < 3) return Duration.zero;
+    final seconds = double.tryParse(parts[2]) ?? 0;
+    return Duration(
+      hours: int.tryParse(parts[0]) ?? 0,
+      minutes: int.tryParse(parts[1]) ?? 0,
+      seconds: seconds.toInt(),
+      milliseconds: ((seconds - seconds.toInt()) * 1000).round(),
+    );
+  }
+
   /// 解析 SRT 字幕文件
   static Future<List<SubtitleEntry>> parseSrt(String subtitlePath) async {
     final file = File(subtitlePath);

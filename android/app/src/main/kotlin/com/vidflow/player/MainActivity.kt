@@ -14,6 +14,44 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.vidflow/native"
     private val PIP_CHANNEL = "com.vidflow/pip"
 
+    override fun onPostResume() {
+        super.onPostResume()
+        // 高刷新率适配：请求当前分辨率下刷新率最高的显示模式
+        applyHighRefreshRate()
+    }
+
+    /**
+     * 在 60/90/120/144Hz 屏幕上以最高可用刷新率渲染。
+     *
+     * 只在刷新率确实更高时才切换，避免不必要的模式切换与耗电。
+     */
+    private fun applyHighRefreshRate() {
+        try {
+            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            } ?: return
+
+            val current = display.mode ?: return
+            val best = display.supportedModes
+                .filter {
+                    it.physicalWidth == current.physicalWidth &&
+                        it.physicalHeight == current.physicalHeight
+                }
+                .maxByOrNull { it.refreshRate } ?: return
+
+            if (best.refreshRate > current.refreshRate + 0.1f) {
+                window.attributes = window.attributes.apply {
+                    preferredDisplayModeId = best.modeId
+                }
+            }
+        } catch (_: Exception) {
+            // 部分 ROM 不支持，忽略
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 

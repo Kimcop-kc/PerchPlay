@@ -12,17 +12,22 @@ class AppSettingsService {
   static const _kSkipSeconds = 'settings.skipSeconds';
   static const _kAutoPlayNext = 'settings.autoPlayNext';
   static const _kBackgroundPlay = 'settings.backgroundPlay';
+  static const _kHardwareDecoding = 'settings.hardwareDecoding';
 
   double _defaultSpeed = 1.0;
   int _skipSeconds = 10;
   bool _autoPlayNext = true;
   bool _backgroundPlay = true;
+  bool _hardwareDecoding = true;
   bool _loaded = false;
 
   double get defaultSpeed => _defaultSpeed;
   int get skipSeconds => _skipSeconds;
   bool get autoPlayNext => _autoPlayNext;
   bool get backgroundPlay => _backgroundPlay;
+
+  /// 硬件解码（默认开启；关闭则用软解，兼容花屏/黑屏的机型）
+  bool get hardwareDecoding => _hardwareDecoding;
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
@@ -32,6 +37,7 @@ class AppSettingsService {
       _skipSeconds = prefs.getInt(_kSkipSeconds) ?? 10;
       _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
+      _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -67,6 +73,14 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kBackgroundPlay, value);
+    } catch (_) {}
+  }
+
+  Future<void> setHardwareDecoding(bool value) async {
+    _hardwareDecoding = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kHardwareDecoding, value);
     } catch (_) {}
   }
 }
