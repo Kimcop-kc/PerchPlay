@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../models/playlist_model.dart';
 import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/playlist_provider.dart';
+import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -159,6 +161,17 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                   foregroundColor: GlassTheme.accentTeal,
                                   onTap: () => playFrom(0),
                                 ),
+                                const SizedBox(width: 4),
+                                // 删除入口：以前这里没有删除按钮，
+                                // 自动列表就算删了下次扫描也会重建
+                                IconButton(
+                                  tooltip: '删除列表',
+                                  iconSize: 20,
+                                  visualDensity: VisualDensity.compact,
+                                  color: GlassTheme.textTertiary,
+                                  icon: const Icon(Icons.delete_outline_rounded),
+                                  onPressed: () => _confirmDelete(playlist),
+                                ),
                               ],
                             ),
                           ),
@@ -182,8 +195,61 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     );
   }
 
+  /// 删除列表（自动列表会记住删除意图，不再自动重建）
+  Future<void> _confirmDelete(Playlist playlist) async {
+    final isAuto = playlist.isAuto;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GlassTheme.surfaceWhite,
+        title: Text('删除「${playlist.name}」',
+            style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+        content: Text(
+          isAuto
+              ? '这是自动生成的列表。删除后不会再自动重建，'
+                  '随时可以用标题栏的「恢复自动列表」找回。\n列表里的视频文件不会被删除。'
+              : '只会删除这个列表，里面的视频文件不会被删除。',
+          style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('删除',
+                style: TextStyle(color: GlassTheme.accentPink)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(playlistProvider.notifier).deletePlaylist(playlist.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isAuto ? '已删除自动列表「${playlist.name}」' : '已删除「${playlist.name}」'),
+        action: isAuto
+            ? SnackBarAction(
+                label: '恢复',
+                onPressed: () => ref
+                    .read(playlistProvider.notifier)
+                    .restoreAutoPlaylists(
+                        ref.read(videoListProvider).valueOrNull ??
+                            const <VideoModel>[]),
+              )
+            : null,
+      ),
+    );
+  }
+
   Widget _buildHeader(int count) {
     final topPad = MediaQuery.of(context).padding.top + 24;
+    // 有被删掉的自动列表时给出恢复入口（否则用户会以为功能坏了）
+    final canRestore =
+        AppSettingsService.instance.hiddenAutoPlaylists.isNotEmpty;
     return SliverToBoxAdapter(
       child: Padding(
         padding: EdgeInsets.fromLTRB(20, topPad, 20, 16),
@@ -195,6 +261,20 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                     fontSize: 28,
                     fontWeight: FontWeight.w800)),
             const Spacer(),
+            if (canRestore) ...[
+              GlassButton.outlined(
+                icon: Icons.restore_rounded,
+                label: '恢复自动列表',
+                height: 36,
+                foregroundColor: GlassTheme.textSecondary,
+                onTap: () => ref
+                    .read(playlistProvider.notifier)
+                    .restoreAutoPlaylists(
+                        ref.read(videoListProvider).valueOrNull ??
+                            const <VideoModel>[]),
+              ),
+              const SizedBox(width: 8),
+            ],
             GlassButton.outlined(
               icon: Icons.add_rounded,
               label: '新建',

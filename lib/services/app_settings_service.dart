@@ -44,6 +44,15 @@ class AppSettingsService {
   bool _glassBlur = true;
   bool get glassBlur => _glassBlur;
 
+  /// 用户手动删掉的「自动列表」id
+  ///
+  /// 自动列表是每次扫描后重建的，如果只删数据库记录，下次扫描就长回来，
+  /// 所以这里记住用户的删除意图，重建时跳过这些 id。
+  static const _kHiddenAutoPlaylists = 'settings.hiddenAutoPlaylists';
+  Set<String> _hiddenAutoPlaylists = <String>{};
+  Set<String> get hiddenAutoPlaylists => _hiddenAutoPlaylists;
+  bool isAutoPlaylistHidden(String id) => _hiddenAutoPlaylists.contains(id);
+
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     try {
@@ -62,6 +71,9 @@ class AppSettingsService {
         _glassBlur = true;
         await prefs.remove(_kGlassBlur); // 清掉旧键，避免继续误导
       }
+      _hiddenAutoPlaylists =
+          (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
+              .toSet();
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -105,6 +117,25 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kHardwareDecoding, value);
+    } catch (_) {}
+  }
+
+  /// 记住「这个自动列表被用户删了」，重建时不再生成
+  Future<void> hideAutoPlaylist(String id) async {
+    _hiddenAutoPlaylists.add(id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+          _kHiddenAutoPlaylists, _hiddenAutoPlaylists.toList());
+    } catch (_) {}
+  }
+
+  /// 恢复所有被删掉的自动列表（下次扫描重建）
+  Future<void> restoreAutoPlaylists() async {
+    _hiddenAutoPlaylists = <String>{};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kHiddenAutoPlaylists);
     } catch (_) {}
   }
 

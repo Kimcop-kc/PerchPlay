@@ -2,7 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/playlist_model.dart';
 import '../models/video_model.dart';
 import '../services/database_service.dart';
-import '../services/media_namer_service.dart';
+import '../services/app_settings_service.dart';
+import '../services/media_grouping_service.dart';
 import 'package:uuid/uuid.dart';
 
 final playlistListProvider =
@@ -60,50 +61,43 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
   }
 
   Future<void> deletePlaylist(String playlistId) async {
+    // 自动列表是扫描后重建的，只删记录会"删了又长回来"，
+    // 所以额外记住用户的删除意图
+    if (playlistId.startsWith('auto:')) {
+      await AppSettingsService.instance.hideAutoPlaylist(playlistId);
+    }
     await _db.deletePlaylist(playlistId);
     state = AsyncData(await _db.getAllPlaylists());
   }
 
+  /// 恢复被删掉的自动列表并立即重建
+  Future<void> restoreAutoPlaylists(List<VideoModel> videos) async {
+    await AppSettingsService.instance.restoreAutoPlaylists();
+    await syncAutoPlaylists(videos);
+  }
+
   /// 扫描后重建「自动列表」：
-  /// - 同一剧集（文件名里的 S01E02 / 第02集 / EP02…）合成一个列表，按季集排序
-  /// - 非剧集文件（电影）归入「电影」列表
+  /// - 剧集：文件名里的 S01E02 / 第02集 / EP02，或「子文件夹 + 序号」聚集，
+  ///   合成一个列表并按季集排序（详见 [MediaGrouping]）
+  /// - 其余（含没凑成剧集的孤立文件）归入「电影」列表
+  /// - 用户手动删过的自动列表不再生成
   /// 手动创建的列表不受影响。
   Future<void> syncAutoPlaylists(List<VideoModel> videos) async {
     try {
+      await AppSettingsService.instance.ensureLoaded();
       await _db.deleteAutoPlaylists();
 
-      final series = <String, List<MapEntry<int, VideoModel>>>{};
-      final movies = <VideoModel>[];
-      for (final v in videos) {
-        final info = MediaNamer.parse(v.path);
-        if (info.isEpisode) {
-          series
-              .putIfAbsent(info.seriesTitle, () => [])
-              .add(MapEntry(info.orderKey, v));
-        } else {
-          movies.add(v);
-        }
-      }
+      final groups = MediaGrouping.group(videos.map((v) => v.path).toList());
 
       final auto = <Playlist>[];
       var order = -1000; // 自动列表排前面
-      series.forEach((title, list) {
-        if (list.length < 2) return; // 单集不建列表
-        list.sort((a, b) => a.key.compareTo(b.key));
+      for (final g in groups) {
+        final id = g.isMovieBucket ? 'auto:movies' : 'auto:series:${g.name}';
+        if (AppSettingsService.instance.isAutoPlaylistHidden(id)) continue;
         auto.add(Playlist(
-          id: 'auto:series:$title',
-          name: title,
-          videoIds: list.map((e) => e.value.id).toList(),
-          createdAt: DateTime.now(),
-          sortOrder: order++,
-          isAuto: true,
-        ));
-      });
-      if (movies.length >= 2) {
-        auto.add(Playlist(
-          id: 'auto:movies',
-          name: '电影',
-          videoIds: movies.map((v) => v.id).toList(),
+          id: id,
+          name: g.name,
+          videoIds: g.indices.map((i) => videos[i].id).toList(),
           createdAt: DateTime.now(),
           sortOrder: order++,
           isAuto: true,
