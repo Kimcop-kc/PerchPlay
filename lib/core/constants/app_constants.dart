@@ -2,7 +2,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'VidFlow';
-  static const String appVersion = '1.0.14';
+  static const String appVersion = '1.0.15';
 
   // 支持的视频格式
   static const List<String> supportedVideoFormats = [
