@@ -28,6 +28,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             if (nasState.errorMessage != null)
@@ -126,8 +127,9 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   }
 
   Widget _buildTabletTitle() {
+    final topPad = MediaQuery.of(context).padding.top + 20;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      padding: EdgeInsets.fromLTRB(20, topPad, 20, 12),
       child: Row(
         children: [
           const Expanded(

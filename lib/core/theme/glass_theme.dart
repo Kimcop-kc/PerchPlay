@@ -97,14 +97,38 @@ class GlassTheme {
     stops: [0.0, 0.7],
   );
 
-  /// 顶部光泽高光（模拟玻璃反光）
+  /// 顶部光泽高光（模拟玻璃反光）——液态玻璃的强烈折射高光
   static const LinearGradient topGlare = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.center,
     colors: [
-      Color(0x10FFFFFF),
+      Color(0x40FFFFFF),
+      Color(0x08FFFFFF),
       Color(0x00FFFFFF),
     ],
+    stops: [0.0, 0.4, 0.7],
+  );
+
+  /// 液态玻璃底部反光
+  static const LinearGradient bottomGlare = LinearGradient(
+    begin: Alignment.bottomCenter,
+    end: Alignment.center,
+    colors: [
+      Color(0x14FFFFFF),
+      Color(0x00FFFFFF),
+    ],
+  );
+
+  /// 液态玻璃斜向折射光带
+  static const LinearGradient liquidSheen = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0x26FFFFFF),
+      Color(0x05FFFFFF),
+      Color(0x18FFFFFF),
+    ],
+    stops: [0.0, 0.5, 1.0],
   );
 
   // ────────── 玻璃背景 Painter ──────────

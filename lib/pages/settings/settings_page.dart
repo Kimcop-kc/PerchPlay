@@ -38,6 +38,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: CustomScrollView(
           slivers: [
             _buildHeader(),
@@ -73,10 +74,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildHeader() {
-    return const SliverToBoxAdapter(
+    final topPad = MediaQuery.of(context).padding.top + 24;
+    return SliverToBoxAdapter(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 24, 20, 20),
-        child: Text('设置',
+        padding: EdgeInsets.fromLTRB(20, topPad, 20, 20),
+        child: const Text('设置',
             style: TextStyle(
                 color: GlassTheme.textPrimary,
                 fontSize: 28,

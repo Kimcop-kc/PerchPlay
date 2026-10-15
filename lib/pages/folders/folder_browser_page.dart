@@ -121,6 +121,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             _buildHeader(context),
@@ -132,10 +133,11 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top + 12;
     return GlassPanel(
       radius: 0,
       showShadow: true,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.fromLTRB(16, topPad, 16, 12),
       child: Row(
         children: [
           if (_currentPath.isNotEmpty)

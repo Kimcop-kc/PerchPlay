@@ -17,12 +17,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0.14</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>14</string>
 
-	<!-- iPad 多窗口：Flutter 3.22 走的是 AppDelegate 生命周期，不支持多 scene，
-	     这里声明 SceneManifest 但没有 SceneDelegate 类会导致启动即崩溃，故移除。 -->
+	<!-- iPad 多窗口：Flutter 走 AppDelegate 生命周期，声明 SceneManifest 但没有
+	     SceneDelegate 类会导致启动即崩溃（iOS 18 更严格），故不声明。 -->
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+
 	<!-- ──────── 硬件要求 ──────── -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
@@ -63,8 +66,6 @@
 	<true/>
 
 	<!-- ──────── iPad ProMotion 120Hz ──────── -->
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
 
 	<!-- ──────── Apple Pencil ──────── -->
 	<key>PKCanvasInkEnabled</key>

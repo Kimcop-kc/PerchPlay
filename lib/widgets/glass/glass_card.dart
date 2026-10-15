@@ -79,8 +79,6 @@ class _GlassCardState extends State<GlassCard>
 
   @override
   Widget build(BuildContext context) {
-    final tint = widget.tint ?? GlassTheme.tintWhite;
-
     return MouseRegion(
       onEnter: widget.enableHover ? (_) => _hoverController.forward() : null,
       onExit: widget.enableHover ? (_) => _hoverController.reverse() : null,
@@ -104,34 +102,34 @@ class _GlassCardState extends State<GlassCard>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(widget.radius),
                       child: SafeBackdropFilter(
-                        blurSigma: 20,
+                        blurSigma: 24,
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius:
                                 BorderRadius.circular(widget.radius),
                             border: Border.all(
                               color: widget.selected
-                                  ? GlassTheme.accentPurple.withOpacity(0.4)
-                                  : Colors.black.withOpacity(
-                                      0.08 + _hoverController.value * 0.06),
-                              width: widget.selected ? 1.2 : 0.6,
+                                  ? GlassTheme.accentPurple.withOpacity(0.5)
+                                  : Colors.white.withOpacity(
+                                      0.35 + _hoverController.value * 0.15),
+                              width: widget.selected ? 1.2 : 0.8,
                             ),
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                tint.withOpacity(
-                                    0.06 + _hoverController.value * 0.04),
-                                Colors.black.withOpacity(
-                                    0.02 + _hoverController.value * 0.02),
+                                Colors.white.withOpacity(
+                                    0.50 + _hoverController.value * 0.10),
+                                Colors.white.withOpacity(
+                                    0.18 + _hoverController.value * 0.06),
                               ],
                             ),
                             boxShadow: [
                               BoxShadow(
                                 color: widget.selected
                                     ? GlassTheme.accentPurple
-                                        .withOpacity(0.12)
-                                    : Colors.black.withOpacity(0.2),
+                                        .withOpacity(0.18)
+                                    : Colors.black.withOpacity(0.10),
                                 blurRadius: widget.selected ? 24 : 16,
                                 offset: const Offset(0, 6),
                               ),
@@ -141,7 +139,7 @@ class _GlassCardState extends State<GlassCard>
                       ),
                     ),
 
-                    // 顶部光泽高光
+                    // 顶部光泽高光（液态玻璃强烈折射）
                     Positioned(
                       top: 0,
                       left: 0,

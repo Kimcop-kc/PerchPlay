@@ -1,13 +1,11 @@
 # VidFlow iOS Podfile
 #
-# 基于 Flutter 3.22 的默认模板，额外做了两件事：
-#   1. 显式声明最低 iOS 版本（各插件里最高要求是 permission_handler_apple / package_info_plus 的 12.0）
-#   2. 在 post_install 里声明 permission_handler_apple 需要的权限宏
-#      （不声明的话 pod 编译会报 PERMISSION_* 未定义）
+# 基于 Flutter 3.22 默认模板，额外做：
+#   1. 显式声明最低 iOS 版本（iOS 13，兼容到 iOS 18+）
+#   2. post_install 声明 permission_handler_apple 需要的权限宏
 
-platform :ios, '12.0'
+platform :ios, '13.0'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -48,8 +46,7 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
-      # permission_handler_apple 要求显式声明用到的权限，未声明的必须置 0。
-      # 本应用只用 Permission.storage（对应 iOS 的照片/媒体库权限）。
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         'PERMISSION_CAMERA=0',

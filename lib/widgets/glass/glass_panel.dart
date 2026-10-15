@@ -33,40 +33,67 @@ class GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tintColor = tint ?? GlassTheme.tintWhite;
+    final isColoredTint = tint != null;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: SafeBackdropFilter(
-        blurSigma: 28,
-        child: Container(
-          width: width,
-          height: height,
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            border: showBorder
-                ? Border.all(
-                    color: Colors.black.withOpacity(0.06),
-                    width: 0.5,
-                  )
-                : null,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                tintColor.withOpacity(0.08),
-                tintColor.withOpacity(0.02),
-              ],
-            ),
-            boxShadow: showShadow ? [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 28,
-                offset: const Offset(0, 12),
+        blurSigma: 30,
+        child: Stack(
+          children: [
+            Container(
+              width: width,
+              height: height,
+              padding: padding,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                border: showBorder
+                    ? Border.all(
+                        color: isColoredTint
+                            ? tintColor.withOpacity(0.35)
+                            : Colors.white.withOpacity(0.35),
+                        width: 0.8,
+                      )
+                    : null,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.55),
+                    Colors.white.withOpacity(0.22),
+                  ],
+                ),
+                boxShadow: showShadow ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
+                  ),
+                ] : null,
               ),
-            ] : null,
-          ),
-          child: child,
+              child: child,
+            ),
+            // 液态玻璃高光叠加
+            IgnorePointer(
+              child: Container(
+                width: width,
+                height: height,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(radius),
+                  gradient: isColoredTint
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            tintColor.withOpacity(0.20),
+                            Colors.white.withOpacity(0.02),
+                          ],
+                        )
+                      : GlassTheme.liquidSheen,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

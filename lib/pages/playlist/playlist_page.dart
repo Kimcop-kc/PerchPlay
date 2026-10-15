@@ -30,6 +30,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: playlistsAsync.when(
           data: (playlists) {
             if (playlists.isEmpty) return _buildEmpty();
@@ -145,9 +146,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   }
 
   Widget _buildHeader(int count) {
+    final topPad = MediaQuery.of(context).padding.top + 24;
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        padding: EdgeInsets.fromLTRB(20, topPad, 20, 16),
         child: Row(
           children: [
             const Text('播放列表',

@@ -36,7 +36,7 @@ android {
     defaultConfig {
         applicationId = "com.vidflow.player"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
     }

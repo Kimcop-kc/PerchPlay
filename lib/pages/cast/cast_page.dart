@@ -48,6 +48,7 @@ class _CastPageState extends ConsumerState<CastPage>
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             if (castState.errorMessage != null)
@@ -132,9 +133,10 @@ class _CastPageState extends ConsumerState<CastPage>
   }
 
   Widget _buildTabletTitle() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Align(
+    final topPad = MediaQuery.of(context).padding.top + 20;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, topPad, 20, 8),
+      child: const Align(
         alignment: Alignment.centerLeft,
         child: Text('投屏',
             style: TextStyle(

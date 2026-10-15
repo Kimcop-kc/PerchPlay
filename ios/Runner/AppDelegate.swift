@@ -177,10 +177,6 @@ import PencilKit
             case "supportHDR":
                 result(self.supportHDR())
 
-            case "requestBatteryOptimization":
-                // iOS: no-op
-                result(true)
-
             case "canDrawOverlays":
                 result(true)
 
@@ -237,9 +233,8 @@ import PencilKit
               AVPictureInPictureController.isPictureInPictureSupported() else { return }
 
         if pipController?.isPictureInPictureActive == true { return }
-
         // PiP 的实际渲染由 media_kit 插件在原生层接管（AVPlayerLayer）。
-        // 这里只做可用性检查：不引入 iOS 15+ 才有的
+        // 这里只做可用性检查，不引入 iOS 15+ 才有的
         // AVPictureInPictureVideoCallViewController，否则部署目标低于 iOS 15 会编译报错。
     }
 
