@@ -476,14 +476,21 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                         runSpacing: 8,
                         children: NasProtocol.values.map((p) {
                           final selected = protocol == p;
+                          // SMB / NFS 尚未实现，明确标注，避免用户以为是设备问题
+                          final unsupported = p == NasProtocol.smb ||
+                              p == NasProtocol.nfs;
                           return GlassButton(
-                            label: p.name.toUpperCase(),
+                            label: unsupported
+                                ? '${p.name.toUpperCase()}（暂不支持）'
+                                : '${p.name.toUpperCase()} ✓',
                             height: 32,
                             filled: selected,
                             outlined: !selected,
                             foregroundColor: selected
                                 ? Colors.white
-                                : GlassTheme.textSecondary,
+                                : (unsupported
+                                    ? GlassTheme.textTertiary
+                                    : GlassTheme.textSecondary),
                             onTap: () {
                               setDialogState(() => protocol = p);
                               switch (p) {
@@ -504,6 +511,19 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           );
                         }).toList(),
                       ),
+                      if (protocol == NasProtocol.smb ||
+                          protocol == NasProtocol.nfs)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            '该协议暂未实现。NAS 请改用 WebDAV（群晖/威联通都支持，'
+                            '在「控制面板 → 文件服务 → WebDAV」开启）或 FTP。',
+                            style: TextStyle(
+                                color: GlassTheme.accentPink,
+                                fontSize: 11.5,
+                                height: 1.4),
+                          ),
+                        ),
                       const SizedBox(height: 14),
                       _dialogField('主机地址', hostCtrl),
                       const SizedBox(height: 14),

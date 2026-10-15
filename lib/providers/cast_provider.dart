@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/cast_device_model.dart';
 import '../services/cast_discovery_service.dart';
 import '../services/cast_control_service.dart';
+import '../services/local_media_server.dart';
 
 /// 投屏设备列表状态
 class CastState {
@@ -121,7 +122,35 @@ class CastNotifier extends StateNotifier<CastState> {
           .copyWith(status: CastDeviceStatus.connecting);
       state = state.copyWith(devices: updated);
     }
-    await _control.connect(device);
+    final ok = await _control.connect(device);
+    if (!ok) {
+      state = state.copyWith(
+        isConnected: false,
+        errorMessage: _control.lastError ?? '连接失败',
+      );
+    }
+  }
+
+  /// 把本地视频投到已连接的设备
+  ///
+  /// 先用手机会话内的 HTTP 服务把文件暴露到局域网（电视读不到
+  /// /storage/... 路径），再把该 URL 交给设备播放。
+  Future<bool> castLocalFile(String filePath, {String title = ''}) async {
+    final url =
+        await LocalMediaServer.instance.urlFor(filePath, title: title);
+    if (url == null) {
+      state = state.copyWith(errorMessage: '无法启动本地投屏服务（检查网络）');
+      return false;
+    }
+    final ok = await _control.playUrl(url, title: title);
+    if (!ok) {
+      state = state.copyWith(
+        errorMessage: _control.lastError ?? '投屏失败',
+      );
+    } else {
+      state = state.copyWith(isPlaying: true, clearError: true);
+    }
+    return ok;
   }
 
   Future<void> disconnect() async {

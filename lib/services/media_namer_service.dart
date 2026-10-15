@@ -84,18 +84,26 @@ class MediaNamer {
     );
   }
 
-  /// 清洗标题：去噪标签、括号内容、分隔符
+  /// 清洗标题：去噪标签、年份、发布组、括号内容、分隔符
   static String _cleanTitle(String raw) {
     var s = raw;
-    // 去掉 [xxx] / (xxx) 包裹的内容（发布组、字幕组等）
+    // 去掉 [xxx] / (xxx) / {xxx} 包裹的内容（发布组、字幕组等）
     s = s.replaceAll(RegExp(r'[\[\(\{][^\]\)\}]*[\]\)\}]'), ' ');
     s = s.replaceAll(_noise, ' ');
+    // 年份：只去掉作为独立词出现的 4 位年份（1990-2099），
+    // 避免误伤「流浪地球2」这种数字后缀
+    s = s.replaceAll(RegExp(r'(?:^|[\s._\-\[\(])(?:19|20)\d{2}(?=$|[\s._\-\]\)])'), ' ');
+    // 结尾的发布组：场景发布惯例是 -全大写（-FGT、-RARBG、_HDCTV）。
+    // 只认「-」或「_」加全大写，避免把 test_video 的 video 当发布组切掉。
+    s = s.replaceAll(RegExp(r'[-_][A-Z0-9]{2,12}$'), ' ');
     s = s.replaceAll(RegExp(r'[._]+'), ' ');
-    s = s.replaceAll(RegExp(r'\s*-\s*$'), ' ');
     s = s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
     // 去掉首尾的横杠/点
-    s = s.replaceAll(RegExp(r'^[\s\-–—]+|[\s\-–—]+$'), '');
-    if (s.isEmpty) s = raw.trim();
+    s = s.replaceAll(RegExp(r'^[\s\-–—]+|[\s\-–—]+$'), '').trim();
+    if (s.isEmpty) {
+      // 全被清掉（例如文件名本身就是年份）→ 回退原始名
+      s = raw.replaceAll(RegExp(r'[._]+'), ' ').trim();
+    }
     return s;
   }
 

@@ -73,7 +73,11 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                             radius: GlassTheme.radiusMd,
                             tint: GlassTheme.tintTeal,
                             padding: const EdgeInsets.all(14),
-                            onTap: () => playFrom(0),
+                            // 点卡片进详情看清单（防止自动分类出错）
+                            onTap: () => context.pushNamed(
+                              'playlistDetail',
+                              pathParameters: {'id': playlist.id},
+                            ),
                             child: Row(
                               children: [
                                 // 封面占位

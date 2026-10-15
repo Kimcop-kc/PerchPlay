@@ -31,7 +31,7 @@ class NasClientService {
         case NasProtocol.ftp:
           return await _connectFtp();
         case NasProtocol.smb:
-          return await _connectSmb();
+          return false; // 未实现（见 _connectSmb 说明）
         case NasProtocol.nfs:
           return false; // NFS 需要 kernel 支持，不通过 Dart 实现
       }
@@ -102,25 +102,6 @@ class NasClientService {
     }
   }
 
-  // ──────────── SMB ────────────
-
-  Future<bool> _connectSmb() async {
-    // SMB 使用 smb2 客户端
-    // 由于 Dart 没有原生 SMB 库，通过方法通道调用原生 SMB
-    // 这里提供 WebDAV fallback: 很多 NAS 同时有 WebDAV
-    try {
-      // 尝试用 HTTP 探测（部分 NAS 的 SMB share 也暴露 HTTP）
-      final uri = Uri.parse('http://${_connection!.host}:5000/');
-      final req = await _httpClient!.getUrl(uri);
-      req.headers.set('User-Agent', 'PerchPlay/1.0');
-      final res = await req.close();
-      _connected = res.statusCode == 200 || res.statusCode == 401;
-      return _connected;
-    } catch (_) {
-      return false;
-    }
-  }
-
   // ──────────── 文件列表 ────────────
 
   /// 列出目录内容
@@ -134,7 +115,10 @@ class NasClientService {
         case NasProtocol.ftp:
           return await _listFtp(path);
         case NasProtocol.smb:
-          return await _listWebDav(path); // fallback
+          // SMB 未实现，不再用 WebDAV 顶替（会静默返回错误结果）
+          return [];
+        case NasProtocol.nfs:
+          return [];
         default:
           return [];
       }
@@ -167,38 +151,42 @@ class NasClientService {
   List<NasFileItem> _parseWebDavResponse(String xml, String currentPath) {
     final items = <NasFileItem>[];
 
-    // 简单解析 WebDAV multistatus XML
-    final responsePattern =
-        RegExp(r'<D:response>(.*?)</D:response>', dotAll: true);
-    final hrefPattern = RegExp(r'<D:href>(.*?)</D:href>');
-    final displayNamePattern =
-        RegExp(r'<D:displayname>(.*?)</D:displayname>');
-    final collectionPattern = RegExp(r'<D:resourcetype>.*?<D:collection');
-    final sizePattern = RegExp(r'<D:getcontentlength>(.*?)</D:getcontentlength>');
-    final modifiedPattern =
-        RegExp(r'<D:getlastmodified>(.*?)</D:getlastmodified>');
+    // 兼容带/不带命名空间前缀、任意大小写（原来硬编码 <D: 前缀，
+    // 很多 NAS 用小写或默认命名空间，结果一个条目都解析不出来）
+    final responseBlocks = RegExp(
+            r'<(?:[A-Za-z0-9]+:)?response[^>]*>(.*?)</(?:[A-Za-z0-9]+:)?response>',
+            dotAll: true,
+            caseSensitive: false)
+        .allMatches(xml);
 
-    for (final match in responsePattern.allMatches(xml)) {
-      final block = match.group(1)!;
-      final href = hrefPattern.firstMatch(block)?.group(1) ?? '';
-      final name = displayNamePattern.firstMatch(block)?.group(1) ?? '';
-      final isDir = collectionPattern.hasMatch(block);
+    for (final match in responseBlocks) {
+      final block = match.group(1) ?? '';
+      final href = _decodeEntities(_tagText(block, 'href') ?? '');
+      if (href.isEmpty) continue;
+
+      final isDir = RegExp(r'<(?:[A-Za-z0-9]+:)?collection',
+              caseSensitive: false)
+          .hasMatch(block);
 
       // 跳过自身
       final decodedHref = Uri.decodeFull(href).replaceAll(RegExp(r'/$'), '');
-      final decodedPath = Uri.decodeFull(currentPath).replaceAll(RegExp(r'/$'), '');
+      final decodedPath =
+          Uri.decodeFull(currentPath).replaceAll(RegExp(r'/$'), '');
       if (decodedHref == decodedPath) continue;
 
-      final sizeStr = sizePattern.firstMatch(block)?.group(1) ?? '0';
-      final size = int.tryParse(sizeStr) ?? 0;
-      final modifiedStr =
-          modifiedPattern.firstMatch(block)?.group(1);
-      DateTime? modified;
-      if (modifiedStr != null) {
-        modified = DateTime.tryParse(modifiedStr);
+      final size = int.tryParse(_tagText(block, 'getcontentlength') ?? '0') ?? 0;
+      final modifiedStr = _tagText(block, 'getlastmodified');
+      final modified =
+          modifiedStr == null ? null : DateTime.tryParse(modifiedStr);
+
+      var displayName = _tagText(block, 'displayname') ?? '';
+      if (displayName.isEmpty) {
+        displayName = Uri.decodeFull(href).split('/')
+            .where((s) => s.isNotEmpty)
+            .lastOrNull ??
+            href;
       }
 
-      final displayName = name.isNotEmpty ? name : href.split('/').last;
       final ext = displayName.contains('.')
           ? '.${displayName.split('.').last.toLowerCase()}'
           : '';
@@ -213,10 +201,33 @@ class NasClientService {
       ));
     }
 
+    // 目录在前、再按名称排序
+    items.sort((a, b) {
+      if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
     // 去重
     final seen = <String>{};
     return items.where((item) => seen.add(item.path)).toList();
   }
+
+  /// 取标签文本，容忍命名空间前缀与大小写
+  String? _tagText(String xml, String name) {
+    final m = RegExp(
+            '<(?:[A-Za-z0-9]+:)?$name[^>]*>(.*?)</(?:[A-Za-z0-9]+:)?$name>',
+            dotAll: true,
+            caseSensitive: false)
+        .firstMatch(xml);
+    return m?.group(1)?.trim();
+  }
+
+  String _decodeEntities(String s) => s
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'");
 
   Future<List<NasFileItem>> _listFtp(String path) async {
     final c = _connection!;
@@ -255,9 +266,9 @@ class NasClientService {
         final listData = await _readAll(dataSocket);
         dataSocket.destroy();
 
-        // 解析 UNIX ls 格式
+        // 解析 UNIX ls 格式（子项路径要拼上父目录，否则进目录后路径全错）
         for (final line in listData.split('\n')) {
-          final item = _parseFtpListLine(line.trim());
+          final item = _parseFtpListLine(line.trim(), path);
           if (item != null) items.add(item);
         }
       }
@@ -269,7 +280,7 @@ class NasClientService {
     return items;
   }
 
-  NasFileItem? _parseFtpListLine(String line) {
+  NasFileItem? _parseFtpListLine(String line, String parentPath) {
     if (line.isEmpty || line.startsWith('total')) return null;
 
     // drwxr-xr-x  2 user group    4096 Jan 1 12:00 filename
@@ -280,6 +291,13 @@ class NasClientService {
     final sizeStr = parts[4];
     final size = int.tryParse(sizeStr) ?? 0;
     final name = parts.sublist(8).join(' ');
+    if (name == '.' || name == '..') return null;
+
+    // 拼出完整路径（父目录 + 名称），否则进子目录后请求路径是错的
+    final base = parentPath.endsWith('/')
+        ? parentPath.substring(0, parentPath.length - 1)
+        : parentPath;
+    final fullPath = '$base/$name';
 
     final ext = name.contains('.')
         ? '.${name.split('.').last.toLowerCase()}'
@@ -287,7 +305,7 @@ class NasClientService {
 
     return NasFileItem(
       name: name,
-      path: name,
+      path: fullPath,
       isDirectory: isDir,
       size: size,
       extension: ext,
@@ -324,12 +342,18 @@ class NasClientService {
 
   // ──────────── FTP 工具 ────────────
 
+  /// 读一条完整的 FTP 响应（多行响应以 "220-..." 开头，
+  /// 直到 "220 " 这种 3 位码+空格的行才算结束；原来只读第一行会错位）
   Future<String> _readFtpResponse(Socket socket) async {
-    return await socket
+    final lines = <String>[];
+    await for (final line in socket
         .cast<List<int>>()
         .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .first;
+        .transform(const LineSplitter())) {
+      lines.add(line);
+      if (RegExp(r'^\d{3} ').hasMatch(line)) break;
+    }
+    return lines.join('\n');
   }
 
   Future<String> _readAll(Socket socket) async {

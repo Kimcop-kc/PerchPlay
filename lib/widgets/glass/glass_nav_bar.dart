@@ -57,8 +57,14 @@ class _GlassNavBarState extends State<GlassNavBar>
   }
 
   int _resolveIndex() {
+    // 精确匹配
     for (int i = 0; i < widget.items.length; i++) {
       if (widget.items[i].route == widget.currentRoute) return i;
+    }
+    // 子页面（如 /playlist/xxx）仍高亮对应标签
+    for (int i = 0; i < widget.items.length; i++) {
+      final r = widget.items[i].route;
+      if (r != '/' && widget.currentRoute.startsWith('$r/')) return i;
     }
     return 0;
   }

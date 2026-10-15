@@ -4,6 +4,7 @@ import '../../pages/home/home_page.dart';
 import '../../pages/player/player_page.dart';
 import '../../pages/folders/folder_browser_page.dart';
 import '../../pages/playlist/playlist_page.dart';
+import '../../pages/playlist/playlist_detail_page.dart';
 import '../../pages/settings/settings_page.dart';
 import '../../pages/history/history_page.dart';
 import '../../pages/cast/cast_page.dart';
@@ -64,6 +65,19 @@ class AppRouter {
             name: 'playlist',
             pageBuilder: (context, state) =>
                 _tabPage(state, const PlaylistPage()),
+            routes: [
+              // 列表详情：先看清单再决定播哪个（防止自动分类出错）
+              GoRoute(
+                path: ':id',
+                name: 'playlistDetail',
+                pageBuilder: (context, state) => _tabPage(
+                  state,
+                  PlaylistDetailPage(
+                    playlistId: state.pathParameters['id'] ?? '',
+                  ),
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: '/history',

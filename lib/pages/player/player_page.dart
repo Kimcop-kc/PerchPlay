@@ -1414,6 +1414,133 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
   late CastState _castState;
   Timer? _timer;
 
+  /// 手动添加投屏设备：填 IP[:端口]，自动探测常见设备描述路径
+  Future<void> _showManualCastDialog() async {
+    final hostCtrl = TextEditingController();
+    final portCtrl = TextEditingController(text: '');
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GlassTheme.bg,
+        title: const Text('手动添加投屏设备',
+            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: hostCtrl,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              style: const TextStyle(color: GlassTheme.textPrimary),
+              decoration: const InputDecoration(
+                labelText: '设备 IP',
+                hintText: '例如 192.168.1.20',
+                hintStyle: TextStyle(color: GlassTheme.textTertiary),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: portCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: GlassTheme.textPrimary),
+              decoration: const InputDecoration(
+                labelText: '端口（可留空，默认 80/1400）',
+                hintStyle: TextStyle(color: GlassTheme.textTertiary),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('会依次尝试 /description.xml、/dmr.xml、/rootDesc.xml',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 11)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('添加并投屏',
+                style: TextStyle(color: GlassTheme.accentTeal)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != true) return;
+    final host = hostCtrl.text.trim();
+    if (host.isEmpty) return;
+    final port = int.tryParse(portCtrl.text.trim());
+
+    const paths = ['/description.xml', '/dmr.xml', '/rootDesc.xml', '/'];
+    final ports = port != null ? [port] : <int>[80, 1400, 8080];
+
+    final castNotifier = ref.read(castProvider.notifier);
+    for (final p in ports) {
+      for (final path in paths) {
+        final location = 'http://$host:$p$path';
+        final device = CastDevice(
+          id: 'manual:$location',
+          name: '$host:$p',
+          protocol: CastProtocol.dlna,
+          host: host,
+          port: p,
+          location: location,
+          lastSeen: DateTime.now(),
+          supportsVideo: true,
+        );
+        await castNotifier.connect(device);
+        if (!mounted) return;
+        final st = ref.read(castProvider);
+        if (st.isConnected) {
+          await _castCurrentTo(device.name);
+          return;
+        }
+      }
+    }
+    if (mounted) {
+      final st = ref.read(castProvider);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(st.errorMessage ?? '未找到可用的投屏服务，请检查 IP')));
+    }
+  }
+
+  /// 把当前播放的文件投到已连接设备
+  Future<void> _castCurrentTo(String deviceName) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final castNotifier = ref.read(castProvider.notifier);
+    final path = ref.read(playerProvider).currentVideo?.path;
+    if (path == null || path.isEmpty) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('已连接，未找到可投的视频')));
+      return;
+    }
+    messenger.showSnackBar(SnackBar(content: Text('正在投屏到 $deviceName…')));
+    final ok = await castNotifier.castLocalFile(path, title: deviceName);
+    if (!mounted) return;
+    final after = ref.read(castProvider);
+    messenger.showSnackBar(SnackBar(
+        content: Text(
+            ok ? '已投屏到 $deviceName' : (after.errorMessage ?? '投屏失败'))));
+  }
+
+  /// 连接某台设备并投当前视频
+  Future<void> _castToDevice(CastDevice d) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final castNotifier = ref.read(castProvider.notifier);
+    await castNotifier.connect(d);
+    if (!mounted) return;
+    final st = ref.read(castProvider);
+    if (!st.isConnected) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(st.errorMessage ?? '连接失败')));
+      return;
+    }
+    await _castCurrentTo(d.name);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1528,6 +1655,15 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
                     const Text('请确保设备与手机在同一 Wi-Fi',
                         style: TextStyle(
                             color: GlassTheme.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    // 有些路由器会屏蔽 SSDP 组播，允许手动填 IP
+                    GlassButton.outlined(
+                      icon: Icons.add_rounded,
+                      label: '手动添加设备',
+                      height: 38,
+                      foregroundColor: GlassTheme.accentPurple,
+                      onTap: () => _showManualCastDialog(),
+                    ),
                   ],
                 ),
               ),
@@ -1559,7 +1695,9 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
                               color: GlassTheme.accentPurple))
                       : const Icon(Icons.chevron_right_rounded,
                           color: GlassTheme.textTertiary),
-                  onTap: () => notifier.connect(d),
+                  // 连接成功后立刻把当前视频投过去（本地文件通过内置
+                  // HTTP 服务暴露成局域网地址，电视才能读到）
+                  onTap: () => _castToDevice(d),
                 )),
         ],
       ),
