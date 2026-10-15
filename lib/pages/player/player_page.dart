@@ -47,18 +47,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void initState() {
     super.initState();
-    final playerNotifier = ref.read(playerProvider.notifier);
-    _videoController = VideoController(playerNotifier.player);
+    // 使用全局 VideoController，页面销毁时保留引用给 mini player 复用
+    _videoController = ref.read(playerProvider).videoController!;
     _controlsAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
       value: 1,
     );
-    // 延迟到 widget tree 构建完成后绑定 controller / 加载视频，
-    // 避免 PlayerNotifier 在 build 周期内修改 state（Riverpod 禁止）
+    // 延迟到 widget tree 构建完成后加载视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      playerNotifier.attachVideoController(_videoController);
       _loadVideo();
       _startAutoHideTimer();
     });

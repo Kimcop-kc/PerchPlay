@@ -91,18 +91,22 @@ class PlayerState {
 
 class PlayerNotifier extends StateNotifier<PlayerState> {
   final DatabaseService _db = DatabaseService.instance;
+  late final VideoController _globalController;
 
   PlayerNotifier()
       : super(PlayerState(
           player: Player(),
         )) {
+    // VideoController 由 Provider 全局创建，跨页面复用
+    _globalController = VideoController(state.player);
+    state = state.copyWith(videoController: _globalController);
     _setupListeners();
   }
 
   /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
   Player get player => state.player;
 
-  /// 绑定播放页创建的 VideoController
+  /// 绑定播放页创建的 VideoController（保留兼容）
   void attachVideoController(VideoController controller) {
     state = state.copyWith(videoController: controller);
   }
@@ -165,6 +169,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final subtitles =
         await SubtitleService.findExternalSubtitles(video.path);
     state = state.copyWith(availableSubtitles: subtitles);
+  }
+
+  /// 停止播放并清除当前视频（关闭小窗/后台播放）
+  Future<void> stop() async {
+    try {
+      await state.player.stop();
+    } catch (_) {}
+    state = state.copyWith(
+      currentVideo: null,
+      isPlaying: false,
+      isCompleted: false,
+      position: Duration.zero,
+      duration: Duration.zero,
+    );
   }
 
   /// 播放/暂停
