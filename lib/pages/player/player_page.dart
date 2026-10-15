@@ -71,17 +71,33 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void dispose() {
     _controlsAnim.dispose();
-    // 退出播放器：立即落盘进度，避免下次从头播放
-    ref.read(playerProvider.notifier).saveProgress();
-    // 退出播放器时恢复竖屏 + 非沉浸
+    // 兜底：不依赖 ref（dispose 阶段取 ref 会抛异常，
+    // 一旦抛出就会跳过后面的方向重置 → 退出后卡在横屏）
+    _restorePortrait();
+    try {
+      ref.read(playerProvider.notifier).saveProgress();
+    } catch (e) {
+      debugPrint('[Player] dispose 保存进度失败: $e');
+    }
+    super.dispose();
+  }
+
+  /// 恢复竖屏 + 退出沉浸模式（首页/列表/设置都是竖屏界面）
+  void _restorePortrait() {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
+  }
+
+  /// 退出播放器：先落盘进度、恢复竖屏，再返回
+  Future<void> _exitPlayer() async {
+    try {
+      await ref.read(playerProvider.notifier).saveProgress();
+    } catch (_) {}
+    _restorePortrait();
+    if (mounted) context.pop();
   }
 
   /// 切换全屏（横屏沉浸）
@@ -128,9 +144,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     });
   }
 
+  /// 是否有「外挂第二字幕」需要自绘浮层
+  bool _hasSecondaryOverlay(PlayerState state) =>
+      state.secondaryEntries != null && state.secondaryEntries!.isNotEmpty;
+
   /// 手势拖动进度：实时带动底部进度条
-  void _onSeekPreview(int targetMs) {
-    if (!mounted) return;
+  void _onSeekPreview(int targetMs) {    if (!mounted) return;
     setState(() => _seekPreviewMs = targetMs.toDouble());
   }
 
@@ -188,7 +207,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onToggleSubtitles: _showSubtitleSheet,
       onToggleSpeed: () =>
           setState(() => _showSpeedSelector = !_showSpeedSelector),
-      onExit: () => context.pop(),
+      onExit: _exitPlayer,
       onSeekFraction: (fraction) {
         ref.read(playerProvider.notifier).seekRelative(
               ((fraction * state.duration.inMilliseconds / 1000) -
@@ -216,16 +235,29 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               onSeekPreview: _onSeekPreview,
               onSeekCommit: _onSeekCommit,
             ),
-            // 字幕
+            // 字幕（主字幕由 mpv 绘制；第二字幕用自绘浮层叠在下方）
             if (state.subtitleEntries != null &&
                 state.subtitleEntries!.isNotEmpty)
               Positioned(
-                bottom: isLarge ? 120 : 80,
+                bottom: (isLarge ? 120 : 80) +
+                    (_hasSecondaryOverlay(state) ? 36 : 0),
                 left: isLarge ? 40 : 20,
                 right: isLarge ? 40 : 20,
                 child: SubtitleOverlay(
                   entries: state.subtitleEntries!,
                   activeIndex: state.activeSubtitleIndex,
+                ),
+              ),
+            if (_hasSecondaryOverlay(state))
+              Positioned(
+                bottom: isLarge ? 80 : 52,
+                left: isLarge ? 60 : 36,
+                right: isLarge ? 60 : 36,
+                child: SubtitleOverlay(
+                  entries: state.secondaryEntries!,
+                  activeIndex: state.secondarySubtitleIndex,
+                  fontSize: isLarge ? 15 : 13.5,
+                  compact: true,
                 ),
               ),
             // 弹出面板
@@ -281,7 +313,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onToggleSubtitles: _showSubtitleSheet,
       onToggleSpeed: () =>
           setState(() => _showSpeedSelector = !_showSpeedSelector),
-      onExit: () => context.pop(),
+      onExit: _exitPlayer,
       onSeekFraction: (fraction) {
         ref.read(playerProvider.notifier).seekRelative(
               ((fraction * state.duration.inMilliseconds / 1000) -
@@ -316,10 +348,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   if (state.subtitleEntries != null &&
                       state.subtitleEntries!.isNotEmpty)
                     Positioned(
-                      bottom: 90, left: 40, right: 40,
+                      bottom: _hasSecondaryOverlay(state) ? 126 : 90,
+                      left: 40, right: 40,
                       child: SubtitleOverlay(
                         entries: state.subtitleEntries!,
                         activeIndex: state.activeSubtitleIndex,
+                      ),
+                    ),
+                  if (_hasSecondaryOverlay(state))
+                    Positioned(
+                      bottom: 84, left: 60, right: 60,
+                      child: SubtitleOverlay(
+                        entries: state.secondaryEntries!,
+                        activeIndex: state.secondarySubtitleIndex,
+                        fontSize: 15,
+                        compact: true,
                       ),
                     ),
                   if (state.isBuffering)
@@ -570,7 +613,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  onPressed: () => context.pop(),
+                  onPressed: _exitPlayer,
                 ),
                 // 只显示文件名，详细参数放在「详情」弹窗里
                 Expanded(
@@ -806,6 +849,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       color: GlassTheme.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(
+                '点右侧 ⇅ 可把字幕设为「第二字幕」，与主字幕同屏显示（如中英对照）',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary.withOpacity(0.95),
+                    fontSize: 11.5,
+                    height: 1.4),
+              ),
               const SizedBox(height: 8),
 
               // 关闭字幕
@@ -826,6 +877,30 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   Navigator.pop(ctx);
                 },
               ),
+
+              // 关闭第二字幕（设置了才显示）
+              if (st.secondaryTrackId != null ||
+                  st.secondarySubtitle != null)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.vertical_split_rounded,
+                      size: 20, color: GlassTheme.accentTeal),
+                  title: const Text('关闭第二字幕',
+                      style: TextStyle(
+                          color: GlassTheme.accentTeal, fontSize: 14)),
+                  subtitle: Text(
+                    st.secondarySubtitle?.title ?? '内嵌字幕轨',
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () {
+                    notifier.clearSecondarySubtitle();
+                    Navigator.pop(ctx);
+                  },
+                ),
 
               // 内嵌字幕
               _subSectionHeader('内嵌字幕 (${st.embeddedSubtitles.length})'),
@@ -865,10 +940,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         : Text(extra,
                             style: const TextStyle(
                                 color: GlassTheme.textTertiary, fontSize: 11)),
-                    trailing: isActive
-                        ? const Icon(Icons.check_rounded,
-                            color: GlassTheme.accentPurple, size: 18)
-                        : null,
+                    trailing: _subTrailing(
+                      isPrimary: isActive,
+                      isSecondary: st.secondaryTrackId == t.id,
+                      onSecondary: () {
+                        notifier.setSecondaryEmbedded(t);
+                        Navigator.pop(ctx);
+                      },
+                    ),
                     onTap: () {
                       notifier.selectEmbeddedSubtitle(t);
                       Navigator.pop(ctx);
@@ -894,10 +973,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             fontSize: 14),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
-                    trailing: isActive
-                        ? const Icon(Icons.check_rounded,
-                            color: GlassTheme.accentPurple, size: 18)
-                        : null,
+                    trailing: _subTrailing(
+                      isPrimary: isActive,
+                      isSecondary: st.secondarySubtitle?.path == s.path,
+                      onSecondary: () {
+                        notifier.setSecondaryExternal(s);
+                        Navigator.pop(ctx);
+                      },
+                    ),
                     onTap: () {
                       notifier.loadExternalSubtitle(s.path,
                           language: s.language, title: s.title);
@@ -925,6 +1008,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           ),
         ),
       ),
+    );
+  }
+
+  /// 字幕行的尾部操作：设为主字幕状态 + 设为第二字幕按钮
+  Widget? _subTrailing({
+    required bool isPrimary,
+    required bool isSecondary,
+    required VoidCallback onSecondary,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: '设为第二字幕（可与主字幕同屏）',
+          visualDensity: VisualDensity.compact,
+          icon: Icon(
+            Icons.vertical_split_rounded,
+            size: 20,
+            color: isSecondary
+                ? GlassTheme.accentTeal
+                : GlassTheme.textTertiary,
+          ),
+          onPressed: onSecondary,
+        ),
+        if (isPrimary)
+          const Icon(Icons.check_rounded,
+              color: GlassTheme.accentPurple, size: 18),
+      ],
     );
   }
 

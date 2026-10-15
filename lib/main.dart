@@ -45,12 +45,11 @@ void main() async {
     debugPrint('[PerchPlay] Settings load failed: $e');
   }
 
-  // 默认竖屏（iPad Pro 除外，播放器页会动态切横屏）
+  // 首页/列表/设置固定竖屏；只有播放器全屏时临时切横屏
+  // （之前放开 4 个方向，导致横屏看视频退出后停在横屏）
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
   ]);
 
   // 浸入式状态栏（浅色主题：深色图标）

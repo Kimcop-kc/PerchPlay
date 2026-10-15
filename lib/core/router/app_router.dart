@@ -12,6 +12,33 @@ import '../../pages/nas/nas_browser_page.dart';
 class AppRouter {
   AppRouter._();
 
+  /// 标签页切换过渡：淡入 + 极小上浮，避免硬切显得生硬
+  static CustomTransitionPage<void> _tabPage(
+    GoRouterState state,
+    Widget child,
+  ) {
+    return CustomTransitionPage<void>(
+      key: state.pageKey,
+      child: child,
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      transitionsBuilder: (context, animation, secondary, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.015),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   static final GoRouter router = GoRouter(
     initialLocation: '/home',
     navigatorKey: _rootNavigatorKey,
@@ -23,51 +50,44 @@ class AppRouter {
           GoRoute(
             path: '/home',
             name: 'library',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: LibraryView(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const LibraryView()),
           ),
           GoRoute(
             path: '/folders',
             name: 'folders',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: FolderBrowserPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const FolderBrowserPage()),
           ),
           GoRoute(
             path: '/playlist',
             name: 'playlist',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: PlaylistPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const PlaylistPage()),
           ),
           GoRoute(
             path: '/history',
             name: 'history',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: HistoryPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const HistoryPage()),
           ),
           GoRoute(
             path: '/cast',
             name: 'cast',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: CastPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const CastPage()),
           ),
           GoRoute(
             path: '/nas',
             name: 'nas',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: NasBrowserPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const NasBrowserPage()),
           ),
           GoRoute(
             path: '/settings',
             name: 'settings',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: SettingsPage(),
-            ),
+            pageBuilder: (context, state) =>
+                _tabPage(state, const SettingsPage()),
           ),
         ],
       ),

@@ -44,6 +44,14 @@ class PlayerState {
   final double? videoFps;
   final List<AudioTrack> audioTracks;
 
+  /// 第二字幕：内嵌轨道 id（交给 mpv 的 secondary-sid 渲染）
+  final String? secondaryTrackId;
+
+  /// 第二字幕：外挂文件（由自绘浮层渲染，可同时与主字幕显示）
+  final SubtitleModel? secondarySubtitle;
+  final List<SubtitleEntry>? secondaryEntries;
+  final int secondarySubtitleIndex;
+
   const PlayerState({
     required this.player,
     this.videoController,
@@ -69,6 +77,10 @@ class PlayerState {
     this.videoCodec,
     this.videoFps,
     this.audioTracks = const [],
+    this.secondaryTrackId,
+    this.secondarySubtitle,
+    this.secondaryEntries,
+    this.secondarySubtitleIndex = 0,
   });
 
   PlayerState copyWith({
@@ -96,9 +108,15 @@ class PlayerState {
     String? videoCodec,
     double? videoFps,
     List<AudioTrack>? audioTracks,
+    String? secondaryTrackId,
+    SubtitleModel? secondarySubtitle,
+    List<SubtitleEntry>? secondaryEntries,
+    int? secondarySubtitleIndex,
     bool clearActiveSubtitle = false,
     bool clearTrackId = false,
     bool clearMediaInfo = false,
+    bool clearSecondaryTrackId = false,
+    bool clearSecondarySubtitle = false,
   }) {
     return PlayerState(
       player: player ?? this.player,
@@ -126,6 +144,17 @@ class PlayerState {
       videoCodec: clearMediaInfo ? null : (videoCodec ?? this.videoCodec),
       videoFps: clearMediaInfo ? null : (videoFps ?? this.videoFps),
       audioTracks: clearMediaInfo ? const [] : (audioTracks ?? this.audioTracks),
+      secondaryTrackId: clearSecondaryTrackId
+          ? null
+          : (secondaryTrackId ?? this.secondaryTrackId),
+      secondarySubtitle: clearSecondarySubtitle
+          ? null
+          : (secondarySubtitle ?? this.secondarySubtitle),
+      secondaryEntries:
+          clearSecondarySubtitle ? null : (secondaryEntries ?? this.secondaryEntries),
+      secondarySubtitleIndex: clearSecondarySubtitle
+          ? 0
+          : (secondarySubtitleIndex ?? this.secondarySubtitleIndex),
     );
   }
 }
@@ -281,6 +310,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       clearActiveSubtitle: true,
       clearTrackId: true,
       clearMediaInfo: true,
+      clearSecondaryTrackId: true,
+      clearSecondarySubtitle: true,
       subtitleEntries: null,
       embeddedSubtitles: const [],
       videoWidth: 0,
@@ -468,6 +499,70 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> loadSubtitle(SubtitleModel subtitle) =>
       loadExternalSubtitle(subtitle.path, language: subtitle.language);
 
+  // ═══════════════ 第二字幕（中英同时显示） ═══════════════
+
+  /// 把某个内嵌轨设为第二字幕（交给 mpv 的 secondary-sid 渲染）
+  Future<void> setSecondaryEmbedded(SubtitleTrack track) async {
+    final platform = state.player.platform;
+    try {
+      if (platform is NativePlayer) {
+        await platform.setProperty('secondary-sid', track.id);
+        await platform.setProperty('secondary-sub-visibility', 'yes');
+      }
+    } catch (e) {
+      debugPrint('[Subtitle] 设置内嵌第二字幕失败: $e');
+    }
+    state = state.copyWith(
+      secondaryTrackId: track.id,
+      clearSecondarySubtitle: true,
+    );
+    await _applySubtitleLayout();
+  }
+
+  /// 把外挂字幕文件设为第二字幕（自绘浮层渲染，可与主字幕并存）
+  Future<void> setSecondaryExternal(SubtitleModel subtitle) async {
+    final platform = state.player.platform;
+    try {
+      if (platform is NativePlayer) {
+        await platform.setProperty('secondary-sub-visibility', 'no');
+      }
+    } catch (_) {}
+    final entries = await _parseSubtitle(subtitle);
+    state = state.copyWith(
+      secondarySubtitle: subtitle,
+      secondaryEntries: entries,
+      secondarySubtitleIndex: 0,
+      clearSecondaryTrackId: true,
+    );
+    await _applySubtitleLayout();
+  }
+
+  /// 关闭第二字幕
+  Future<void> clearSecondarySubtitle() async {
+    final platform = state.player.platform;
+    try {
+      if (platform is NativePlayer) {
+        await platform.setProperty('secondary-sub-visibility', 'no');
+        await platform.setProperty('secondary-sid', 'no');
+      }
+    } catch (_) {}
+    state = state.copyWith(
+      clearSecondaryTrackId: true,
+      clearSecondarySubtitle: true,
+    );
+    await _applySubtitleLayout();
+  }
+
+  /// 主字幕位置：外挂第二字幕用自绘浮层时，把 mpv 主字幕抬高避免重叠
+  Future<void> _applySubtitleLayout() async {
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+    final hasOverlay = state.secondaryEntries?.isNotEmpty == true;
+    try {
+      await platform.setProperty('sub-pos', hasOverlay ? '88' : '100');
+    } catch (_) {}
+  }
+
   Future<List<SubtitleEntry>?> _parseSubtitle(SubtitleModel subtitle) async {
     final lower = subtitle.path.toLowerCase();
     try {
@@ -485,18 +580,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   void _updateActiveSubtitle() {
-    final entries = state.subtitleEntries;
-    if (entries == null || entries.isEmpty) return;
-
-    for (int i = 0; i < entries.length; i++) {
-      if (state.position >= entries[i].start &&
-          state.position <= entries[i].end) {
-        if (i != state.activeSubtitleIndex) {
-          state = state.copyWith(activeSubtitleIndex: i);
-        }
-        return;
-      }
+    final pos = state.position;
+    final p = _entryIndexAt(state.subtitleEntries, pos);
+    if (p != null && p != state.activeSubtitleIndex) {
+      state = state.copyWith(activeSubtitleIndex: p);
     }
+    final s = _entryIndexAt(state.secondaryEntries, pos);
+    if (s != null && s != state.secondarySubtitleIndex) {
+      state = state.copyWith(secondarySubtitleIndex: s);
+    }
+  }
+
+  /// 命中的字幕条目下标；不在任何区间时返回 null（保持上一条显示）
+  int? _entryIndexAt(List<SubtitleEntry>? entries, Duration pos) {
+    if (entries == null || entries.isEmpty) return null;
+    for (int i = 0; i < entries.length; i++) {
+      if (pos >= entries[i].start && pos <= entries[i].end) return i;
+    }
+    return null;
   }
 
   @override

@@ -12,11 +12,17 @@ class GlassNavBar extends StatefulWidget {
   final String currentRoute;
   final double height;
 
+  /// 是否让内容透过玻璃显示（首页用 true）。
+  /// 其他页面用 false：加厚磨砂，避免内容从导航栏下方透出来，
+  /// 看起来像「导航栏下面还有一层界面」。
+  final bool translucent;
+
   const GlassNavBar({
     super.key,
     required this.items,
     required this.currentRoute,
     this.height = 64,
+    this.translucent = false,
   });
 
   @override
@@ -99,7 +105,7 @@ class _GlassNavBarState extends State<GlassNavBar>
             fit: StackFit.expand,
             children: [
               // ── 轨道：毛玻璃底板 ──
-              _GlassTrack(),
+              _GlassTrack(translucent: widget.translucent),
 
               // ── 浮起透镜气泡 ──
               // Positioned 必须是 Stack 直接子级才能生效；
@@ -111,13 +117,19 @@ class _GlassNavBarState extends State<GlassNavBar>
                   child: AnimatedBuilder(
                     animation: _slideCtrl,
                     builder: (context, _) {
-                      final t = _springEval(_slideCtrl.value);
+                      final raw = _slideCtrl.value;
+                      final t = _springEval(raw);
                       final cx = startCx + (endCx - startCx) * t;
+                      // 行进中轻微收缩再回弹，液态感更顺（正弦一次起落，无抖动）
+                      final breathe = 1 - 0.045 * math.sin(math.pi * raw);
                       return Transform.translate(
                         offset: Offset(cx - _bubbleW / 2, 0),
-                        child: _LensBubble(
-                          width: _bubbleW,
-                          height: _bubbleH,
+                        child: Transform.scale(
+                          scale: breathe,
+                          child: _LensBubble(
+                            width: _bubbleW,
+                            height: _bubbleH,
+                          ),
                         ),
                       );
                     },
@@ -149,44 +161,53 @@ class _GlassNavBarState extends State<GlassNavBar>
     );
   }
 
-  /// 弹簧曲线（阻尼回弹）
+  /// 平滑减速曲线（临界阻尼，无回弹过冲）
+  ///
+  /// 之前的弹簧会明显过冲，滑动时看着「跳」；这里用单调收敛的
+  /// 临界阻尼响应，并在末端归一化，保证精确停在目标位置。
   double _springEval(double t) {
-    const beta = 18.0 / 2; // damping/2mass
-    const omega = 14.0; // sqrt(stiffness/mass - beta^2)
-    final envelope = math.exp(-beta * t);
-    final v = 1 -
-        envelope * (math.cos(omega * t) + beta / omega * math.sin(omega * t));
-    return v.clamp(0.0, 1.0);
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    const k = 9.0;
+    double raw(double x) => 1 - (1 + k * x) * math.exp(-k * x);
+    return (raw(t) / raw(1)).clamp(0.0, 1.0);
   }
 }
 
 // ═══════════════ 毛玻璃轨道 ═══════════════
 //
-// 真正的 BackdropFilter 毛玻璃模糊 + 轻薄白色叠加。
-// 白色叠加保持低透明度，让背后滚动的内容透过模糊显现出来。
+// BackdropFilter 毛玻璃模糊 + 白色叠加。
+// translucent=true（首页）：白色叠加轻薄，背后滚动的内容透过模糊可见；
+// translucent=false（其他页）：叠加加厚，背后内容不再显形，
+// 否则会像「导航栏下面还有一层界面」。
 
 class _GlassTrack extends StatelessWidget {
+  final bool translucent;
+  const _GlassTrack({required this.translucent});
+
   @override
   Widget build(BuildContext context) {
+    final topWhite = translucent ? 0.55 : 0.90;
+    final bottomWhite = translucent ? 0.35 : 0.80;
+    final blur = translucent ? 22.0 : 32.0;
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
-              // 轻薄白色叠加 → 毛玻璃（不盖死背后的内容）
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withOpacity(0.40),
-                  Colors.white.withOpacity(0.18),
+                  Colors.white.withOpacity(topWhite),
+                  Colors.white.withOpacity(bottomWhite),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withOpacity(0.45),
+                color: Colors.white.withOpacity(0.60),
                 width: 0.7,
               ),
               boxShadow: [
@@ -358,7 +379,7 @@ class _NavLabelState extends State<_NavLabel>
     super.initState();
     _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: const Duration(milliseconds: 460),
       value: widget.isActive ? 1.0 : 0.0,
     );
   }
@@ -389,9 +410,10 @@ class _NavLabelState extends State<_NavLabel>
       child: AnimatedBuilder(
         animation: _animCtrl,
         builder: (context, child) {
-          final t = Curves.easeOutBack.transform(_animCtrl.value);
+          // 平滑减速（无过冲），与气泡滑动同一条曲线语言
+          final t = Curves.easeOutCubic.transform(_animCtrl.value);
           return Transform.scale(
-            scale: 0.88 + 0.12 * t,
+            scale: 0.90 + 0.10 * t,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
