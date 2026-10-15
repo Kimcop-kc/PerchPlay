@@ -1,7 +1,7 @@
 class AppConstants {
   AppConstants._();
 
-  static const String appName = 'VidFlow';
+  static const String appName = 'PerchPlay';
   static const String appVersion = '1.0.15';
 
   // 支持的视频格式

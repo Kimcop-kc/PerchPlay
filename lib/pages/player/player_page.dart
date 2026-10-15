@@ -531,7 +531,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   Widget _buildGlassTopBar(BuildContext context, PlayerState state,
       {bool isLarge = false}) {
-    final detail = _videoDetailLine(state);
     return Positioned(
       top: 0, left: 0, right: 0,
       child: ClipRect(
@@ -555,36 +554,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                   onPressed: () => context.pop(),
                 ),
-                // 标题 + 详情（分辨率 / 大小 / 文件日期 / 所在文件夹）
+                // 只显示文件名，详细参数放在「详情」弹窗里
                 Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        state.currentVideo?.name ?? widget.videoTitle,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: isLarge ? 18 : 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (detail.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            detail,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: isLarge ? 12 : 11,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
+                  child: Text(
+                    state.currentVideo?.name ?? widget.videoTitle,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isLarge ? 18 : 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 IconButton(
@@ -623,26 +603,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   // ═══════════════ 视频详情 ═══════════════
 
-  /// 顶栏详情行：1920×1080 · 1.2 GB · 2024-05-01 · Movies
-  String _videoDetailLine(PlayerState state) {
-    final v = state.currentVideo;
-    final parts = <String>[];
-    if (state.videoWidth > 0 && state.videoHeight > 0) {
-      parts.add('${state.videoWidth}×${state.videoHeight}');
-    }
-    if (v != null && v.size > 0) parts.add(_fmtSize(v.size));
-    if (v != null) {
-      parts.add('${v.dateModified.year}-${_two(v.dateModified.month)}'
-          '-${_two(v.dateModified.day)}');
-    }
-    if (v != null && v.folderPath.isNotEmpty) {
-      final segs = v.folderPath.split('/').where((s) => s.isNotEmpty);
-      if (segs.isNotEmpty) parts.add(segs.last);
-    }
-    if (state.duration > Duration.zero) parts.add(_fmtDuration(state.duration));
-    return parts.join(' · ');
-  }
-
   static String _two(int n) => n.toString().padLeft(2, '0');
 
   String _fmtSize(int bytes) {
@@ -660,6 +620,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       '${d.year}-${_two(d.month)}-${_two(d.day)} '
       '${_two(d.hour)}:${_two(d.minute)}';
 
+  /// 音轨描述：编码 + 声道 + 采样率（多轨用 / 分隔）
+  String _audioTrackDesc(PlayerState state) {
+    final tracks = state.audioTracks;
+    if (tracks.isEmpty) return '未知';
+    return tracks.map((a) {
+      final parts = <String>[
+        if (a.codec?.isNotEmpty == true) a.codec!,
+        if (a.channelscount != null && a.channelscount! > 0)
+          '${a.channelscount}声道',
+        if (a.samplerate != null && a.samplerate! > 0)
+          '${(a.samplerate! / 1000).toStringAsFixed(1)}kHz',
+        if (a.language?.isNotEmpty == true) a.language!,
+      ];
+      return parts.isEmpty ? '音轨' : parts.join(' ');
+    }).join(' / ');
+  }
+
   void _showVideoInfoSheet(PlayerState state) {
     final v = state.currentVideo;
     final rows = <List<String>>[
@@ -671,6 +648,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             : '未知'
       ],
       [
+        '视频编码',
+        (state.videoCodec?.isNotEmpty == true) ? state.videoCodec! : '未知'
+      ],
+      [
+        '帧率',
+        (state.videoFps != null && state.videoFps! > 0)
+            ? '${state.videoFps!.toStringAsFixed(2)} fps'
+            : '未知'
+      ],
+      [
+        '音频',
+        _audioTrackDesc(state),
+      ],
+      [
         '时长',
         state.duration > Duration.zero ? _fmtDuration(state.duration) : '未知'
       ],
@@ -679,14 +670,26 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       ['所在文件夹', (v != null && v.folderPath.isNotEmpty) ? v.folderPath : '未知'],
       ['完整路径', v?.path ?? widget.videoPath],
       [
-        '解码方式',
-        AppSettingsService.instance.hardwareDecoding ? '硬件解码' : '软件解码'
-      ],
-      [
         '内嵌字幕',
         state.embeddedSubtitles.isEmpty
             ? '无'
-            : '${state.embeddedSubtitles.length} 条'
+            : state.embeddedSubtitles.map((t) {
+                final label = (t.title?.isNotEmpty == true)
+                    ? t.title!
+                    : ((t.language?.isNotEmpty == true) ? t.language! : t.id);
+                return label;
+              }).join(' / ')
+      ],
+      [
+        '解码方式',
+        AppSettingsService.instance.hardwareDecoding ? '硬件解码' : '软件解码'
+      ],
+      ['播放次数', v != null ? '${v.playCount} 次' : '0 次'],
+      [
+        '上次播放到',
+        (v != null && v.lastPosition > 0)
+            ? _fmtDuration(Duration(milliseconds: v.lastPosition.toInt()))
+            : '从头开始'
       ],
     ];
     showModalBottomSheet<void>(

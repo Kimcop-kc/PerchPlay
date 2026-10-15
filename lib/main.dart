@@ -28,21 +28,21 @@ void main() async {
   try {
     MediaKit.ensureInitialized();
   } catch (e) {
-    debugPrint('[VidFlow] MediaKit init failed: $e');
+    debugPrint('[PerchPlay] MediaKit init failed: $e');
   }
 
   // 初始化设备信息
   try {
     await DeviceInfoService.instance.init();
   } catch (e) {
-    debugPrint('[VidFlow] DeviceInfo init failed: $e');
+    debugPrint('[PerchPlay] DeviceInfo init failed: $e');
   }
 
   // 预加载持久化设置，使播放器读取到正确默认值
   try {
     await AppSettingsService.instance.ensureLoaded();
   } catch (e) {
-    debugPrint('[VidFlow] Settings load failed: $e');
+    debugPrint('[PerchPlay] Settings load failed: $e');
   }
 
   // 默认竖屏（iPad Pro 除外，播放器页会动态切横屏）
@@ -79,7 +79,7 @@ class VideoPlayerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     _appMounted = true;
     return MaterialApp.router(
-      title: 'VidFlow',
+      title: 'PerchPlay',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.light,
@@ -193,7 +193,7 @@ class _CrashScreen extends StatelessWidget {
                 const SizedBox(height: 40),
                 const Icon(Icons.error_outline, color: Color(0xFFFF4D6D), size: 48),
                 const SizedBox(height: 16),
-                const Text('VidFlow 启动失败',
+                const Text('PerchPlay 启动失败',
                     style: TextStyle(color: Color(0xFF1C1C1E), fontSize: 22, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 const Text('请重启应用，如仍失败请联系开发者',

@@ -60,7 +60,7 @@ class NasClientService {
       final uri = Uri.parse('$baseUrl${c.remotePath}');
       final req = await _httpClient!.openUrl('PROPFIND', uri);
       req.headers.set('Depth', '1');
-      req.headers.set('User-Agent', 'VidFlow/1.0 WebDAV');
+      req.headers.set('User-Agent', 'PerchPlay/1.0 WebDAV');
       if (c.username.isNotEmpty) {
         final auth = base64Encode(utf8.encode('${c.username}:${c.password}'));
         req.headers.set('Authorization', 'Basic $auth');
@@ -112,7 +112,7 @@ class NasClientService {
       // 尝试用 HTTP 探测（部分 NAS 的 SMB share 也暴露 HTTP）
       final uri = Uri.parse('http://${_connection!.host}:5000/');
       final req = await _httpClient!.getUrl(uri);
-      req.headers.set('User-Agent', 'VidFlow/1.0');
+      req.headers.set('User-Agent', 'PerchPlay/1.0');
       final res = await req.close();
       _connected = res.statusCode == 200 || res.statusCode == 401;
       return _connected;
@@ -152,7 +152,7 @@ class NasClientService {
 
     final req = await _httpClient!.openUrl('PROPFIND', uri);
     req.headers.set('Depth', '1');
-    req.headers.set('User-Agent', 'VidFlow/1.0 WebDAV');
+    req.headers.set('User-Agent', 'PerchPlay/1.0 WebDAV');
     if (c.username.isNotEmpty) {
       final auth = base64Encode(utf8.encode('${c.username}:${c.password}'));
       req.headers.set('Authorization', 'Basic $auth');

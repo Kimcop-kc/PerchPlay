@@ -39,6 +39,11 @@ class PlayerState {
   /// 当前选中的内嵌轨道 id
   final String? activeTrackId;
 
+  /// 视频编码 / 帧率 / 音频轨（详情展示）
+  final String? videoCodec;
+  final double? videoFps;
+  final List<AudioTrack> audioTracks;
+
   const PlayerState({
     required this.player,
     this.videoController,
@@ -61,6 +66,9 @@ class PlayerState {
     this.videoHeight = 0,
     this.embeddedSubtitles = const [],
     this.activeTrackId,
+    this.videoCodec,
+    this.videoFps,
+    this.audioTracks = const [],
   });
 
   PlayerState copyWith({
@@ -85,8 +93,12 @@ class PlayerState {
     int? videoHeight,
     List<SubtitleTrack>? embeddedSubtitles,
     String? activeTrackId,
+    String? videoCodec,
+    double? videoFps,
+    List<AudioTrack>? audioTracks,
     bool clearActiveSubtitle = false,
     bool clearTrackId = false,
+    bool clearMediaInfo = false,
   }) {
     return PlayerState(
       player: player ?? this.player,
@@ -111,6 +123,9 @@ class PlayerState {
       videoHeight: videoHeight ?? this.videoHeight,
       embeddedSubtitles: embeddedSubtitles ?? this.embeddedSubtitles,
       activeTrackId: clearTrackId ? null : (activeTrackId ?? this.activeTrackId),
+      videoCodec: clearMediaInfo ? null : (videoCodec ?? this.videoCodec),
+      videoFps: clearMediaInfo ? null : (videoFps ?? this.videoFps),
+      audioTracks: clearMediaInfo ? const [] : (audioTracks ?? this.audioTracks),
     );
   }
 }
@@ -190,12 +205,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (h != null && h > 0) state = state.copyWith(videoHeight: h);
     });
 
-    // 字幕/音轨等轨道信息（内嵌字幕识别）
+    // 字幕/音轨等轨道信息（内嵌字幕识别 + 编码/帧率）
     state.player.stream.tracks.listen((tracks) {
-      final subs = tracks.subtitle
-          .where((t) => t.id != 'auto' && t.id != 'no')
-          .toList();
-      state = state.copyWith(embeddedSubtitles: subs);
+      bool real(String id) => id != 'auto' && id != 'no';
+      final subs = tracks.subtitle.where((t) => real(t.id)).toList();
+      final vids = tracks.video.where((t) => real(t.id)).toList();
+      final auds = tracks.audio.where((t) => real(t.id)).toList();
+      state = state.copyWith(
+        embeddedSubtitles: subs,
+        audioTracks: auds,
+        videoCodec: vids.isNotEmpty ? vids.first.codec : null,
+        videoFps: vids.isNotEmpty ? vids.first.fps : null,
+      );
     });
 
     state.player.stream.completed.listen((_) {
@@ -259,6 +280,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 换片时清掉上一部的字幕状态（内嵌轨道会由 tracks 流重新推送）
       clearActiveSubtitle: true,
       clearTrackId: true,
+      clearMediaInfo: true,
       subtitleEntries: null,
       embeddedSubtitles: const [],
       videoWidth: 0,

@@ -222,7 +222,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!compact) ...[
-              const Text('VidFlow',
+              const Text('PerchPlay',
                   style: TextStyle(
                     color: GlassTheme.textPrimary,
                     fontSize: 36,
