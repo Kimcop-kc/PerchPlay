@@ -217,8 +217,10 @@ class _TabletGlassScaffold extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // 导航项（前 6 个）
-                    ..._NavConfig.all.take(6).map(
+                    // 导航项（除「设置」外的主项，设置固定放底部）
+                    ..._NavConfig.all
+                        .where((c) => c.route != _NavConfig.settings.route)
+                        .map(
                           (c) => _buildTabletNavItem(
                             context,
                             config: c,
@@ -306,7 +308,7 @@ class _NavConfig {
     _NavItemConfig(icon: Icons.folder_rounded, label: '文件夹', route: '/folders'),
     _NavItemConfig(icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
     _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
-    _NavItemConfig(icon: Icons.cast_rounded, label: '投屏', route: '/cast'),
+    // 投屏不再占底栏：改为在视频播放页内直接搜索/连接设备
     _NavItemConfig(icon: Icons.dns_rounded, label: 'NAS', route: '/nas'),
     settings,
   ];

@@ -1455,10 +1455,25 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
               title: Text('已连接：${_castState.activeDevice!.name}',
                   style: const TextStyle(
                       color: GlassTheme.textPrimary, fontSize: 14)),
-              trailing: TextButton(
-                onPressed: notifier.disconnect,
-                child: const Text('断开',
-                    style: TextStyle(color: GlassTheme.accentPink)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 投屏遥控面板（连上后可控制电视端播放/音量）
+                  TextButton(
+                    onPressed: () {
+                      final router = GoRouter.of(context);
+                      Navigator.pop(context);
+                      router.pushNamed('cast');
+                    },
+                    child: const Text('控制',
+                        style: TextStyle(color: GlassTheme.accentPurple)),
+                  ),
+                  TextButton(
+                    onPressed: notifier.disconnect,
+                    child: const Text('断开',
+                        style: TextStyle(color: GlassTheme.accentPink)),
+                  ),
+                ],
               ),
             ),
           if (_castState.devices.isEmpty)
