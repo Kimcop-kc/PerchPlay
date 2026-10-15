@@ -179,7 +179,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.playlist_add_rounded, size: 48, color: GlassTheme.textTertiary),
+            Icon(Icons.playlist_add_rounded,
+                size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('尚未创建播放列表',
                 style: TextStyle(

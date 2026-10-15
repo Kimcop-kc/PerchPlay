@@ -39,6 +39,9 @@ class GlassPanel extends StatelessWidget {
       borderRadius: BorderRadius.circular(radius),
       child: SafeBackdropFilter(
         blurSigma: 30,
+        // 只有内容子项参与定尺寸，玻璃高光层用 Positioned.fill 覆盖。
+        // （若把无 child 的装饰 Container 直接放进 Stack，它会展开填满
+        //  可用空间，把 Stack 撑成全屏并用 topStart 对齐内容 → 内容跑到顶部）
         child: Stack(
           children: [
             Container(
@@ -74,59 +77,59 @@ class GlassPanel extends StatelessWidget {
               child: child,
             ),
             // 液态玻璃高光叠加
-            IgnorePointer(
-              child: Container(
-                width: width,
-                height: height,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                  gradient: isColoredTint
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            tintColor.withOpacity(0.20),
-                            Colors.white.withOpacity(0.02),
-                          ],
-                        )
-                      : GlassTheme.liquidSheen,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    gradient: isColoredTint
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              tintColor.withOpacity(0.20),
+                              Colors.white.withOpacity(0.02),
+                            ],
+                          )
+                        : GlassTheme.liquidSheen,
+                  ),
                 ),
               ),
             ),
             // 顶部高光条（液态玻璃强烈折射）
-            IgnorePointer(
-              child: Container(
-                width: width,
-                height: height,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.center,
-                    colors: [
-                      Colors.white.withOpacity(0.55),
-                      Colors.white.withOpacity(0.0),
-                    ],
-                    stops: const [0.0, 0.35],
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.center,
+                      colors: [
+                        Colors.white.withOpacity(0.55),
+                        Colors.white.withOpacity(0.0),
+                      ],
+                      stops: const [0.0, 0.35],
+                    ),
                   ),
                 ),
               ),
             ),
             // 底部反光（玻璃厚度感）
-            IgnorePointer(
-              child: Container(
-                width: width,
-                height: height,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.center,
-                    colors: [
-                      Colors.white.withOpacity(0.18),
-                      Colors.white.withOpacity(0.0),
-                    ],
-                    stops: const [0.0, 0.3],
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.center,
+                      colors: [
+                        Colors.white.withOpacity(0.18),
+                        Colors.white.withOpacity(0.0),
+                      ],
+                      stops: const [0.0, 0.3],
+                    ),
                   ),
                 ),
               ),

@@ -42,7 +42,8 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
             final thumbPath = await thumbnailService.generate(video.path);
             if (thumbPath != null) {
               final updated = video.copyWith(thumbnailPath: thumbPath);
-              await _db.insertVideos([updated]);
+              // upsert 保留已有播放进度/收藏
+              await _db.upsertScannedVideos([updated]);
             }
           } catch (e) {
             debugPrint('[Thumbnail] 生成失败 ${video.name}: $e');
