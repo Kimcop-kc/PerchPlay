@@ -37,6 +37,9 @@ dependencies:
   # 权限
   permission_handler: 11.3.1
 
+  # 系统亮度控制（media_kit_video 已依赖 ^0.2.2）
+  screen_brightness: ^0.2.2
+
   # 视频缩略图
   flutter_video_thumbnail_plus: 1.0.6
 

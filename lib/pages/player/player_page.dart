@@ -188,12 +188,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               onTap: _toggleControls,
               onDoubleTap: () =>
                   ref.read(playerProvider.notifier).togglePlayPause(),
-              onBrightnessChange: (delta) => ref
-                  .read(playerProvider.notifier)
-                  .setBrightness(state.brightness + delta),
-              onVolumeChange: (delta) => ref
-                  .read(playerProvider.notifier)
-                  .setVolume(state.volume + delta),
+              onBrightnessChange: (value) =>
+                  ref.read(playerProvider.notifier).setBrightness(value),
+              onVolumeChange: (value) =>
+                  ref.read(playerProvider.notifier).setVolume(value),
               onSeek: (seconds) =>
                   ref.read(playerProvider.notifier).seekRelative(seconds),
             ),
@@ -360,10 +358,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 max: state.duration.inMilliseconds.toDouble(),
                 activeColor: GlassTheme.accentPurple,
                 height: 5,
-                onChanged: (v) =>
-                    ref.read(playerProvider.notifier).seekTo(
-                          Duration(milliseconds: v.round()),
-                        ),
+                // 拖动结束才真正 seek，拖动中仅更新视觉（由 GlassSlider 内部跟手）
+                onChangeEnd: (v) => ref
+                    .read(playerProvider.notifier)
+                    .seekTo(Duration(milliseconds: v.round())),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -622,7 +620,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       max: state.duration.inMilliseconds.toDouble(),
                       activeColor: GlassTheme.accentPurple,
                       height: 4,
-                      onChanged: (v) => ref
+                      onChangeEnd: (v) => ref
                           .read(playerProvider.notifier)
                           .seekTo(Duration(milliseconds: v.round())),
                     ),
