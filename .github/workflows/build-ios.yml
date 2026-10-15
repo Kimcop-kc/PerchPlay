@@ -42,8 +42,14 @@ jobs:
       - name: 设置最低 iOS 18 部署目标
         run: |
           # 把 Xcode 工程的 IPHONEOS_DEPLOYMENT_TARGET 统一设为 18.0
-          grep -rl 'IPHONEOS_DEPLOYMENT_TARGET' ios/Runner.xcodeproj/project.pbxproj 2>/dev/null | xargs -r sed -i 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g'
-          grep 'IPHONEOS_DEPLOYMENT_TARGET' ios/Runner.xcodeproj/project.pbxproj | head -5 || echo "ℹ️ 未找到部署目标配置"
+          # macOS 的 sed 与 Linux 不同，改用 perl 保证跨平台一致
+          PBX="ios/Runner.xcodeproj/project.pbxproj"
+          if [ -f "$PBX" ]; then
+            perl -pi -e 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' "$PBX"
+            grep 'IPHONEOS_DEPLOYMENT_TARGET' "$PBX" | head -5
+          else
+            echo "⚠️ 未找到 project.pbxproj"
+          fi
           echo "✅ 部署目标已设为 iOS 18"
 
       - name: 覆盖自定义 iOS 文件
