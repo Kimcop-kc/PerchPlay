@@ -15,6 +15,7 @@ class AppSettingsService {
   static const _kHardwareDecoding = 'settings.hardwareDecoding';
   static const _kAllFilesPrompted = 'settings.allFilesPrompted';
   static const _kGlassBlur = 'settings.glassBlur';
+  static const _kGlassBlurV2 = 'settings.glassBlurV2';
 
   double _defaultSpeed = 1.0;
   int _skipSeconds = 10;
@@ -53,7 +54,14 @@ class AppSettingsService {
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
       _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
       _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
-      _glassBlur = prefs.getBool(_kGlassBlur) ?? true;
+      // 用 v2 键：早期版本 Android 默认关闭时可能写入了 false，
+      // 那些残留值会把新默认值（开启）盖掉，看起来像"开关没用/默认关闭"
+      if (prefs.containsKey(_kGlassBlurV2)) {
+        _glassBlur = prefs.getBool(_kGlassBlurV2) ?? true;
+      } else {
+        _glassBlur = true;
+        await prefs.remove(_kGlassBlur); // 清掉旧键，避免继续误导
+      }
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -112,7 +120,7 @@ class AppSettingsService {
     _glassBlur = value;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kGlassBlur, value);
+      await prefs.setBool(_kGlassBlurV2, value);
     } catch (_) {}
   }
 }

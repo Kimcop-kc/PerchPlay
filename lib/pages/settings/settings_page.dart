@@ -212,8 +212,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),          const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              '导航栏等玻璃层的实时模糊（液态玻璃观感来源）。'
-              '低端机或机器发烫时可关闭以省电，关闭后仍保留半透明玻璃外观。',
+              '开启：导航栏实时模糊背后的内容（首页滚动视频卡片时最明显）。'
+              '关闭：变成不透明的磨砂条，省电、防低端机发烫。',
               style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
             ),
           ),

@@ -220,14 +220,16 @@ class _GlassTrack extends ConsumerWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
+                // 关闭态做成明显更实的磨砂板（不是"薄一点的玻璃"）：
+                // 否则在纯色背景上开关前后几乎看不出区别，会被当成开关无效
                 colors: [
-                  Colors.white.withOpacity(blur ? 0.55 : 0.72),
-                  Colors.white.withOpacity(blur ? 0.35 : 0.55),
+                  Colors.white.withOpacity(blur ? 0.55 : 0.94),
+                  Colors.white.withOpacity(blur ? 0.35 : 0.86),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withOpacity(0.60),
-                width: 0.7,
+                color: Colors.white.withOpacity(blur ? 0.60 : 0.95),
+                width: blur ? 0.7 : 1.0,
               ),
               boxShadow: [
                 BoxShadow(
