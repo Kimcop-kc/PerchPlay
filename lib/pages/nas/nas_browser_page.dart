@@ -35,6 +35,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           children: [
             if (nasState.errorMessage != null)
               _buildErrorBanner(nasState.errorMessage!),
+            _buildDiscoverySection(nasState),
             Expanded(
               child: isLarge
                   ? _buildTabletLayout(nasState)
@@ -85,8 +86,100 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   Widget _buildMobileLayout(NasState state) {
     if (state.isConnected) return _buildFileBrowser(state);
-    if (state.connections.isEmpty) return _buildEmptyConnections();
+    if (state.connections.isEmpty) {
+      return _buildEmptyConnections();
+    }
     return _buildConnectionList(state);
+  }
+
+  // ═══════════════ 局域网自动发现 ═══════════════
+
+  /// 发现结果横幅：列在同一网段里找到的 NAS / 自建服务
+  Widget _buildDiscoverySection(NasState state) {
+    final candidates = state.candidates;
+    if (!state.isDiscovering && candidates.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      decoration: BoxDecoration(
+        color: GlassTheme.accentTeal.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+        border: Border.all(
+            color: GlassTheme.accentTeal.withOpacity(0.25), width: 0.6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.wifi_find_rounded,
+                  size: 16, color: GlassTheme.accentTeal),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  state.isDiscovering
+                      ? '正在搜索同一局域网内的 NAS… ${(state.discoverProgress * 100).toStringAsFixed(0)}%'
+                      : '发现 ${candidates.length} 个服务',
+                  style: const TextStyle(
+                      color: GlassTheme.textPrimary, fontSize: 13),
+                ),
+              ),
+              if (state.isDiscovering)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: GlassTheme.accentTeal),
+                )
+              else
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.close_rounded,
+                      size: 16, color: GlassTheme.textTertiary),
+                  onPressed: () =>
+                      ref.read(nasProvider.notifier).clearCandidates(),
+                ),
+            ],
+          ),
+          if (candidates.isNotEmpty)
+            ...candidates.take(8).map((c) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    c.isWebDav
+                        ? Icons.cloud_done_rounded
+                        : Icons.dns_rounded,
+                    size: 20,
+                    color: c.isWebDav
+                        ? GlassTheme.accentTeal
+                        : GlassTheme.textSecondary,
+                  ),
+                  title: Text(c.label,
+                      style: const TextStyle(
+                          color: GlassTheme.textPrimary, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    c.address +
+                        (c.isWebDav ? ' · 可直接连接' : ' · 需要账号密码'),
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 11),
+                  ),
+                  trailing: const Icon(Icons.add_circle_outline_rounded,
+                      size: 18, color: GlassTheme.accentTeal),
+                  onTap: () => _showAddConnectionDialog(
+                    context,
+                    presetHost: c.host,
+                    presetPort: c.port,
+                    presetProtocol: c.protocol,
+                  ),
+                )),
+        ],
+      ),
+    );
   }
 
   // ═══════════════ 平板双栏 ═══════════════
@@ -163,13 +256,28 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         if (index == 0 && !AppBreakpoints.isLargeScreen(context)) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10, top: 8),
-            child: GlassButton.outlined(
-              icon: Icons.add_link_rounded,
-              label: '添加 NAS 连接',
-              width: double.infinity,
-              height: 44,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: () => _showAddConnectionDialog(context),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GlassButton.outlined(
+                    icon: Icons.add_link_rounded,
+                    label: '添加连接',
+                    height: 44,
+                    foregroundColor: GlassTheme.accentTeal,
+                    onTap: () => _showAddConnectionDialog(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GlassButton.outlined(
+                    icon: Icons.wifi_find_rounded,
+                    label: '自动发现',
+                    height: 44,
+                    foregroundColor: GlassTheme.accentPurple,
+                    onTap: () => ref.read(nasProvider.notifier).discoverNas(),
+                  ),
+                ),
+              ],
             ),
           );
         }
@@ -414,13 +522,21 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   // ═══════════════ 添加连接对话框 ═══════════════
 
-  void _showAddConnectionDialog(BuildContext context) {
-    final nameCtrl = TextEditingController(text: '我的 NAS');
-    final hostCtrl = TextEditingController();
-    final portCtrl = TextEditingController(text: '445');
+  void _showAddConnectionDialog(
+    BuildContext context, {
+    String? presetHost,
+    int? presetPort,
+    NasProtocol? presetProtocol,
+  }) {
+    final nameCtrl = TextEditingController(
+        text: presetHost != null ? 'NAS ${presetHost.split('.').last}' : '我的 NAS');
+    final hostCtrl = TextEditingController(text: presetHost ?? '');
+    // 默认 WebDAV：SMB/NFS 未实现，别再让用户默认踩坑
+    final portCtrl =
+        TextEditingController(text: presetPort?.toString() ?? '5005');
     final usernameCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
-    var protocol = NasProtocol.smb;
+    var protocol = presetProtocol ?? NasProtocol.webdav;
 
     showDialog(
       context: context,
@@ -634,10 +750,25 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     color: GlassTheme.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            const Text('可先自动搜索同一局域网内的 NAS',
+                style:
+                    TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
             const SizedBox(height: 16),
+            // 自动发现：扫本网段特征端口，识别品牌与 WebDAV 可用性
+            GlassButton.filled(
+              icon: Icons.wifi_find_rounded,
+              label: '自动发现局域网 NAS',
+              width: double.infinity,
+              height: 46,
+              onTap: () => ref.read(nasProvider.notifier).discoverNas(),
+            ),
+            const SizedBox(height: 10),
             GlassButton.outlined(
               icon: Icons.add_link_rounded,
-              label: '添加 SMB / FTP / WebDAV',
+              label: '手动添加（WebDAV / FTP）',
+              width: double.infinity,
+              height: 44,
               foregroundColor: GlassTheme.accentTeal,
               onTap: () => _showAddConnectionDialog(context),
             ),

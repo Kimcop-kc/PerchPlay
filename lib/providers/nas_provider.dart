@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/nas_connection_model.dart';
 import '../services/nas_client_service.dart';
+import '../services/nas_discovery_service.dart';
 
 /// NAS 连接管理状态
 class NasState {
@@ -14,6 +15,11 @@ class NasState {
   final String? errorMessage;
   final bool isConnected;
 
+  /// 局域网自动发现
+  final bool isDiscovering;
+  final List<NasCandidate> candidates;
+  final double discoverProgress;
+
   const NasState({
     this.connections = const [],
     this.activeConnection,
@@ -22,6 +28,9 @@ class NasState {
     this.isLoading = false,
     this.errorMessage,
     this.isConnected = false,
+    this.isDiscovering = false,
+    this.candidates = const [],
+    this.discoverProgress = 0,
   });
 
   NasState copyWith({
@@ -33,6 +42,9 @@ class NasState {
     String? errorMessage,
     bool clearError = false,
     bool? isConnected,
+    bool? isDiscovering,
+    List<NasCandidate>? candidates,
+    double? discoverProgress,
   }) {
     return NasState(
       connections: connections ?? this.connections,
@@ -42,6 +54,9 @@ class NasState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isConnected: isConnected ?? this.isConnected,
+      isDiscovering: isDiscovering ?? this.isDiscovering,
+      candidates: candidates ?? this.candidates,
+      discoverProgress: discoverProgress ?? this.discoverProgress,
     );
   }
 }
@@ -78,6 +93,36 @@ class NasNotifier extends StateNotifier<NasState> {
   }
 
   // ──── 连接管理 ────
+
+  /// 局域网自动发现 NAS（群晖/威联通/TrueNAS/自建…）
+  Future<void> discoverNas() async {
+    if (state.isDiscovering) return;
+    state = state.copyWith(
+        isDiscovering: true, candidates: const [], discoverProgress: 0);
+    try {
+      final list = await NasDiscoveryService.instance.discover(
+        onProgress: (done, total) {
+          if (mounted && total > 0) {
+            state = state.copyWith(discoverProgress: done / total);
+          }
+        },
+      );
+      state = state.copyWith(
+        isDiscovering: false,
+        candidates: list,
+        discoverProgress: 1,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isDiscovering: false,
+        errorMessage: '搜索失败：$e',
+      );
+    }
+  }
+
+  void clearCandidates() {
+    state = state.copyWith(candidates: const []);
+  }
 
   Future<bool> addConnection(NasConnection config) async {
     final connections = List<NasConnection>.from(state.connections);

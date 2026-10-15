@@ -22,13 +22,46 @@ class HomePage extends StatelessWidget {
   final Widget child;
   const HomePage({super.key, required this.child});
 
+  /// 标签页切换：新旧页面真正交叉淡化（旧页淡出与新页淡入同时进行），
+  /// 曲线/时长完全一致，衔接不突兀。导航栏不在切换范围内，保持静止。
+  static const _switchDuration = Duration(milliseconds: 280);
+  static const _switchCurve = Curves.easeInOutCubic;
+
   @override
   Widget build(BuildContext context) {
     // 从路由取当前路径，驱动玻璃导航栏的选中态
     final location = GoRouterState.of(context).uri.path;
     return AdaptiveScaffold(
       currentRoute: location,
-      child: child,
+      child: AnimatedSwitcher(
+        duration: _switchDuration,
+        switchInCurve: _switchCurve,
+        switchOutCurve: _switchCurve,
+        // 旧页与新页叠放，形成真正的交叉淡化（默认布局会把旧页移出）
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          fit: StackFit.expand,
+          children: [
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        ),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.012),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey(location),
+          child: RepaintBoundary(child: child),
+        ),
+      ),
     );
   }
 }

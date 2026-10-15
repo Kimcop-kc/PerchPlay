@@ -38,9 +38,11 @@ class _GlassNavBarState extends State<GlassNavBar>
     super.initState();
     _currentIndex = _resolveIndex();
     _prevIndex = _currentIndex;
+    // 单一动画源：气泡位移、伸缩、图标缩放、文字变色全部由它驱动，
+    // 曲线与时长完全一致，避免「气泡到了、图标还在变」的脱节感。
     _slideCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 440),
+      duration: const Duration(milliseconds: 360),
       value: 1.0,
     );
   }
@@ -105,54 +107,69 @@ class _GlassNavBarState extends State<GlassNavBar>
             fit: StackFit.expand,
             children: [
               // ── 轨道：毛玻璃底板 ──
-              _GlassTrack(),
+              // RepaintBoundary：气泡每帧移动时不会强制重算背后的模糊，
+              // 否则每帧都要重新做一次 BackdropFilter，掉帧明显
+              const RepaintBoundary(child: _GlassTrack()),
 
-              // ── 浮起透镜气泡 ──
-              // Positioned 必须是 Stack 直接子级才能生效；
-              // 动画在内部用 Transform.translate 做水平滑动。
-              Positioned(
-                left: 0,
-                top: (trackH - _bubbleH) / 2,
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _slideCtrl,
-                    builder: (context, _) {
-                      final raw = _slideCtrl.value;
-                      final t = _springEval(raw);
-                      final cx = startCx + (endCx - startCx) * t;
-                      // 行进中轻微收缩再回弹，液态感更顺（正弦一次起落，无抖动）
-                      final breathe = 1 - 0.045 * math.sin(math.pi * raw);
-                      return Transform.translate(
-                        offset: Offset(cx - _bubbleW / 2, 0),
-                        child: Transform.scale(
-                          scale: breathe,
-                          child: _LensBubble(
-                            width: _bubbleW,
-                            height: _bubbleH,
+              // 气泡 + 图标文字统一由同一条动画驱动
+              AnimatedBuilder(
+                animation: _slideCtrl,
+                builder: (context, _) {
+                  final t = _navCurve.transform(_slideCtrl.value);
+                  final cx = startCx + (endCx - startCx) * t;
+
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    fit: StackFit.expand,
+                    children: [
+                      // ── 浮起透镜气泡 ──
+                      Positioned(
+                        left: 0,
+                        top: (trackH - _bubbleH) / 2,
+                        child: IgnorePointer(
+                          child: RepaintBoundary(
+                            child: Transform.translate(
+                              offset: Offset(cx - _bubbleW / 2, 0),
+                              // 行进中轻微横向拉伸 + 纵向收缩，液态感；
+                              // t 与位移同相，不会出现呼吸和位移错拍
+                              child: Transform(
+                                alignment: Alignment.center,
+                                transform: Matrix4.identity()
+                                  ..scale(1.0 + 0.05 * math.sin(math.pi * t),
+                                      1.0 - 0.04 * math.sin(math.pi * t)),
+                                child: _LensBubble(
+                                  width: _bubbleW,
+                                  height: _bubbleH,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ),
+                      ),
 
-              // ── 图标文字层 ──
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: List.generate(widget.items.length, (i) {
-                  return Expanded(
-                    child: _NavLabel(
-                      item: widget.items[i],
-                      isActive: i == _currentIndex,
-                      onTap: () {
-                        if (i != _currentIndex) {
-                          widget.items[i].onTap?.call();
-                        }
-                      },
-                    ),
+                      // ── 图标文字层（进度来自同一条动画） ──
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: List.generate(widget.items.length, (i) {
+                          final progress = i == _currentIndex
+                              ? t
+                              : (i == _prevIndex ? 1 - t : 0.0);
+                          return Expanded(
+                            child: _NavLabel(
+                              item: widget.items[i],
+                              progress: progress.clamp(0.0, 1.0),
+                              onTap: () {
+                                if (i != _currentIndex) {
+                                  widget.items[i].onTap?.call();
+                                }
+                              },
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
                   );
-                }),
+                },
               ),
             ],
           );
@@ -161,17 +178,8 @@ class _GlassNavBarState extends State<GlassNavBar>
     );
   }
 
-  /// 平滑减速曲线（临界阻尼，无回弹过冲）
-  ///
-  /// 之前的弹簧会明显过冲，滑动时看着「跳」；这里用单调收敛的
-  /// 临界阻尼响应，并在末端归一化，保证精确停在目标位置。
-  double _springEval(double t) {
-    if (t <= 0) return 0;
-    if (t >= 1) return 1;
-    const k = 9.0;
-    double raw(double x) => 1 - (1 + k * x) * math.exp(-k * x);
-    return (raw(t) / raw(1)).clamp(0.0, 1.0);
-  }
+  /// 统一曲线：两端都平滑（无冲刺、无拖尾），中段接近匀速。
+  static const _navCurve = Curves.easeInOutCubic;
 }
 
 // ═══════════════ 毛玻璃轨道 ═══════════════
@@ -349,96 +357,58 @@ class _LensBubble extends StatelessWidget {
 
 // ═══════════════ 图标文字标签 ═══════════════
 
-class _NavLabel extends StatefulWidget {
+/// 纯展示组件：进度由父级那条统一动画传入（0=未选中，1=选中），
+/// 自己不持动画控制器，因此与气泡位移天然同步。
+class _NavLabel extends StatelessWidget {
   final NavBarItem item;
-  final bool isActive;
+  final double progress;
   final VoidCallback onTap;
 
   const _NavLabel({
     required this.item,
-    required this.isActive,
+    required this.progress,
     required this.onTap,
   });
 
   @override
-  State<_NavLabel> createState() => _NavLabelState();
-}
-
-class _NavLabelState extends State<_NavLabel>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 460),
-      value: widget.isActive ? 1.0 : 0.0,
-    );
-  }
-
-  @override
-  void didUpdateWidget(_NavLabel old) {
-    super.didUpdateWidget(old);
-    if (old.isActive != widget.isActive) {
-      if (widget.isActive) {
-        _animCtrl.forward();
-      } else {
-        _animCtrl.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _animCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final t = progress.clamp(0.0, 1.0);
     return GestureDetector(
-      onTap: widget.onTap,
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedBuilder(
-        animation: _animCtrl,
-        builder: (context, child) {
-          // 平滑减速（无过冲），与气泡滑动同一条曲线语言
-          final t = Curves.easeOutCubic.transform(_animCtrl.value);
-          return Transform.scale(
-            scale: 0.90 + 0.10 * t,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  widget.item.icon,
-                  color: Color.lerp(
-                    GlassTheme.textTertiary,
-                    GlassTheme.accentPurple,
-                    t,
-                  ),
-                  size: 18 + 4 * t,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.item.label,
-                  style: TextStyle(
-                    fontSize: 9 + 1.5 * t,
-                    fontWeight: t > 0.5 ? FontWeight.w700 : FontWeight.w400,
-                    color: Color.lerp(
-                      GlassTheme.textTertiary,
-                      GlassTheme.accentPurple,
-                      t,
-                    ),
-                    height: 1.0,
-                  ),
-                ),
-              ],
+      child: Transform.scale(
+        scale: 0.90 + 0.10 * t,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              item.icon,
+              color: Color.lerp(
+                GlassTheme.textTertiary,
+                GlassTheme.accentPurple,
+                t,
+              ),
+              size: 18 + 4 * t,
             ),
-          );
-        },
+            const SizedBox(height: 2),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 9 + 1.5 * t,
+                // 字重渐变用 Color.lerp 之外的方式会跳变，这里保留阈值但
+                // 只在过半时切换一次，视觉上被缩放/颜色过渡盖住
+                fontWeight: t > 0.5 ? FontWeight.w700 : FontWeight.w400,
+                color: Color.lerp(
+                  GlassTheme.textTertiary,
+                  GlassTheme.accentPurple,
+                  t,
+                ),
+                height: 1.0,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

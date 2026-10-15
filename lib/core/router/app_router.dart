@@ -13,30 +13,16 @@ import '../../pages/nas/nas_browser_page.dart';
 class AppRouter {
   AppRouter._();
 
-  /// 标签页切换过渡：淡入 + 极小上浮，避免硬切显得生硬
-  static CustomTransitionPage<void> _tabPage(
+  /// 标签页之间不做路由级过渡：真正的交叉淡化在 shell 里用
+  /// AnimatedSwitcher 完成（路由级过渡在 ShellRoute 下是「直接替换」，
+  /// 旧页面会瞬间消失，无法做出衔接感）。
+  static NoTransitionPage<void> _tabPage(
     GoRouterState state,
     Widget child,
   ) {
-    return CustomTransitionPage<void>(
+    return NoTransitionPage<void>(
       key: state.pageKey,
       child: child,
-      transitionDuration: const Duration(milliseconds: 220),
-      reverseTransitionDuration: const Duration(milliseconds: 180),
-      transitionsBuilder: (context, animation, secondary, child) {
-        final curved =
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.015),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        );
-      },
     );
   }
 
