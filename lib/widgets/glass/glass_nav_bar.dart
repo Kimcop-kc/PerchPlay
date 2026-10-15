@@ -2,6 +2,16 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../services/app_settings_service.dart';
+
+/// 按设置决定是否做实时模糊（关闭可显著降低发热/掉帧）
+Widget _withOptionalBlur({required bool blur, required Widget child}) {
+  if (!blur) return child;
+  return BackdropFilter(
+    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+    child: child,
+  );
+}
 
 /// 液态玻璃导航底栏
 ///
@@ -192,11 +202,16 @@ class _GlassTrack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 实时模糊在 Android 上每帧都要重算（背后内容一直在滚动），
+    // 是发热/掉帧的主要来源之一，可在设置里关闭；关闭后仍是半透明玻璃，
+    // 只是不做模糊。
+    final blur = AppSettingsService.instance.glassBlur;
+
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: _withOptionalBlur(
+          blur: blur,
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
@@ -204,8 +219,8 @@ class _GlassTrack extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withOpacity(0.55),
-                  Colors.white.withOpacity(0.35),
+                  Colors.white.withOpacity(blur ? 0.55 : 0.72),
+                  Colors.white.withOpacity(blur ? 0.35 : 0.55),
                 ],
               ),
               border: Border.all(

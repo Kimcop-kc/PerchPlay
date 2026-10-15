@@ -1,12 +1,15 @@
 package com.vidflow.player
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
 import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -127,6 +130,28 @@ class MainActivity : FlutterActivity() {
                         result.success(hasAllFilesAccess())
                     }
 
+                    // ── 设备型号 / 系统（Dart 侧品牌识别用，缺了会导致
+                    //    「系统优化」整块功能不显示）──
+                    "getDeviceModel" -> {
+                        result.success(
+                            "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+                        )
+                    }
+                    "getSystemName" -> {
+                        result.success("Android ${Build.VERSION.RELEASE}")
+                    }
+
+                    // ── SSDP 组播锁 ──
+                    // Android 默认会丢弃未持有 MulticastLock 的组播包，
+                    // 没有它投屏搜设备永远搜不到
+                    "acquireMulticastLock" -> {
+                        result.success(acquireMulticast())
+                    }
+                    "releaseMulticastLock" -> {
+                        releaseMulticast()
+                        result.success(true)
+                    }
+
                     // ── 直接跳到「所有文件访问」授权开关页 ──
                     "requestAllFilesAccess" -> {
                         openAllFilesAccessSettings()
@@ -168,6 +193,41 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    // ──────────────────────────────
+    // SSDP 组播锁
+    // ──────────────────────────────
+
+    private var multicastLock: WifiManager.MulticastLock? = null
+
+    private fun acquireMulticast(): Boolean {
+        return try {
+            if (multicastLock?.isHeld == true) return true
+            val wifi = applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifi.createMulticastLock("perchplay_cast").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "acquire multicast lock failed", e)
+            false
+        }
+    }
+
+    private fun releaseMulticast() {
+        try {
+            multicastLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {
+        }
+        multicastLock = null
+    }
+
+    override fun onDestroy() {
+        releaseMulticast()
+        super.onDestroy()
     }
 
     // ──────────────────────────────

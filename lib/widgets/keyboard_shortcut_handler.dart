@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/device_info_service.dart';
 import '../services/ipad_optimization_service.dart';
 
 /// 键盘 & 触控板快捷键处理
@@ -50,16 +49,14 @@ class KeyboardShortcutHandler extends ConsumerStatefulWidget {
 
 class _KeyboardShortcutHandlerState
     extends ConsumerState<KeyboardShortcutHandler> {
-  final _device = DeviceInfoService.instance;
   final _iPadService = IPadOptimizationService.instance;
 
   bool _showPencilPreview = false;
 
   @override
   Widget build(BuildContext context) {
-    // 仅在 iPad 上启用键盘快捷键
-    if (!_device.isIPad) return widget.child;
-
+    // 键盘快捷键对所有平台生效（之前只在 iPad 启用，
+    // 导致 Android/iPhone 外接键盘与桌面端按键全部无效）
     return Focus(
       autofocus: true,
       onKeyEvent: _handleKeyEvent,

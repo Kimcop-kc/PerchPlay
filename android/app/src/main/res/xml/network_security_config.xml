@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文 HTTP 策略。
+
+  投屏用的内置媒体服务（http://<手机IP>:<端口>/video/...）、WebDAV、
+  DLNA 设备描述都是明文 http，而且目标地址是"任意局域网 IP"，
+  没法用 domain 白名单逐条列举，因此这里统一允许明文，
+  只保留系统的信任锚点（不做额外放宽）。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

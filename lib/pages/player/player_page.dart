@@ -214,7 +214,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   @override
   Widget build(BuildContext context) {
-    final playerState = ref.watch(playerProvider);
+    // 只订阅「结构性」字段：position / 字幕行号这类高频变化的字段
+    // 由进度条、时间文字、字幕浮层等叶子节点各自 select 订阅。
+    // 否则播放中整页会以每秒数次重建（发热、掉帧的主因之一）。
+    ref.watch(playerProvider.select((p) => (
+          p.currentVideo?.id,
+          p.videoController != null,
+          p.queue.length,
+          p.currentIndex,
+          p.isPlaying,
+          p.isBuffering,
+          p.isCompleted,
+          p.duration.inMilliseconds,
+          p.speed,
+          p.volume,
+          p.brightness,
+          p.videoWidth,
+          p.videoHeight,
+          p.videoCodec,
+          p.videoFps,
+          p.embeddedSubtitles.length,
+          p.audioTracks.length,
+          p.activeTrackId,
+          p.secondaryTrackId,
+          // 字幕列表按「对象身份」比较（List 未重写 ==），换了文件也会重建
+          p.subtitleEntries,
+          p.secondaryEntries,
+        )));
+    final playerState = ref.read(playerProvider);
     final isLandscape = AppBreakpoints.isLandscape(context);
     final isLarge = AppBreakpoints.isLargeScreen(context);
 
@@ -247,9 +274,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           setState(() => _showSpeedSelector = !_showSpeedSelector),
       onExit: _exitPlayer,
       onSeekFraction: (fraction) {
+        // 用 ref.read 取实时位置，避免订阅高频字段
+        final live = ref.read(playerProvider);
         ref.read(playerProvider.notifier).seekRelative(
-              ((fraction * state.duration.inMilliseconds / 1000) -
-                      state.position.inMilliseconds / 1000)
+              ((fraction * live.duration.inMilliseconds / 1000) -
+                      live.position.inMilliseconds / 1000)
                   .round(),
             );
       },
@@ -258,54 +287,65 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         body: Stack(
           children: [
             _buildVideoLayer(state),
-            PlayerGestureLayer(
-              onTap: _toggleControls,
-              onDoubleTap: () =>
-                  ref.read(playerProvider.notifier).togglePlayPause(),
-              initialBrightness: state.brightness,
-              initialVolume: state.volume,
-              positionMs: state.position.inMilliseconds,
-              durationMs: state.duration.inMilliseconds,
-              onBrightnessChange: (value) =>
-                  ref.read(playerProvider.notifier).setBrightness(value),
-              onVolumeChange: (value) =>
-                  ref.read(playerProvider.notifier).setVolume(value),
-              onSeekPreview: _onSeekPreview,
-              onSeekCommit: _onSeekCommit,
+            // 手势层需要实时的播放位置作为拖动基准，
+            // 单独用一个只订阅 position 的 Consumer 包住（不重建整页）
+            _LivePosition(
+              builder: (context, live) => PlayerGestureLayer(
+                onTap: _toggleControls,
+                onDoubleTap: () =>
+                    ref.read(playerProvider.notifier).togglePlayPause(),
+                initialBrightness: state.brightness,
+                initialVolume: state.volume,
+                positionMs: live.position.inMilliseconds,
+                durationMs: live.duration.inMilliseconds,
+                onBrightnessChange: (value) =>
+                    ref.read(playerProvider.notifier).setBrightness(value),
+                onVolumeChange: (value) =>
+                    ref.read(playerProvider.notifier).setVolume(value),
+                onSeekPreview: _onSeekPreview,
+                onSeekCommit: _onSeekCommit,
+              ),
             ),
             // 字幕（主字幕由 mpv 绘制；第二字幕用自绘浮层叠在下方）
+            // 行号随播放变化，放在只订阅字幕行号的小部件里重建
             if (state.subtitleEntries != null &&
                 state.subtitleEntries!.isNotEmpty)
-              Positioned(
-                bottom: (isLarge ? 120 : 80) +
-                    (_hasSecondaryOverlay(state) ? 36 : 0),
-                left: isLarge ? 40 : 20,
-                right: isLarge ? 40 : 20,
-                child: SubtitleOverlay(
-                  entries: state.subtitleEntries!,
-                  activeIndex: state.activeSubtitleIndex,
+              _LiveSubtitle(
+                builder: (context, live) => Positioned(
+                  bottom: (isLarge ? 120 : 80) +
+                      (_hasSecondaryOverlay(live) ? 36 : 0),
+                  left: isLarge ? 40 : 20,
+                  right: isLarge ? 40 : 20,
+                  child: SubtitleOverlay(
+                    entries: live.subtitleEntries!,
+                    activeIndex: live.activeSubtitleIndex,
+                  ),
                 ),
               ),
             if (_hasSecondaryOverlay(state))
-              Positioned(
-                bottom: isLarge ? 80 : 52,
-                left: isLarge ? 60 : 36,
-                right: isLarge ? 60 : 36,
-                child: SubtitleOverlay(
-                  entries: state.secondaryEntries!,
-                  activeIndex: state.secondarySubtitleIndex,
-                  fontSize: isLarge ? 15 : 13.5,
-                  compact: true,
+              _LiveSubtitle(
+                builder: (context, live) => Positioned(
+                  bottom: isLarge ? 80 : 52,
+                  left: isLarge ? 60 : 36,
+                  right: isLarge ? 60 : 36,
+                  child: SubtitleOverlay(
+                    entries: live.secondaryEntries!,
+                    activeIndex: live.secondarySubtitleIndex,
+                    fontSize: isLarge ? 15 : 13.5,
+                    compact: true,
+                  ),
                 ),
               ),
             // 弹出面板
             _buildPopupMenus(context, state),
             // 控制栏（玻璃动画）
             if (_showControls)
-              GlassAnimatedBuilder(
-                listenable: _controlsAnim,
-                builder: (context, _) => Opacity(
-                  opacity: _controlsAnim.value,
+              // FadeTransition 直接驱动 RenderObject，不像 Opacity 那样
+              // 每帧 saveLayer，也不像 AnimatedBuilder 那样每帧重建子树
+              // （控制层里有两个全宽毛玻璃）
+              RepaintBoundary(
+                child: FadeTransition(
+                  opacity: _controlsAnim,
                   child: Stack(
                     children: [
                       _buildGlassTopBar(context, state, isLarge: isLarge),
@@ -353,9 +393,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           setState(() => _showSpeedSelector = !_showSpeedSelector),
       onExit: _exitPlayer,
       onSeekFraction: (fraction) {
+        final live = ref.read(playerProvider);
         ref.read(playerProvider.notifier).seekRelative(
-              ((fraction * state.duration.inMilliseconds / 1000) -
-                      state.position.inMilliseconds / 1000)
+              ((fraction * live.duration.inMilliseconds / 1000) -
+                      live.position.inMilliseconds / 1000)
                   .round(),
             );
       },
@@ -368,20 +409,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               child: Stack(
                 children: [
                   _buildVideoLayer(state),
-                  PlayerGestureLayer(
-                    onTap: _toggleControls,
-                    initialBrightness: state.brightness,
-                    initialVolume: state.volume,
-                    positionMs: state.position.inMilliseconds,
-                    durationMs: state.duration.inMilliseconds,
-                    onBrightnessChange: (value) => ref
-                        .read(playerProvider.notifier)
-                        .setBrightness(value),
-                    onVolumeChange: (value) => ref
-                        .read(playerProvider.notifier)
-                        .setVolume(value),
-                    onSeekPreview: _onSeekPreview,
-                    onSeekCommit: _onSeekCommit,
+                  _LivePosition(
+                    builder: (context, live) => PlayerGestureLayer(
+                      onTap: _toggleControls,
+                      initialBrightness: state.brightness,
+                      initialVolume: state.volume,
+                      positionMs: live.position.inMilliseconds,
+                      durationMs: live.duration.inMilliseconds,
+                      onBrightnessChange: (value) => ref
+                          .read(playerProvider.notifier)
+                          .setBrightness(value),
+                      onVolumeChange: (value) => ref
+                          .read(playerProvider.notifier)
+                          .setVolume(value),
+                      onSeekPreview: _onSeekPreview,
+                      onSeekCommit: _onSeekCommit,
+                    ),
                   ),
                   if (state.subtitleEntries != null &&
                       state.subtitleEntries!.isNotEmpty)
@@ -454,30 +497,38 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             ),
             const SizedBox(height: 20),
 
-            // 进度条
-            if (state.duration > Duration.zero) ...[
-              GlassSlider(
-                value: state.position.inMilliseconds.toDouble(),
-                min: 0,
-                max: state.duration.inMilliseconds.toDouble(),
-                activeColor: GlassTheme.accentPurple,
-                height: 5,
-                // 拖动结束才真正 seek，拖动中仅更新视觉（由 GlassSlider 内部跟手）
-                onChangeEnd: (v) => ref
-                    .read(playerProvider.notifier)
-                    .seekTo(Duration(milliseconds: v.round())),
+            // 进度条（只订阅 position，不与整页一起重建）
+            if (state.duration > Duration.zero)
+              _LivePosition(
+                builder: (context, live) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GlassSlider(
+                      value: live.position.inMilliseconds.toDouble(),
+                      min: 0,
+                      max: live.duration.inMilliseconds.toDouble(),
+                      activeColor: GlassTheme.accentPurple,
+                      height: 5,
+                      // 拖动结束才真正 seek，拖动中仅更新视觉
+                      onChangeEnd: (v) => ref
+                          .read(playerProvider.notifier)
+                          .seekTo(Duration(milliseconds: v.round())),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_fmtDuration(live.position),
+                            style: const TextStyle(
+                                color: GlassTheme.textSecondary, fontSize: 11)),
+                        Text(_fmtDuration(live.duration),
+                            style: const TextStyle(
+                                color: GlassTheme.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_fmtDuration(state.position),
-                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 11)),
-                  Text(_fmtDuration(state.duration),
-                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 11)),
-                ],
-              ),
-              const SizedBox(height: 16),
-            ],
 
             // 播放控制按钮
             Row(
@@ -1196,19 +1247,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ],
               ),
             ),
-            child: Column(
+            child: _LivePosition(
+              builder: (context, live) => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 进度条（手势拖动时跟随预览位置）
-                if (state.duration > Duration.zero)
+                if (live.duration > Duration.zero)
                   Padding(
                     padding: EdgeInsets.symmetric(
                         horizontal: 16 * scale),
                     child: GlassSlider(
                       value: _seekPreviewMs ??
-                          state.position.inMilliseconds.toDouble(),
+                          live.position.inMilliseconds.toDouble(),
                       min: 0,
-                      max: state.duration.inMilliseconds.toDouble(),
+                      max: live.duration.inMilliseconds.toDouble(),
                       activeColor: GlassTheme.accentPurple,
                       height: 4,
                       showThumb: _seekPreviewMs != null,
@@ -1221,7 +1273,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                 SizedBox(height: 4 * scale),
                 // 时间
-                if (state.duration > Duration.zero)
+                if (live.duration > Duration.zero)
                   Padding(
                     padding: EdgeInsets.symmetric(
                         horizontal: 20 * scale),
@@ -1231,7 +1283,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         Text(
                             _fmtDuration(Duration(
                                 milliseconds: (_seekPreviewMs ??
-                                        state.position.inMilliseconds
+                                        live.position.inMilliseconds
                                             .toDouble())
                                     .round())),
                             style: TextStyle(
@@ -1242,7 +1294,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                 fontWeight: _seekPreviewMs != null
                                     ? FontWeight.w700
                                     : FontWeight.w400)),
-                        Text(_fmtDuration(state.duration),
+                        Text(_fmtDuration(live.duration),
                             style: TextStyle(
                                 color: Colors.white54,
                                 fontSize: 11 * scale)),
@@ -1299,6 +1351,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                 ),
               ],
+              ),
             ),
           ),
         ),
@@ -1402,6 +1455,37 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 //
 // 用轮询 + mounted 保护读取 castProvider：
 // 直接在弹窗里 watch 会在弹窗关闭瞬间对已卸载的元素触发重建断言。
+
+/// 只订阅「播放位置 / 时长」的小部件
+///
+/// 播放中位置每秒更新多次，如果让整页 watch playerProvider，
+/// 视频层、控制层、字幕层都会跟着重建（发热 + 掉帧）。
+/// 把需要实时位置的节点拆到这里，重建范围就只剩进度条/时间文字。
+class _LivePosition extends ConsumerWidget {
+  final Widget Function(BuildContext context, PlayerState live) builder;
+  const _LivePosition({required this.builder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 记录类型按值比较：位置或时长变化才会触发重建
+    ref.watch(playerProvider.select(
+        (p) => (p.position.inMilliseconds, p.duration.inMilliseconds)));
+    return builder(context, ref.read(playerProvider));
+  }
+}
+
+/// 只订阅「当前字幕行」的字幕浮层包装
+class _LiveSubtitle extends ConsumerWidget {
+  final Widget Function(BuildContext context, PlayerState live) builder;
+  const _LiveSubtitle({required this.builder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(playerProvider.select((p) =>
+        (p.activeSubtitleIndex, p.secondarySubtitleIndex)));
+    return builder(context, ref.read(playerProvider));
+  }
+}
 
 class _CastDeviceSheet extends ConsumerStatefulWidget {
   const _CastDeviceSheet();

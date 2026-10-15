@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/cast_device_model.dart';
+import 'native_bridge_service.dart';
 
 /// 投屏设备发现服务
 /// 支持: DLNA (SSDP) / Chromecast (mDNS) / AirPlay (mDNS) / Miracast
@@ -32,6 +33,10 @@ class CastDiscoveryService {
     if (_running) return;
     _running = true;
 
+    // Android 必须持有 Wi-Fi 组播锁，否则组播包会被系统丢弃，
+    // SSDP 响应收不到 → 设备列表永远是空的
+    await NativeBridgeService.instance.acquireMulticastLock();
+
     await _startSsdp();
     await _scanMdns();
 
@@ -54,6 +59,8 @@ class CastDiscoveryService {
     _ssdpSubscription?.cancel();
     _ssdpSocket?.close();
     _ssdpSocket = null;
+    // 释放组播锁（不释放会持续耗电）
+    NativeBridgeService.instance.releaseMulticastLock();
   }
 
   // ──────────── SSDP 发送 / 接收 ────────────

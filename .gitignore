@@ -39,3 +39,6 @@ web/
 *~
 .DS_Store
 Thumbs.db
+# Flutter Éú³ÉÎï
+.flutter-plugins
+.flutter-plugins-dependencies

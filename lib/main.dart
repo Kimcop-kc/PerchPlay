@@ -7,6 +7,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
+import 'services/native_bridge_service.dart';
 
 /// 应用根组件是否已成功挂载。
 /// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
@@ -31,9 +32,19 @@ void main() async {
     debugPrint('[PerchPlay] MediaKit init failed: $e');
   }
 
-  // 初始化设备信息
+  // 初始化设备信息（型号/系统名从原生取，否则 Android 品牌识别
+  // 恒为 other，「系统优化」整块功能不会显示）
   try {
-    await DeviceInfoService.instance.init();
+    String? model;
+    String? system;
+    try {
+      model = await NativeBridgeService.instance.getDeviceModel();
+      system = await NativeBridgeService.instance.getSystemName();
+    } catch (_) {}
+    await DeviceInfoService.instance.init(
+      deviceModel: model,
+      systemName: system,
+    );
   } catch (e) {
     debugPrint('[PerchPlay] DeviceInfo init failed: $e');
   }

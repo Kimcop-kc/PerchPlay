@@ -274,12 +274,19 @@ class DatabaseService {
 
   Future<void> removeVideosNotInPaths(List<String> existingPaths) async {
     final db = await database;
-    // 简单处理：传入当前存在的路径列表，清理不存在于列表的记录
     final allVideos = await getAllVideos();
+    // Set 查找 + 批量删除：原来用 List.contains（O(N²)）且每条一次事务，
+    // 几千个视频时扫描会明显卡顿
+    final keep = existingPaths.toSet();
+    final toDelete = <String>[];
     for (final video in allVideos) {
-      if (!existingPaths.contains(video.path)) {
-        await db.delete('videos', where: 'id = ?', whereArgs: [video.id]);
-      }
+      if (!keep.contains(video.path)) toDelete.add(video.id);
     }
+    if (toDelete.isEmpty) return;
+    final batch = db.batch();
+    for (final id in toDelete) {
+      batch.delete('videos', where: 'id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
   }
 }

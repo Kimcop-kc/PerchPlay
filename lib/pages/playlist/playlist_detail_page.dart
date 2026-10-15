@@ -174,6 +174,9 @@ class PlaylistDetailPage extends ConsumerWidget {
                                         ? Image.file(
                                             File(v.thumbnailPath),
                                             fit: BoxFit.cover,
+                                            // 列表小图按显示尺寸解码，省内存
+                                            cacheWidth: 200,
+                                            gaplessPlayback: true,
                                             errorBuilder: (_, __, ___) =>
                                                 _thumbPlaceholder(),
                                           )

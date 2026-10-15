@@ -86,9 +86,14 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       duration: const Duration(milliseconds: 900),
     );
     WidgetsBinding.instance.addObserver(this);
-    // 延迟到首帧后初始化，避免 provider 在 build 周期内被修改（Riverpod 禁止）
+    // 入场动画只在初始化时触发一次（之前写在 build 里，
+    // 每次重建都会注册一个 postFrame 回调）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _initLibrary();
+      if (!mounted) return;
+      _initLibrary();
+      if (!_listAnimController.isCompleted) {
+        _listAnimController.forward();
+      }
     });
   }
 
@@ -146,8 +151,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   @override
   Widget build(BuildContext context) {
     final libraryAsync = ref.watch(libraryProvider);
-    // 顶层 watch 播放器状态：后台播放时小窗需要实时跟随
-    final playerState = ref.watch(playerProvider);
+    // 注意：这里**不** watch playerProvider。播放中位置每秒更新多次，
+    // 顶层 watch 会让整个网格跟着重建。小窗自己订阅需要的切片。
     final isLarge = AppBreakpoints.isLargeScreen(context);
     final columns = AppBreakpoints.gridColumns(context);
     final hp = AppBreakpoints.horizontalPadding(context);
@@ -156,17 +161,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       data: (videos) {
         if (videos.isEmpty) return _buildEmptyLibrary(context);
 
-        // 触发入场动画
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_listAnimController.isCompleted) {
-            _listAnimController.forward();
-          }
-        });
-
         if (isLarge) {
           return _buildTabletLayout(videos, columns, hp);
         }
-        return _buildMobileLayout(videos, columns, hp, playerState);
+        return _buildMobileLayout(videos, columns, hp);
       },
       loading: () => const Center(
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
@@ -178,19 +176,29 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   Widget _buildMobileLayout(
-      List<VideoModel> videos, int columns, double hp, PlayerState playerState) {
-    final video = playerState.currentVideo;
-    final miniPlayer = (video != null && playerState.videoController != null)
-        ? _FloatingMiniPlayer(
-            video: video,
-            playerState: playerState,
-            onTap: () => context.pushNamed('player', extra: {
-              'videoPath': video.path,
-              'videoTitle': video.name,
-            }),
-            onClose: () => ref.read(playerProvider.notifier).stop(),
-          )
-        : null;
+      List<VideoModel> videos, int columns, double hp) {
+    // 只订阅「是否有小窗」这个布尔量：播放中位置变化不会重建首页
+    final hasMini = ref.watch(playerProvider.select(
+        (p) => p.currentVideo != null && p.videoController != null));
+    // 小窗内容用 Consumer 自己订阅（不订阅位置）
+    final miniPlayer = Consumer(
+      builder: (context, ref, _) {
+        final video = ref.read(playerProvider).currentVideo;
+        final controller = ref.read(playerProvider).videoController;
+        if (video == null || controller == null) {
+          return const SizedBox.shrink();
+        }
+        return _FloatingMiniPlayer(
+          video: video,
+          playerState: ref.read(playerProvider),
+          onTap: () => context.pushNamed('player', extra: {
+            'videoPath': video.path,
+            'videoTitle': video.name,
+          }),
+          onClose: () => ref.read(playerProvider.notifier).stop(),
+        );
+      },
+    );
 
     return Stack(
       children: [
@@ -202,7 +210,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               // 底部预留：导航栏(72)+手势条(24)=96 为基线；
               // 有 miniPlayer 时再多留 miniPlayer 高度(56)+间距(8)
               padding: EdgeInsets.fromLTRB(
-                  hp, 8, hp, miniPlayer != null ? 160 : 96),
+                  hp, 8, hp, hasMini ? 160 : 96),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
@@ -224,7 +232,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           ],
         ),
         // 悬浮小窗：底部导航栏上方（padding.bottom 已含导航栏高度，+8 为间距）
-        if (miniPlayer != null)
+        if (hasMini)
           Positioned(
             left: 0,
             right: 0,
@@ -588,6 +596,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 ? Image.file(
                     File(video.thumbnailPath),
                     fit: BoxFit.cover,
+                    // 明确解码尺寸：缩略图按原分辨率解码会占大量内存并掉帧
+                    cacheWidth: 480,
+                    gaplessPlayback: true,
                   )
                 : Container(
                     color: Colors.black.withOpacity(0.08),
@@ -771,7 +782,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     borderRadius:
                         BorderRadius.circular(GlassTheme.radiusXl),
                     child: Image.file(File(video.thumbnailPath),
-                        fit: BoxFit.cover),
+                        fit: BoxFit.cover,
+                        cacheWidth: 720,
+                        gaplessPlayback: true),
                   )
                 else
                   Center(

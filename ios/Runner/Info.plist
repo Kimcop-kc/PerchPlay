@@ -17,40 +17,22 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
 
-	<!-- ──────── iPad 多窗口 + Stage Manager ──────── -->
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneConfigurationName</key>
-					<string>Default Configuration</string>
-					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-				</dict>
-			</array>
-		</dict>
-	</dict>
+	<!-- ──────── 不声明 SceneManifest ────────
+	     Flutter 走 AppDelegate 生命周期；声明了 SceneManifest 却
+	     没有对应的 SceneDelegate 类会导致启动即崩溃（iOS 18+ 更严格）。 -->
+	<key>LSRequiresIPhoneOS</key>
+	<false/>
 
 	<!-- ──────── 硬件要求 ──────── -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
-		<string>opengles-2</string>
-		<string>video-camera</string>
+		<string>arm64</string>
 		<string>metal</string>
 	</array>
-
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -92,8 +74,41 @@
 	<array>
 		<string>audio</string>
 		<string>picture-in-picture</string>
-		<string>remote-notification</string>
 	</array>
+
+	<!-- ──────── 局域网访问（NAS 发现 / DLNA 投屏 / 内置媒体服务）───────
+	     iOS 14+ 没有这个描述，系统不会弹授权而是直接拒绝局域网访问，
+	     NAS 搜索、投屏、投屏用的本地 HTTP 服务会全部静默失败。 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PerchPlay 需要访问局域网以搜索 NAS 设备、投屏到电视，并把本地视频串流给投屏设备</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_webdav._tcp</string>
+		<string>_smb._tcp</string>
+		<string>_afpovertcp._tcp</string>
+		<string>_googlecast._tcp</string>
+		<string>_airplay._tcp</string>
+		<string>_raop._tcp</string>
+	</array>
+
+	<!-- ──────── ATS：允许局域网明文 HTTP ────────
+	     内置媒体服务 / WebDAV / DLNA 都是 http://，默认策略会拒。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<!-- ──────── 允许用「文件」App 导入视频 ──────── -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+
+	<!-- ──────── 未使用自定义加密（上架必答项）─────── -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 
 	<!-- ──────── 支持的文件类型 ──────── -->
 	<key>CFBundleDocumentTypes</key>
@@ -121,9 +136,5 @@
 	<string>PerchPlay 需要访问媒体库以播放视频</string>
 	<key>UISupportsTrueScreenSize</key>
 	<true/>
-
-	<!-- ──────── 外接键盘 ──────── -->
-	<key>UIKeyboardRequiredInputMethods</key>
-	<array/>
 </dict>
 </plist>

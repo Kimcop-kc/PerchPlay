@@ -21,22 +21,30 @@ class _CastPageState extends ConsumerState<CastPage>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
 
+  /// 提前缓存 notifier：dispose 阶段访问 ref 会抛异常，
+  /// 一旦抛出后面的 dispose 就都不会执行（原来动画控制器会永久泄漏，
+  /// repeat(reverse: true) 一直跑 = 持续发热）
+  late final CastNotifier _castNotifier;
+
   @override
   void initState() {
     super.initState();
+    _castNotifier = ref.read(castProvider.notifier);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
-    Future.microtask(
-        () => ref.read(castProvider.notifier).startDiscovery());
+    Future.microtask(() => _castNotifier.startDiscovery());
   }
 
   @override
   void dispose() {
-    ref.read(castProvider.notifier).stopDiscovery();
+    // 控制器优先释放，随后再动 provider（不依赖 ref）
     _pulseController.dispose();
+    try {
+      _castNotifier.stopDiscovery();
+    } catch (_) {}
     super.dispose();
   }
 

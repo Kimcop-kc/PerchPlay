@@ -12,6 +12,11 @@
 
     <!-- 网络（投屏/更新） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- SSDP/M-SEARCH 靠组播发现投屏设备；没有这个权限 + MulticastLock
+         时 Android 会直接丢弃组播包，设备列表永远是空的 -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- 画中画 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -33,7 +38,8 @@
         android:hardwareAccelerated="true"
         android:resizeableActivity="true"
         android:allowBackup="true"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"

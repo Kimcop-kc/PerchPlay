@@ -250,6 +250,10 @@ class GlassAnimations {
   }
 
   /// 缩放弹出
+  ///
+  /// 用 FadeTransition + ScaleTransition 而不是 Opacity + Transform.scale：
+  /// Opacity 只要值不为 0/1 就会强制 saveLayer（离屏缓冲），
+  /// 列表里每张卡一个，滚动/重建时是明显的 GPU 开销。
   static Widget scaleIn({
     required AnimationController controller,
     required int index,
@@ -259,16 +263,12 @@ class GlassAnimations {
       parent: controller,
       curve: Curves.easeOut,
     );
-    return GlassAnimatedBuilder(
-      listenable: t,
-      builder: (_, child) => Opacity(
-        opacity: t.value,
-        child: Transform.scale(
-          scale: 0.88 + 0.12 * t.value,
-          child: child,
-        ),
+    return FadeTransition(
+      opacity: t,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.88, end: 1.0).animate(t),
+        child: child,
       ),
-      child: child,
     );
   }
 }

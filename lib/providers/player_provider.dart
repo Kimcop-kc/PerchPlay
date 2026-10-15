@@ -195,12 +195,25 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(videoController: controller);
   }
 
+  /// 上次位置状态发布时间（限流用，避免高频重建整页）
+  DateTime? _lastPosEmitAt;
+
   void _setupListeners() {
     state.player.stream.position.listen((pos) {
+      // 位置流每秒会推很多次，整页跟着重建会明显发热掉帧。
+      // 这里限制状态更新频率（进度条 4Hz 足够顺滑），
+      // 播放页只让进度条/时间文字这类叶子节点订阅 position。
+      final now = DateTime.now();
+      final last = _lastPosEmitAt;
+      if (last != null &&
+          now.difference(last).inMilliseconds < 220 &&
+          (pos - state.position).abs() < const Duration(seconds: 2)) {
+        return;
+      }
+      _lastPosEmitAt = now;
       state = state.copyWith(position: pos);
       _updateActiveSubtitle();
       // 每 5 秒落盘一次进度
-      final now = DateTime.now();
       if (_lastSaveAt == null ||
           now.difference(_lastSaveAt!).inSeconds >= 5) {
         _lastSaveAt = now;
@@ -249,6 +262,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     });
 
     state.player.stream.completed.listen((_) {
+      // 防止 mpv 在 EOF 处反复上报导致 playCount 被多次 +1、
+      // 历史里插入多条相同记录
+      if (state.isCompleted) return;
       state = state.copyWith(isCompleted: true);
       // 播完清零进度并记入历史，下次从头播放
       final v = state.currentVideo;
@@ -592,13 +608,47 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   /// 命中的字幕条目下标；不在任何区间时返回 null（保持上一条显示）
+  ///
+  /// 字幕条目按时间升序，先用上次命中的位置做邻近判断（播放是顺序推进的，
+  /// 绝大多数情况一步命中），落空再用二分查找。
+  /// 原来是每次位置回调线性扫全表（一部电影 1500+ 条，每秒扫几十次）。
   int? _entryIndexAt(List<SubtitleEntry>? entries, Duration pos) {
     if (entries == null || entries.isEmpty) return null;
-    for (int i = 0; i < entries.length; i++) {
-      if (pos >= entries[i].start && pos <= entries[i].end) return i;
+
+    final hint = _entryHint[entries] ?? 0;
+    // 优先看上次命中与下一条
+    for (final i in [hint, hint + 1, hint - 1]) {
+      if (i < 0 || i >= entries.length) continue;
+      if (pos >= entries[i].start && pos <= entries[i].end) {
+        _entryHint[entries] = i;
+        return i;
+      }
+    }
+
+    // 二分：找最后一个 start <= pos 的条目
+    var lo = 0;
+    var hi = entries.length - 1;
+    var candidate = -1;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      if (entries[mid].start <= pos) {
+        candidate = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (candidate >= 0 &&
+        pos >= entries[candidate].start &&
+        pos <= entries[candidate].end) {
+      _entryHint[entries] = candidate;
+      return candidate;
     }
     return null;
   }
+
+  /// 每个字幕列表的上次命中下标（IdentityHashMap 语义，按对象区分）
+  final Map<List<SubtitleEntry>, int> _entryHint = Map.identity();
 
   @override
   void dispose() {

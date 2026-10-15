@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/video_model.dart';
@@ -32,26 +33,41 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       final viaMediaStore = await _scanner.scanViaMediaStore();
       final videos =
           viaMediaStore ?? await _scanner.scanCommonDirectories();
-      // 生成缩略图并持久化到数据库。
+      // 生成缩略图并持久化。
+      //
+      // 两个要点：
+      // 1) 扫描结果里 thumbnailPath 恒为空（MediaStore/文件系统都不带），
+      //    直接遍历它们会导致**每次扫描都重新生成全部缩略图**。
+      //    这里改成以数据库为准，只处理「数据库里也没有缩略图」的，
+      //    并且缩略图文件已存在时直接复用。
+      // 2) 收集完一次性批量写库，而不是每个视频一次全表读 + 一次事务。
+      //
       // 注意：x86_64 模拟器上 flutter_video_thumbnail_plus 的 native 解码会
-      // SIGILL/SIGABRT 崩溃（无法用 try-catch 捕获），故模拟器上跳过缩略图，
-      // 卡片回退显示默认图标。真机（ARM + GPU）才生成缩略图。
-      final thumbnailService = ThumbnailService();
-      for (final video in videos) {
-        // debug 构建（模拟器/开发机）跳过缩略图生成：
-        // flutter_video_thumbnail_plus 的 native 解码在 x86_64 模拟器上
-        // 会 SIGILL/SIGABRT 崩溃（无法 try-catch 捕获），卡片回退默认图标。
-        if (video.thumbnailPath.isEmpty && !kDebugMode) {
+      // SIGILL/SIGABRT 崩溃（无法用 try-catch 捕获），故 debug 构建跳过，
+      // 卡片回退显示默认图标。
+      if (!kDebugMode) {
+        final thumbnailService = ThumbnailService();
+        final persisted = {
+          for (final v in await _db.getAllVideos()) v.id: v,
+        };
+        final withThumbs = <VideoModel>[];
+        for (final video in videos) {
+          final existingThumb = persisted[video.id]?.thumbnailPath ?? '';
+          if (existingThumb.isNotEmpty &&
+              await File(existingThumb).exists()) {
+            continue; // 已经生成过，跳过
+          }
           try {
             final thumbPath = await thumbnailService.generate(video.path);
             if (thumbPath != null) {
-              final updated = video.copyWith(thumbnailPath: thumbPath);
-              // upsert 保留已有播放进度/收藏
-              await _db.upsertScannedVideos([updated]);
+              withThumbs.add(video.copyWith(thumbnailPath: thumbPath));
             }
           } catch (e) {
             debugPrint('[Thumbnail] 生成失败 ${video.name}: $e');
           }
+        }
+        if (withThumbs.isNotEmpty) {
+          await _db.upsertScannedVideos(withThumbs);
         }
       }
       state = AsyncData(await _db.getAllVideos());

@@ -182,6 +182,23 @@ class NativeBridgeService {
     }
   }
 
+  // ──────────── SSDP 组播锁 ────────────
+
+  /// 获取 Wi-Fi 组播锁（Android 不持锁会丢弃组播包，投屏搜不到设备）
+  Future<bool> acquireMulticastLock() async {
+    try {
+      return await _channel.invokeMethod('acquireMulticastLock') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> releaseMulticastLock() async {
+    try {
+      await _channel.invokeMethod('releaseMulticastLock');
+    } catch (_) {}
+  }
+
   // ──────────── 画中画 ────────────
 
   Future<bool> enterPiP() async {
