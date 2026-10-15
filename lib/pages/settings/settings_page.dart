@@ -381,12 +381,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 4),
           Text('v${AppConstants.appVersion}',
               style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
-          const SizedBox(height: 6),
-          Text(
-            '${DeviceInfoService.instance.brand.displayName} · '
-            '${DeviceInfoService.instance.isIPad ? "iPad" : "Phone"}',
-            style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
-          ),
         ],
       ),
     );
@@ -445,18 +439,122 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _showSkipPicker() {
+    // 无极滑动选择快进/快退秒数（1-60 秒连续可调）
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _pickerSheet(
-        title: '跳转秒数',
-        items: [5, 10, 15, 30, 60],
+      builder: (ctx) => _sliderSheet(
+        title: '快进/快退秒数',
+        min: 1,
+        max: 60,
+        divisions: 59,
         current: _settings.skipSeconds.toDouble(),
-        onSelect: (v) => _settings.setSkipSeconds(v.toInt()).then((_) {
-          if (mounted) setState(() {});
-        }),
-        format: (v) => '${v.toInt()}s',
+        format: (v) => '${v.toInt()} 秒',
+        onChanged: (v) {
+          _settings.setSkipSeconds(v.toInt());
+        },
       ),
+    );
+  }
+
+  Widget _sliderSheet({
+    required String title,
+    required double min,
+    required double max,
+    required int divisions,
+    required double current,
+    required String Function(double) format,
+    required void Function(double) onChanged,
+  }) {
+    return StatefulBuilder(
+      builder: (ctx, setSheetState) {
+        double value = current;
+        // 避让悬浮玻璃导航栏 + 底部安全区
+        final bottomInset = MediaQuery.of(ctx).padding.bottom + 96;
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(GlassTheme.radiusXl)),
+          child: SafeBackdropFilter(
+            blurSigma: 24,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(24, 24, 24, bottomInset),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.85),
+                    Colors.white.withOpacity(0.55),
+                  ],
+                ),
+                border: Border(
+                  top: BorderSide(
+                      color: Colors.black.withOpacity(0.06), width: 0.5),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 32,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(2),
+                        color: Colors.black.withOpacity(0.15),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              color: GlassTheme.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700)),
+                      Text(
+                        format(value),
+                        style: const TextStyle(
+                            color: GlassTheme.accentPurple,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // 无极滑动条
+                  Slider(
+                    value: value,
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    activeColor: GlassTheme.accentPurple,
+                    inactiveColor: Colors.black.withOpacity(0.08),
+                    onChanged: (v) {
+                      setSheetState(() => value = v);
+                      onChanged(v);
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${min.toInt()}s',
+                          style: const TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 12)),
+                      Text('${max.toInt()}s',
+                          style: const TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 12)),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -467,13 +565,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required void Function(double) onSelect,
     required String Function(double) format,
   }) {
+    // 避让悬浮玻璃导航栏 + 底部安全区
+    final bottomInset = MediaQuery.of(context).padding.bottom + 96;
     return ClipRRect(
       borderRadius:
           const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
       child: SafeBackdropFilter(
         blurSigma: 24,
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
