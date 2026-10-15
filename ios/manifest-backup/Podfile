@@ -1,10 +1,10 @@
 # VidFlow iOS Podfile
 #
 # 基于 Flutter 3.22 默认模板，额外做：
-#   1. 显式声明最低 iOS 版本（iOS 13，兼容到 iOS 18+）
+#   1. 显式声明最低 iOS 版本（iOS 18 起步）
 #   2. post_install 声明 permission_handler_apple 需要的权限宏
 
-platform :ios, '13.0'
+platform :ios, '18.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -46,7 +46,7 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         'PERMISSION_CAMERA=0',
