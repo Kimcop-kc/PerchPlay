@@ -65,6 +65,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void dispose() {
     _controlsAnim.dispose();
+    // 退出播放器：立即落盘进度，避免下次从头播放
+    ref.read(playerProvider.notifier).saveProgress();
     // 退出播放器时恢复竖屏 + 非沉浸
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,

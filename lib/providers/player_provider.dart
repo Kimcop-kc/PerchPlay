@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -115,15 +116,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state.player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
       _updateActiveSubtitle();
-      // 定期保存进度（每5秒）
-      if (pos.inMilliseconds % 5000 < 250 && state.currentVideo != null) {
-        _db.updatePlayPosition(
-            state.currentVideo!.id, pos.inMilliseconds.toDouble());
+      // 每 5 秒落盘一次进度
+      final now = DateTime.now();
+      if (_lastSaveAt == null ||
+          now.difference(_lastSaveAt!).inSeconds >= 5) {
+        _lastSaveAt = now;
+        _persistProgress();
       }
     });
 
     state.player.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
+      // 时长就绪后补一次 seek（首次 seek 可能早于媒体加载完成而被忽略）
+      final pending = _pendingResume;
+      if (pending != null && dur > Duration.zero) {
+        _pendingResume = null;
+        state.player.seek(pending);
+      }
     });
 
     state.player.stream.playing.listen((playing) {
@@ -136,6 +145,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.completed.listen((_) {
       state = state.copyWith(isCompleted: true);
+      // 播完清零进度并记入历史，下次从头播放
+      final v = state.currentVideo;
+      if (v != null) {
+        _db.updatePlayPosition(v.id, 0,
+            durationMs: state.duration.inMilliseconds);
+      }
       // 自动播放下一个（受设置控制）
       if (AppSettingsService.instance.autoPlayNext) {
         _playNext();
@@ -143,26 +158,65 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     });
   }
 
+  DateTime? _lastSaveAt;
+  Duration? _pendingResume;
+
+  /// 把当前进度写库（真实视频 id）
+  Future<void> _persistProgress() async {
+    final video = state.currentVideo;
+    if (video == null) return;
+    final ms = state.position.inMilliseconds;
+    if (ms <= 0) return;
+    final durMs = state.duration.inMilliseconds;
+    // 只有较长视频播到结尾附近才清零（短视频不适用，否则进度永远存不下来）
+    final nearEnd = durMs > 30000 && ms >= durMs - 3000;
+    try {
+      await _db.saveProgress(
+        video.id,
+        nearEnd ? 0 : ms.toDouble(),
+        durationMs: durMs,
+      );
+    } catch (_) {}
+  }
+
+  /// 外部调用：立即保存进度（退出播放器 / 关闭小窗时）
+  Future<void> saveProgress() => _persistProgress();
+
   /// 加载视频
   Future<void> loadVideo(VideoModel video,
       {List<VideoModel>? queue, int? startIndex}) async {
+    // 播放页可能只传 path/title 构造的临时模型；
+    // 从数据库取真实记录，拿到真实 id 与上次进度。
+    VideoModel effective = video;
+    try {
+      final stored = await _db.getVideoByPath(video.path);
+      if (stored != null) effective = stored;
+    } catch (_) {}
+
     await state.player.open(Media(video.path));
     state = state.copyWith(
-      currentVideo: video,
-      queue: queue ?? [video],
+      currentVideo: effective,
+      queue: queue ?? [effective],
       currentIndex: startIndex ?? 0,
       isCompleted: false,
       position: Duration.zero,
       speed: AppSettingsService.instance.defaultSpeed,
     );
+    _lastSaveAt = DateTime.now();
 
     // 应用默认播放速度
     await state.player
         .setRate(AppSettingsService.instance.defaultSpeed);
 
-    // 恢复上次播放位置
-    if (video.lastPosition > 0) {
-      await state.player.seek(Duration(milliseconds: video.lastPosition.toInt()));
+    // 恢复上次播放位置（<1s 视为从头开始）
+    final resumeMs = effective.lastPosition;
+    debugPrint('[Player] load "${effective.name}" id=${effective.id} '
+        'resume=${resumeMs.toInt()}ms');
+    if (resumeMs > 1000) {
+      _pendingResume = Duration(milliseconds: resumeMs.toInt());
+      try {
+        await state.player.seek(_pendingResume!);
+      } catch (_) {}
     }
 
     // 加载外挂字幕
@@ -173,6 +227,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 停止播放并清除当前视频（关闭小窗/后台播放）
   Future<void> stop() async {
+    // 先落盘进度，再停止
+    await _persistProgress();
     try {
       await state.player.stop();
     } catch (_) {}

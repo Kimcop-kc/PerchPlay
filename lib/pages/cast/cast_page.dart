@@ -203,15 +203,18 @@ class _CastPageState extends ConsumerState<CastPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.cast_rounded, size: 48, color: GlassTheme.textTertiary),
+              Icon(Icons.cast_rounded,
+                  size: 48, color: GlassTheme.textTertiary),
               const SizedBox(height: 12),
               Text(
                 state.isDiscovering ? '搜索中...' : '未发现投屏设备',
-                style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
+                style:
+                    TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: 6),
               const Text('请确保设备在同一 Wi-Fi 网络',
-                  style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
+                  style:
+                      TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
             ],
           ),
         ),

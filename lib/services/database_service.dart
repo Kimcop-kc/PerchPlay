@@ -94,6 +94,44 @@ class DatabaseService {
     await batch.commit(noResult: true);
   }
 
+  /// 按路径取单条记录（播放器恢复进度用）
+  Future<VideoModel?> getVideoByPath(String path) async {
+    final db = await database;
+    final maps =
+        await db.query('videos', where: 'path = ?', whereArgs: [path], limit: 1);
+    if (maps.isEmpty) return null;
+    return VideoModel.fromJson(maps.first);
+  }
+
+  /// 扫描结果写入：保留已有的用户数据（进度/播放次数/收藏/缩略图/最后播放时间）。
+  ///
+  /// 直接用 replace 会把 lastPosition 覆盖回 0，导致观看进度丢失。
+  Future<void> upsertScannedVideos(List<VideoModel> videos) async {
+    if (videos.isEmpty) return;
+    final db = await database;
+    final existing = {for (final v in await getAllVideos()) v.id: v};
+    final batch = db.batch();
+    for (final video in videos) {
+      final old = existing[video.id];
+      final merged = old == null
+          ? video
+          : video.copyWith(
+              lastPosition: old.lastPosition,
+              playCount: old.playCount,
+              isFavorite: old.isFavorite,
+              lastPlayed: old.lastPlayed,
+              thumbnailPath: old.thumbnailPath.isNotEmpty
+                  ? old.thumbnailPath
+                  : video.thumbnailPath,
+              // 扫描到的时长若为 0，保留之前播放时测得的时长
+              durationMs: video.durationMs > 0 ? video.durationMs : old.durationMs,
+            );
+      batch.insert('videos', merged.toJson(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
   /// 删除单条视频记录（不删除磁盘文件）
   Future<void> deleteVideo(String id) async {
     final db = await database;
@@ -101,20 +139,37 @@ class DatabaseService {
     await db.delete('playback_history', where: 'videoId = ?', whereArgs: [id]);
   }
 
-  Future<void> updatePlayPosition(String videoId, double position) async {
+  /// 保存播放进度（同时刷新 lastPlayed，供历史页排序）
+  Future<void> updatePlayPosition(String videoId, double position,
+      {int? durationMs}) async {
     final db = await database;
-    await db.update(
-      'videos',
-      {'lastPosition': position, 'playCount': 1},
-      where: 'id = ?',
-      whereArgs: [videoId],
+    final now = DateTime.now().toIso8601String();
+    final hasDur = durationMs != null && durationMs > 0;
+    await db.rawUpdate(
+      'UPDATE videos SET lastPosition = ?, lastPlayed = ?'
+      '${hasDur ? ', durationMs = ?' : ''}, playCount = playCount + 1'
+      ' WHERE id = ?',
+      [position, now, if (hasDur) durationMs, videoId],
     );
     // 记录播放历史
     await db.insert('playback_history', {
       'videoId': videoId,
       'position': position,
-      'playedAt': DateTime.now().toIso8601String(),
+      'playedAt': now,
     });
+  }
+
+  /// 只写进度，不累加播放次数（播放中周期性调用 / 退出时调用）
+  Future<void> saveProgress(String videoId, double position,
+      {int? durationMs}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final hasDur = durationMs != null && durationMs > 0;
+    await db.rawUpdate(
+      'UPDATE videos SET lastPosition = ?, lastPlayed = ?'
+      '${hasDur ? ', durationMs = ?' : ''} WHERE id = ?',
+      [position, now, if (hasDur) durationMs, videoId],
+    );
   }
 
   Future<List<Map<String, dynamic>>> getPlayHistory({int limit = 50}) async {

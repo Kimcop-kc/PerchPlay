@@ -38,9 +38,9 @@ class VideoScannerService {
     if (removeMissing) {
       await _db.removeVideosNotInPaths(existingPaths);
     }
-    // 保存新扫描结果
+    // 保存新扫描结果（保留既有播放进度/收藏/缩略图）
     if (found.isNotEmpty) {
-      await _db.insertVideos(found);
+      await _db.upsertScannedVideos(found);
     }
 
     return found;

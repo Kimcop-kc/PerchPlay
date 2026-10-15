@@ -199,7 +199,8 @@ class HistoryPage extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_rounded, size: 48, color: GlassTheme.textTertiary),
+            Icon(Icons.history_rounded,
+                size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('暂无观看记录',
                 style: TextStyle(
