@@ -44,6 +44,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   bool _showControls = true;
   bool _showSpeedSelector = false;
   bool _isFullscreen = false;
+
+  /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
+  double? _seekPreviewMs;
   late VideoController _videoController;
   late AnimationController _controlsAnim;
 
@@ -125,6 +128,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     });
   }
 
+  /// 手势拖动进度：实时带动底部进度条
+  void _onSeekPreview(int targetMs) {
+    if (!mounted) return;
+    setState(() => _seekPreviewMs = targetMs.toDouble());
+  }
+
+  /// 松手提交跳转
+  void _onSeekCommit(int targetMs) {
+    ref.read(playerProvider.notifier).seekTo(Duration(milliseconds: targetMs));
+    if (mounted) setState(() => _seekPreviewMs = null);
+  }
+
   Future<void> _loadVideo() async {
     await ref.read(playerProvider.notifier).loadVideo(
           VideoModel(
@@ -192,12 +207,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ref.read(playerProvider.notifier).togglePlayPause(),
               initialBrightness: state.brightness,
               initialVolume: state.volume,
+              positionMs: state.position.inMilliseconds,
+              durationMs: state.duration.inMilliseconds,
               onBrightnessChange: (value) =>
                   ref.read(playerProvider.notifier).setBrightness(value),
               onVolumeChange: (value) =>
                   ref.read(playerProvider.notifier).setVolume(value),
-              onSeek: (seconds) =>
-                  ref.read(playerProvider.notifier).seekRelative(seconds),
+              onSeekPreview: _onSeekPreview,
+              onSeekCommit: _onSeekCommit,
             ),
             // 字幕
             if (state.subtitleEntries != null &&
@@ -285,15 +302,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     onTap: _toggleControls,
                     initialBrightness: state.brightness,
                     initialVolume: state.volume,
+                    positionMs: state.position.inMilliseconds,
+                    durationMs: state.duration.inMilliseconds,
                     onBrightnessChange: (value) => ref
                         .read(playerProvider.notifier)
                         .setBrightness(value),
                     onVolumeChange: (value) => ref
                         .read(playerProvider.notifier)
                         .setVolume(value),
-                    onSeek: (seconds) => ref
-                        .read(playerProvider.notifier)
-                        .seekRelative(seconds),
+                    onSeekPreview: _onSeekPreview,
+                    onSeekCommit: _onSeekCommit,
                   ),
                   if (state.subtitleEntries != null &&
                       state.subtitleEntries!.isNotEmpty)
@@ -1029,20 +1047,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 进度条
+                // 进度条（手势拖动时跟随预览位置）
                 if (state.duration > Duration.zero)
                   Padding(
                     padding: EdgeInsets.symmetric(
                         horizontal: 16 * scale),
                     child: GlassSlider(
-                      value: state.position.inMilliseconds.toDouble(),
+                      value: _seekPreviewMs ??
+                          state.position.inMilliseconds.toDouble(),
                       min: 0,
                       max: state.duration.inMilliseconds.toDouble(),
                       activeColor: GlassTheme.accentPurple,
                       height: 4,
-                      onChangeEnd: (v) => ref
-                          .read(playerProvider.notifier)
-                          .seekTo(Duration(milliseconds: v.round())),
+                      showThumb: _seekPreviewMs != null,
+                      // 直接拖进度条时也实时预览
+                      onChanged: (v) => _onSeekPreview(v.round()),
+                      onChangeEnd: (v) {
+                        _onSeekCommit(v.round());
+                      },
                     ),
                   ),
                 SizedBox(height: 4 * scale),
@@ -1054,10 +1076,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(_fmtDuration(state.position),
+                        Text(
+                            _fmtDuration(Duration(
+                                milliseconds: (_seekPreviewMs ??
+                                        state.position.inMilliseconds
+                                            .toDouble())
+                                    .round())),
                             style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11 * scale)),
+                                color: _seekPreviewMs != null
+                                    ? GlassTheme.accentPurple
+                                    : Colors.white54,
+                                fontSize: 11 * scale,
+                                fontWeight: _seekPreviewMs != null
+                                    ? FontWeight.w700
+                                    : FontWeight.w400)),
                         Text(_fmtDuration(state.duration),
                             style: TextStyle(
                                 color: Colors.white54,

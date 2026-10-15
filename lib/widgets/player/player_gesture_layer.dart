@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 /// 视频播放器手势层
 ///
 /// 左半屏上下滑动：亮度   右半屏上下滑动：音量
-/// 水平滑动：快进/快退     单击：显示/隐藏控制栏   双击：播放/暂停
+/// 水平滑动：拖动进度（实时预览，松手提交）  单击：显示/隐藏控制栏  双击：播放/暂停
 ///
 /// 数值按「手势起点值 + 累计位移」线性计算（不做逐帧累加），
 /// 否则位移会被平方放大，稍微一滑就调到底。
@@ -18,12 +18,19 @@ class PlayerGestureLayer extends StatefulWidget {
   /// 绝对音量 0..1
   final ValueChanged<double> onVolumeChange;
 
-  /// 相对快进秒数（可为负）
-  final void Function(int seconds) onSeek;
+  /// 拖动进度中：回报目标位置（毫秒），用于实时带动进度条
+  final ValueChanged<int>? onSeekPreview;
+
+  /// 松手提交：真正跳转到该位置（毫秒）
+  final ValueChanged<int>? onSeekCommit;
 
   /// 手势开始时的当前亮度/音量，作为滑动基准
   final double initialBrightness;
   final double initialVolume;
+
+  /// 当前播放位置与总时长（毫秒），用于把位移换算成进度
+  final int positionMs;
+  final int durationMs;
 
   const PlayerGestureLayer({
     super.key,
@@ -32,9 +39,12 @@ class PlayerGestureLayer extends StatefulWidget {
     this.onDoubleTap,
     required this.onBrightnessChange,
     required this.onVolumeChange,
-    required this.onSeek,
+    this.onSeekPreview,
+    this.onSeekCommit,
     this.initialBrightness = 0.5,
     this.initialVolume = 0.5,
+    this.positionMs = 0,
+    this.durationMs = 0,
   });
 
   @override
@@ -50,24 +60,31 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   // 手势基准值
   double _baseBrightness = 0.5;
   double _baseVolume = 0.5;
+  int _startPositionMs = 0;
 
   // 指示器状态
   double? _brightnessValue;
   double? _volumeValue;
-  int? _seekSeconds;
-  bool _seekForward = true;
+  int? _previewTargetMs;
 
   /// 纵向：需要滑动「屏幕高度 × 该系数」才走完 100%，避免过于灵敏
   static const double _verticalDamping = 1.25;
 
-  /// 横向：滑过整屏宽度对应 180 秒
-  static const double _seekSecondsPerScreen = 180.0;
+  /// 横向：滑过整屏宽度对应的进度跨度 = 时长的 12%，
+  /// 并夹在 30s ~ 4min 之间（长片也能较快掠过，短片不会一点就飞）
+  static const double _seekWindowRatio = 0.12;
+  static const int _seekWindowMinMs = 30 * 1000;
+  static const int _seekWindowMaxMs = 4 * 60 * 1000;
+
+  /// 横向拖动的最小位移，避免误触就跳进度
+  static const double _seekMinDrag = 22.0;
 
   /// 判定手势方向的最小位移
-  static const double _axisThreshold = 12.0;
+  static const double _axisThreshold = 14.0;
 
   @override
   Widget build(BuildContext context) {
+    final preview = _previewTargetMs;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -95,7 +112,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             label: '音量',
           ),
 
-        if (_seekSeconds != null && _seekSeconds != 0) _buildSeekIndicator(),
+        if (preview != null) _buildSeekIndicator(preview),
       ],
     );
   }
@@ -106,9 +123,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     // 以当前实际值作为基准，避免每次都从 50% 起算
     _baseBrightness = widget.initialBrightness;
     _baseVolume = widget.initialVolume;
+    _startPositionMs = widget.positionMs;
     _brightnessValue = null;
     _volumeValue = null;
-    _seekSeconds = null;
+    _previewTargetMs = null;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -122,7 +140,8 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     // 锁定手势方向，避免中途在横向/纵向之间来回跳
     if (_axis == _GestureAxis.none) {
       if (dx.abs() < _axisThreshold && dy.abs() < _axisThreshold) return;
-      _axis = dx.abs() > dy.abs() ? _GestureAxis.horizontal : _GestureAxis.vertical;
+      _axis =
+          dx.abs() > dy.abs() ? _GestureAxis.horizontal : _GestureAxis.vertical;
     }
 
     switch (_axis) {
@@ -141,17 +160,16 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
-    if (_axis == _GestureAxis.horizontal &&
-        _seekSeconds != null &&
-        _seekSeconds != 0) {
-      widget.onSeek(_seekSeconds!);
+    final target = _previewTargetMs;
+    if (_axis == _GestureAxis.horizontal && target != null) {
+      widget.onSeekCommit?.call(target);
     }
     _startPosition = null;
     _axis = _GestureAxis.none;
     setState(() {
       _brightnessValue = null;
       _volumeValue = null;
-      _seekSeconds = null;
+      _previewTargetMs = null;
     });
   }
 
@@ -170,10 +188,21 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     widget.onVolumeChange(value);
   }
 
+  /// 横向拖动 = 拖动进度：把位移换算成目标位置，实时回报
   void _handleSeekGesture(double dx, double screenWidth) {
-    _seekForward = dx > 0;
-    final seconds = (dx / screenWidth * _seekSecondsPerScreen).round();
-    setState(() => _seekSeconds = seconds);
+    final duration = widget.durationMs;
+    if (duration <= 0) return;
+    // 位移太小不响应，避免误触
+    if (dx.abs() < _seekMinDrag) return;
+
+    final windowMs = (duration * _seekWindowRatio)
+        .clamp(_seekWindowMinMs.toDouble(), _seekWindowMaxMs.toDouble());
+    final target = (_startPositionMs + dx / screenWidth * windowMs)
+        .clamp(0.0, duration.toDouble())
+        .round();
+
+    setState(() => _previewTargetMs = target);
+    widget.onSeekPreview?.call(target);
   }
 
   Widget _buildIndicator({
@@ -207,7 +236,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     );
   }
 
-  Widget _buildSeekIndicator() {
+  /// 进度指示：显示目标时间 + 相对当前的变化量
+  Widget _buildSeekIndicator(int targetMs) {
+    final deltaMs = targetMs - _startPositionMs;
+    final sign = deltaMs >= 0 ? '+' : '-';
+    final deltaText = _fmtDelta(deltaMs.abs());
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -215,22 +248,36 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           color: Colors.black54,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              _seekForward
-                  ? Icons.fast_forward_rounded
-                  : Icons.fast_rewind_rounded,
-              color: Colors.white,
-              size: 28,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  deltaMs >= 0
+                      ? Icons.fast_forward_rounded
+                      : Icons.fast_rewind_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$sign$deltaText',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
+            const SizedBox(height: 6),
             Text(
-              '${_seekSeconds?.abs() ?? 0}s',
+              '${_fmtClock(targetMs)} / ${_fmtClock(widget.durationMs)}',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -238,5 +285,26 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
         ),
       ),
     );
+  }
+
+  static String _fmtClock(int ms) {
+    final d = Duration(milliseconds: ms);
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  static String _fmtDelta(int ms) {
+    final total = (ms / 1000).round();
+    if (total >= 60) {
+      final m = total ~/ 60;
+      final s = total % 60;
+      return '${m}m${s.toString().padLeft(2, '0')}s';
+    }
+    return '${total}s';
   }
 }
