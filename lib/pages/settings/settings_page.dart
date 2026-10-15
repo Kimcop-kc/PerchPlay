@@ -9,6 +9,7 @@ import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../providers/player_provider.dart';
+import '../../providers/ui_settings_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -195,6 +196,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             '界面语言',
             trailing: _unsupportedTag('中文'),
             onTap: () => _showComingSoon('界面语言'),
+          ),
+          _divider(),
+          // 液态玻璃实时模糊：默认开启（观感核心）。
+          // 低端机 / 发烫时关掉可省电，属于用户自选，不是性能优化的手段。
+          _settingSwitch(
+            Icons.blur_on_rounded,
+            '液态玻璃实时模糊',
+            ref.watch(glassBlurProvider),
+            (v) {
+              // 立即生效（provider）+ 持久化（设置服务）
+              ref.read(glassBlurProvider.notifier).state = v;
+              _settings.setGlassBlur(v);
+            },
+          ),          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '导航栏等玻璃层的实时模糊（液态玻璃观感来源）。'
+              '低端机或机器发烫时可关闭以省电，关闭后仍保留半透明玻璃外观。',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
           ),
         ],
       ),

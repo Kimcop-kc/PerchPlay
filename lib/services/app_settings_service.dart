@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 应用设置持久化服务
@@ -36,12 +35,12 @@ class AppSettingsService {
   bool _allFilesPrompted = false;
   bool get allFilesPrompted => _allFilesPrompted;
 
-  /// 毛玻璃实时模糊
+  /// 毛玻璃实时模糊（液态玻璃观感的核心）
   ///
-  /// Android 上导航栏背后的内容一直在滚动，实时模糊每帧都要重算，
-  /// 是发热/掉帧的主要来源之一，因此默认关闭（保留半透明玻璃观感）。
-  /// iOS 的合成效率高，默认开启。
-  bool _glassBlur = !Platform.isAndroid;
+  /// **默认开启**：效果优先。性能问题用真实优化解决（重建范围收敛、
+  /// RepaintBoundary、动画改用 FadeTransition 等），不靠关特效。
+  /// 低端机可以在设置里关掉以省电/防发热。
+  bool _glassBlur = true;
   bool get glassBlur => _glassBlur;
 
   Future<void> ensureLoaded() async {
@@ -54,7 +53,7 @@ class AppSettingsService {
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
       _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
       _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
-      _glassBlur = prefs.getBool(_kGlassBlur) ?? !Platform.isAndroid;
+      _glassBlur = prefs.getBool(_kGlassBlur) ?? true;
     } catch (_) {
       // 读取失败时保留默认值
     }

@@ -1,14 +1,18 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
-import '../../services/app_settings_service.dart';
+import '../../providers/ui_settings_provider.dart';
 
-/// 按设置决定是否做实时模糊（关闭可显著降低发热/掉帧）
+/// 按设置决定是否做实时模糊
+///
+/// 默认开启（液态玻璃观感的主要来源）。关掉只是给低端机省电的选项，
+/// 性能优化本身不依赖关闭它。
 Widget _withOptionalBlur({required bool blur, required Widget child}) {
   if (!blur) return child;
   return BackdropFilter(
-    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+    filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
     child: child,
   );
 }
@@ -17,7 +21,7 @@ Widget _withOptionalBlur({required bool blur, required Widget child}) {
 ///
 /// 毛玻璃轨道 + 浮起透镜气泡（tab 间平滑滑动）+ 彩虹折射边缘 + 投影。
 /// Android 不依赖 BackdropFilter（GPU 兼容），改用多层半透明渐变模拟毛玻璃。
-class GlassNavBar extends StatefulWidget {
+class GlassNavBar extends ConsumerStatefulWidget {
   final List<NavBarItem> items;
   final String currentRoute;
   final double height;
@@ -30,10 +34,10 @@ class GlassNavBar extends StatefulWidget {
   });
 
   @override
-  State<GlassNavBar> createState() => _GlassNavBarState();
+  ConsumerState<GlassNavBar> createState() => _GlassNavBarState();
 }
 
-class _GlassNavBarState extends State<GlassNavBar>
+class _GlassNavBarState extends ConsumerState<GlassNavBar>
     with SingleTickerProviderStateMixin {
   late AnimationController _slideCtrl;
   int _currentIndex = 0;
@@ -197,15 +201,13 @@ class _GlassNavBarState extends State<GlassNavBar>
 // BackdropFilter 毛玻璃模糊 + 轻薄白色叠加。
 // 所有页面统一这一套参数（首页与其他页一致，避免 UI 割裂感）。
 
-class _GlassTrack extends StatelessWidget {
+class _GlassTrack extends ConsumerWidget {
   const _GlassTrack();
 
   @override
-  Widget build(BuildContext context) {
-    // 实时模糊在 Android 上每帧都要重算（背后内容一直在滚动），
-    // 是发热/掉帧的主要来源之一，可在设置里关闭；关闭后仍是半透明玻璃，
-    // 只是不做模糊。
-    final blur = AppSettingsService.instance.glassBlur;
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 实时模糊默认开启（液态玻璃观感核心），低端机可在设置里关闭
+    final blur = ref.watch(glassBlurProvider);
 
     return Positioned.fill(
       child: ClipRRect(
