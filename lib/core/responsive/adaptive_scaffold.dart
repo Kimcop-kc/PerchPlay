@@ -40,8 +40,52 @@ class _MobileGlassScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: GlassTheme.bg,
-      body: child,
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: GlassTheme.liquidBackground,
+        ),
+        child: Stack(
+          children: [
+            // 液态玻璃彩色光斑
+            Positioned(
+              top: -80,
+              left: -60,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      GlassTheme.accentPurple.withOpacity(0.18),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 60,
+              right: -60,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      GlassTheme.accentTeal.withOpacity(0.15),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            child,
+          ],
+        ),
+      ),
       bottomNavigationBar: GlassNavBar(
         currentRoute: currentRoute,
         items: _navItems(context),
@@ -73,21 +117,25 @@ class _TabletGlassScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: GlassTheme.bg,
-      body: Row(
-        children: [
-          // 左侧毛玻璃导航
-          ClipRRect(
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(GlassTheme.radiusLg),
-            ),
-            child: SafeBackdropFilter(
-              blurSigma: 24,
-              child: Container(
-                width: 88,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: GlassTheme.liquidBackground,
+        ),
+        child: Row(
+          children: [
+            // 左侧毛玻璃导航
+            ClipRRect(
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(GlassTheme.radiusLg),
+              ),
+              child: SafeBackdropFilter(
+                blurSigma: 24,
+                child: Container(
+                  width: 88,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.white.withOpacity(0.5),
@@ -156,6 +204,7 @@ class _TabletGlassScaffold extends StatelessWidget {
           // 内容区
           Expanded(child: child),
         ],
+        ),
       ),
     );
   }

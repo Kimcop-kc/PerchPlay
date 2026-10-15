@@ -131,6 +131,18 @@ class GlassTheme {
     stops: [0.0, 0.5, 1.0],
   );
 
+  /// 液态玻璃页面背景：柔和的彩色光斑（iOS 26 Liquid Glass 标志）
+  static const LinearGradient liquidBackground = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFF6F4FC),  // 顶部偏紫白
+      Color(0xFFF2F2F7),  // 中间浅灰
+      Color(0xFFEFF9F8),  // 底部偏青白
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
   // ────────── 玻璃背景 Painter ──────────
   static BoxDecoration glassDecoration({
     double opacity = glassStandard,

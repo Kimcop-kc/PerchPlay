@@ -79,7 +79,18 @@ class _GlassSliderState extends State<GlassSlider> {
                         decoration: BoxDecoration(
                           borderRadius:
                               BorderRadius.circular(widget.height / 2),
-                          color: Colors.black.withOpacity(0.08),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.10),
+                              Colors.white.withOpacity(0.30),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.35),
+                            width: 0.5,
+                          ),
                         ),
                       ),
                     ),

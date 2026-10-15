@@ -166,17 +166,24 @@ class _GlassButtonState extends State<GlassButton>
       return BoxDecoration(
         borderRadius: BorderRadius.circular(widget.radius),
         border: Border.all(
-          color: fg.withOpacity(_pressed ? 0.3 : 0.15),
+          color: Colors.white.withOpacity(_pressed ? 0.55 : 0.4),
           width: 0.8,
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            fg.withOpacity(_pressed ? 0.12 : 0.04),
-            fg.withOpacity(_pressed ? 0.06 : 0.01),
+            Colors.white.withOpacity(_pressed ? 0.7 : 0.5),
+            Colors.white.withOpacity(_pressed ? 0.35 : 0.22),
           ],
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       );
     }
 
