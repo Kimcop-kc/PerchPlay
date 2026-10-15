@@ -82,5 +82,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 禁用 Impeller，回退 Skia：x86_64 模拟器 S/W 渲染下 Impeller 会 SIGILL 崩溃 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
 </manifest>

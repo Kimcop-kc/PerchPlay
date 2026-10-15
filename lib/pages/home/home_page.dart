@@ -140,8 +140,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   crossAxisCount: columns,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  // 缩略图铺满的竖版海报卡片
-                  childAspectRatio: AppBreakpoints.cardAspectRatio(context),
+                  // 横向卡片（16:9），缩略图铺满整张卡片
+                  childAspectRatio: 1.7,
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => GlassAnimations.scaleIn(
@@ -185,7 +185,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     crossAxisCount: columns - 1,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childAspectRatio: AppBreakpoints.cardAspectRatio(context),
+                    childAspectRatio: 1.7,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) => GlassAnimations.scaleIn(
@@ -277,17 +277,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   Widget _buildVideoCard(VideoModel video, int index,
       {bool showSelect = false}) {
-    final isSelected = _selectedVideo?.id == video.id;
     final progressPercent = video.durationMs > 0
         ? (video.lastPosition / video.durationMs).clamp(0.0, 1.0)
         : 0.0;
 
-    return GlassCard(
-      radius: GlassTheme.radiusLg,
-      padding: EdgeInsets.zero,
-      enableHover: true,
-      selected: isSelected,
-      tint: GlassTheme.tintPurple,
+    return GestureDetector(
       onTap: () {
         if (showSelect) {
           setState(() => _selectedVideo = video);
@@ -402,21 +396,29 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               ),
             ),
 
-            // 底部进度条
+            // 底部进度条（静态，避免 LinearProgressIndicator 动画在 S/W 渲染崩溃）
             if (progressPercent > 0 && progressPercent < 1)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(GlassTheme.radiusLg)),
-                  child: LinearProgressIndicator(
-                    value: progressPercent,
-                    minHeight: 3,
-                    backgroundColor: Colors.white.withOpacity(0.25),
-                    valueColor: const AlwaysStoppedAnimation(
-                        GlassTheme.accentPurple),
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(GlassTheme.radiusLg)),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: progressPercent,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: GlassTheme.accentPurple,
+                        borderRadius: BorderRadius.horizontal(
+                            left: Radius.circular(GlassTheme.radiusLg)),
+                      ),
+                    ),
                   ),
                 ),
               ),
