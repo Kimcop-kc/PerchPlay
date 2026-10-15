@@ -182,6 +182,25 @@ class NativeBridgeService {
     }
   }
 
+  // ──────────── 后台播放前台服务 ────────────
+
+  /// 启动前台服务（息屏/内存回收下继续播放，并显示通知）
+  Future<bool> startBackgroundService() async {
+    try {
+      return await _channel.invokeMethod('startBackgroundService') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> stopBackgroundService() async {
+    try {
+      return await _channel.invokeMethod('stopBackgroundService') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ──────────── SSDP 组播锁 ────────────
 
   /// 获取 Wi-Fi 组播锁（Android 不持锁会丢弃组播包，投屏搜不到设备）

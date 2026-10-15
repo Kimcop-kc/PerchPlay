@@ -141,6 +141,16 @@ class MainActivity : FlutterActivity() {
                         result.success("Android ${Build.VERSION.RELEASE}")
                     }
 
+                    // ── 后台播放前台服务 ──
+                    // 之前 Dart 侧从未启动过这个服务，「后台播放」开关等于空转；
+                    // 现在按设置真正启停（持前台服务才能在息屏/内存回收下继续播）
+                    "startBackgroundService" -> {
+                        result.success(startBackgroundService())
+                    }
+                    "stopBackgroundService" -> {
+                        result.success(stopBackgroundService())
+                    }
+
                     // ── SSDP 组播锁 ──
                     // Android 默认会丢弃未持有 MulticastLock 的组播包，
                     // 没有它投屏搜设备永远搜不到
@@ -193,6 +203,35 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    // ──────────────────────────────
+    // 后台播放前台服务
+    // ──────────────────────────────
+
+    private fun startBackgroundService(): Boolean {
+        return try {
+            val intent = Intent(this, BackgroundAudioService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "start background service failed", e)
+            false
+        }
+    }
+
+    private fun stopBackgroundService(): Boolean {
+        return try {
+            stopService(Intent(this, BackgroundAudioService::class.java))
+            true
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "stop background service failed", e)
+            false
+        }
     }
 
     // ──────────────────────────────

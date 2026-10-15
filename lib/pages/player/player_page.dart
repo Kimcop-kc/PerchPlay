@@ -57,6 +57,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
   double? _seekPreviewMs;
 
+  /// 控件自动隐藏定时器（可取消）
+  Timer? _autoHideTimer;
+
   /// 系统是否支持画中画（不支持则不显示该按钮）
   bool? _pipSupported;
   late VideoController _videoController;
@@ -89,6 +92,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   @override
   void dispose() {
+    _autoHideTimer?.cancel();
     _controlsAnim.dispose();
     // 兜底：不依赖 ref（dispose 阶段取 ref 会抛异常，
     // 一旦抛出就会跳过后面的方向重置 → 退出后卡在横屏）
@@ -140,7 +144,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   void _startAutoHideTimer() {
-    Future.delayed(const Duration(seconds: 3), () {
+    // 用可取消的 Timer：原来用 Future.delayed，快速切页/反复点击时
+    // 会累积一堆无法取消的回调
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && ref.read(playerProvider).isPlaying) {
         _hideControls();
       }
@@ -170,7 +177,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       state.secondaryEntries != null && state.secondaryEntries!.isNotEmpty;
 
   /// 手势拖动进度：实时带动底部进度条
-  void _onSeekPreview(int targetMs) {    if (!mounted) return;
+  void _onSeekPreview(int targetMs) {
+    if (!mounted) return;
     setState(() => _seekPreviewMs = targetMs.toDouble());
   }
 

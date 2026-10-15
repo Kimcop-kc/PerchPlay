@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -8,6 +9,7 @@ import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/native_bridge_service.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -198,6 +200,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 上次位置状态发布时间（限流用，避免高频重建整页）
   DateTime? _lastPosEmitAt;
 
+  /// 后台播放前台服务是否已启动（避免重复调用）
+  bool _bgServiceOn = false;
+
+  /// 根据「后台播放」设置与播放状态启停前台服务
+  void _syncBackgroundService(bool playing) {
+    if (!Platform.isAndroid) return;
+    final want = playing && AppSettingsService.instance.backgroundPlay;
+    if (want == _bgServiceOn) return;
+    _bgServiceOn = want;
+    if (want) {
+      NativeBridgeService.instance.startBackgroundService();
+    } else {
+      // 暂停时不停服务（可能马上继续播），只有真正停止/切集才停
+      if (!playing && !state.isBuffering && state.currentVideo == null) {
+        NativeBridgeService.instance.stopBackgroundService();
+      }
+    }
+  }
+
+  /// 停止播放时关掉前台服务（在 stop()/dispose 路径调用）
+  void _shutdownBackgroundService() {
+    if (!Platform.isAndroid || !_bgServiceOn) return;
+    _bgServiceOn = false;
+    NativeBridgeService.instance.stopBackgroundService();
+  }
+
   void _setupListeners() {
     state.player.stream.position.listen((pos) {
       // 位置流每秒会推很多次，整页跟着重建会明显发热掉帧。
@@ -233,6 +261,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+      // 「后台播放」开关原来是个空转设置：Dart 侧从未启动过前台服务。
+      // 现在按设置真正启停，才能在息屏/内存回收下继续播。
+      _syncBackgroundService(playing);
     });
 
     state.player.stream.buffering.listen((buffering) {
@@ -367,6 +398,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     try {
       await state.player.stop();
     } catch (_) {}
+    // 停止播放后不再需要前台服务（否则通知会一直挂着耗电）
+    _shutdownBackgroundService();
     state = state.copyWith(
       currentVideo: null,
       isPlaying: false,
@@ -652,6 +685,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   @override
   void dispose() {
+    // 释放播放器时也要收掉前台服务，否则退出后通知残留
+    _shutdownBackgroundService();
     state.player.dispose();
     super.dispose();
   }

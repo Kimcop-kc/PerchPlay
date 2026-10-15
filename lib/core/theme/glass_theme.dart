@@ -225,30 +225,6 @@ class GlassCurves {
 class GlassAnimations {
   GlassAnimations._();
 
-  /// 淡入 + 上浮动画
-  static Widget fadeSlideUp({
-    required AnimationController controller,
-    required int index,
-    Duration duration = const Duration(milliseconds: 600),
-    required Widget child,
-  }) {
-    final t = CurvedAnimation(
-      parent: controller,
-      curve: Curves.easeOut,
-    );
-    return GlassAnimatedBuilder(
-      listenable: t,
-      builder: (_, child) => Opacity(
-        opacity: t.value,
-        child: Transform.translate(
-          offset: Offset(0, 24 * (1 - t.value)),
-          child: child,
-        ),
-      ),
-      child: child,
-    );
-  }
-
   /// 缩放弹出
   ///
   /// 用 FadeTransition + ScaleTransition 而不是 Opacity + Transform.scale：

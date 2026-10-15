@@ -208,15 +208,14 @@ import PencilKit
 
             switch call.method {
             case "enterPip":
-                self.enterPiP()
-                result(true)
+                // 尚未实现：media_kit 在 iOS 上用 Texture 渲染（不是
+                // AVPlayerLayer），拿不到可供 PiP 使用的视频层。
+                // 如实返回 false，让 Dart 侧给出提示而不是"点了没反应"。
+                result(false)
 
             case "isPipSupported":
-                if #available(iOS 14.0, *) {
-                    result(AVPictureInPictureController.isPictureInPictureSupported())
-                } else {
-                    result(false)
-                }
+                // 同理：不谎报支持，否则界面上会出现一个点了没用的按钮
+                result(false)
 
             default:
                 result(FlutterMethodNotImplemented)
@@ -225,18 +224,12 @@ import PencilKit
     }
 
     // ──────────────────────────────
-    // PiP
+    // PiP（未实现，保留占位以便后续接入）
     // ──────────────────────────────
-
-    private func enterPiP() {
-        guard #available(iOS 14.0, *),
-              AVPictureInPictureController.isPictureInPictureSupported() else { return }
-
-        if pipController?.isPictureInPictureActive == true { return }
-        // PiP 的实际渲染由 media_kit 插件在原生层接管（AVPlayerLayer）。
-        // 这里只做可用性检查，不引入 iOS 15+ 才有的
-        // AVPictureInPictureVideoCallViewController，否则部署目标低于 iOS 15 会编译报错。
-    }
+    //
+    // media_kit 在 iOS 上通过 Flutter Texture 输出画面，没有 AVPlayerLayer，
+    // 因此无法直接交给 AVPictureInPictureController。当前 isPipSupported /
+    // enterPip 都如实返回 false，界面上不会出现"点了没反应"的小窗按钮。
 
     // ──────────────────────────────
     // 设备能力检测

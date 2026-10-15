@@ -121,11 +121,7 @@ final playHistoryProvider = FutureProvider<List<VideoModel>>((ref) async {
   return history.map((map) => VideoModel.fromJson(map)).toList();
 });
 
-// 播放位置更新
-final playPositionProvider =
-    FutureProvider.family<void, ({String videoId, double position})>(
-  (ref, params) async {
-    await DatabaseService.instance
-        .updatePlayPosition(params.videoId, params.position);
-  },
-);
+// 说明：这里原来还有一个 playPositionProvider，它调用
+// DatabaseService.updatePlayPosition —— 那个方法里含 playCount = playCount + 1。
+// 它没有任何调用点，属于死代码，且一旦被误用会让播放次数重复累加。
+// 进度落盘统一走 PlayerNotifier._persistProgress → saveProgress（不计数）。

@@ -143,8 +143,10 @@ class VideoPlayerApp extends StatelessWidget {
 
       routerConfig: AppRouter.router,
 
-      // iPad 键盘快捷键
-      shortcuts: _buildShortcuts(),
+      // 说明：这里原来注册了 21 个 Shortcuts → ActivateIntent 映射，
+      // 但没有任何 Actions 消费它，等于把空格/方向键等按键吞掉却不做事，
+      // 还会和播放器里真正的键盘处理（KeyboardShortcutHandler）抢事件。
+      // 已移除；快捷键统一由 KeyboardShortcutHandler 处理。
       scrollBehavior: DeviceInfoService.instance.isIPad
           ? const MaterialScrollBehavior().copyWith(dragDevices: {
               PointerDeviceKind.touch,
@@ -153,32 +155,6 @@ class VideoPlayerApp extends StatelessWidget {
             })
           : null,
     );
-  }
-
-  Map<ShortcutActivator, Intent> _buildShortcuts() {
-    return {
-      LogicalKeySet(LogicalKeyboardKey.space): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit0): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit1): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit2): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit3): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit4): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit5): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit6): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit7): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit8): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.digit9): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.keyF): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.keyS): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.keyR): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.keyP): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.keyM): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.escape): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.arrowLeft): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.arrowRight): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.arrowUp): const ActivateIntent(),
-      LogicalKeySet(LogicalKeyboardKey.arrowDown): const ActivateIntent(),
-    };
   }
 }
 

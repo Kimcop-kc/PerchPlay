@@ -24,7 +24,9 @@ class BackgroundAudioService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = buildNotification()
         startForeground(NOTIFICATION_ID, notification)
-        return START_STICKY
+        // 不要用 START_STICKY：播放发生在 App 进程里，进程被杀后把服务
+        // 重新拉起来只会留下一条"正在后台播放"的空通知
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -36,7 +38,7 @@ class BackgroundAudioService : Service() {
                 "后台播放",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "VidFlow 后台音频播放"
+                description = "PerchPlay 后台播放"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -52,7 +54,7 @@ class BackgroundAudioService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("VidFlow")
+            .setContentTitle("PerchPlay")
             .setContentText("正在后台播放")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(pendingIntent)

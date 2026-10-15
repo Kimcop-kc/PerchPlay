@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../core/constants/app_constants.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -406,8 +407,11 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   bool _isVideoFile(String path) {
-    final ext = path.split('.').last.toLowerCase();
-    return ['mp4', 'mkv', 'avi', 'mov', 'm4v', 'webm', 'wmv', 'flv', 'ts']
-        .contains(ext);
+    final idx = path.lastIndexOf('.');
+    if (idx < 0) return false;
+    final ext = path.substring(idx + 1).toLowerCase();
+    // 用统一常量：原来这里硬编码 9 种，与 AppConstants（21 种）不一致，
+    // 导致 mpg/rmvb/m2ts 等格式在文件夹里点不开
+    return AppConstants.supportedVideoFormats.contains(ext);
   }
 }
