@@ -41,6 +41,7 @@ class _MobileGlassScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: GlassTheme.liquidBackground,

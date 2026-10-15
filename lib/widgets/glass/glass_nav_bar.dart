@@ -21,60 +21,68 @@ class GlassNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusLg)),
-      child: SafeBackdropFilter(
-        blurSigma: 30,
-        child: Stack(
-          children: [
-            Container(
-              height: height + MediaQuery.of(context).padding.bottom,
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withOpacity(0.62),
-                    Colors.white.withOpacity(0.30),
-                  ],
-                ),
-                border: Border(
-                  top: BorderSide(color: Colors.white.withOpacity(0.55), width: 0.8),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: items.map((item) {
-                  final isActive = currentRoute == item.route;
-                  return _NavItem(item: item, isActive: isActive);
-                }).toList(),
-              ),
-            ),
-            // 液态玻璃顶部高光
-            IgnorePointer(
-              child: Container(
-                height: 20,
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    return Container(
+      // 悬浮胶囊：底部留出安全区，两侧留白
+      padding: EdgeInsets.fromLTRB(12, 8, 12, bottomSafe > 0 ? bottomSafe : 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radius2xl),
+        child: SafeBackdropFilter(
+          blurSigma: 30,
+          child: Stack(
+            children: [
+              Container(
+                height: height,
                 decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(GlassTheme.radius2xl),
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withOpacity(0.5),
-                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.68),
+                      Colors.white.withOpacity(0.32),
                     ],
                   ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.65),
+                    width: 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.10),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: items.map((item) {
+                    final isActive = currentRoute == item.route;
+                    return Expanded(
+                      child: _NavItem(item: item, isActive: isActive),
+                    );
+                  }).toList(),
                 ),
               ),
-            ),
-          ],
+              // 液态玻璃顶部高光
+              IgnorePointer(
+                child: Container(
+                  height: 22,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(GlassTheme.radius2xl),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.center,
+                      colors: [
+                        Colors.white.withOpacity(0.55),
+                        Colors.white.withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -138,7 +146,7 @@ class _NavItemState extends State<_NavItem>
   Widget build(BuildContext context) {
     final color = widget.isActive
         ? GlassTheme.accentPurple
-        : GlassTheme.textSecondary;
+        : GlassTheme.textTertiary;
 
     return GestureDetector(
       onTap: () {
@@ -152,35 +160,69 @@ class _NavItemState extends State<_NavItem>
         builder: (context, child) => Transform.scale(
           scale: _bounce.value,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
             decoration: widget.isActive
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
                     gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                       colors: [
-                        GlassTheme.accentPurple.withOpacity(0.12),
-                        GlassTheme.accentPurple.withOpacity(0.04),
+                        Colors.white.withOpacity(0.75),
+                        Colors.white.withOpacity(0.35),
                       ],
                     ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.7),
+                      width: 0.8,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: GlassTheme.accentPurple.withOpacity(0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   )
                 : null,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  widget.item.icon,
-                  color: color,
-                  size: 22,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  widget.item.label,
-                  style: TextStyle(
-                    fontSize: 10,
+                // 图标 + 液态玻璃衬底（选中时）
+                Container(
+                  width: 34,
+                  height: 28,
+                  decoration: widget.isActive
+                      ? BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withOpacity(0.5),
+                              Colors.white.withOpacity(0.0),
+                            ],
+                          ),
+                        )
+                      : null,
+                  child: Icon(
+                    widget.item.icon,
                     color: color,
-                    fontWeight: widget.isActive
-                        ? FontWeight.w600
-                        : FontWeight.w400,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.item.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: color,
+                      fontWeight: widget.isActive
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
                   ),
                 ),
               ],
