@@ -99,6 +99,39 @@ class NativeBridgeService {
     }
   }
 
+  // ──────────── 所有文件访问权限 / MediaStore ────────────
+
+  /// 是否已获得「所有文件访问权限」（Android 11+ 的 MANAGE_EXTERNAL_STORAGE）
+  Future<bool> hasAllFilesAccess() async {
+    try {
+      return await _channel.invokeMethod('hasAllFilesAccess') ?? false;
+    } catch (_) {
+      return true; // iOS 无需该权限
+    }
+  }
+
+  /// 直接跳到系统「所有文件访问」授权开关页
+  Future<void> requestAllFilesAccess() async {
+    try {
+      await _channel.invokeMethod('requestAllFilesAccess');
+    } catch (_) {}
+  }
+
+  /// 用系统媒体库索引查询全部视频（快，且带时长/分辨率）
+  Future<List<Map<String, dynamic>>> queryMediaStoreVideos() async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List<dynamic>>('queryMediaStoreVideos');
+      if (raw == null) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   // ──────────── 设备信息 ────────────
 
   Future<String> getDeviceModel() async {

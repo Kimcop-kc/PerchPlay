@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../models/video_model.dart';
 import '../core/constants/app_constants.dart';
 import 'database_service.dart';
+import 'native_bridge_service.dart';
 
 class VideoScannerService {
   final DatabaseService _db = DatabaseService.instance;
@@ -45,6 +46,67 @@ class VideoScannerService {
 
     return found;
   }
+
+  /// 走系统媒体库索引扫描（首选，毫秒级）
+  ///
+  /// 相比逐目录遍历：不用 stat 每个文件、不用探测时长，
+  /// 直接拿到 path / size / duration / 修改时间 / 分辨率。
+  /// 返回 null 表示媒体库不可用（需回退到文件系统遍历）。
+  Future<List<VideoModel>?> scanViaMediaStore({
+    bool removeMissing = true,
+  }) async {
+    if (kIsWeb) return null;
+    if (!Platform.isAndroid) return null;
+    final rows = await _bridge.queryMediaStoreVideos();
+    // 查不到任何记录：可能未授权，交给调用方回退到文件系统遍历
+    if (rows.isEmpty) return null;
+
+    final found = <VideoModel>[];
+    final existingPaths = <String>[];
+    final seen = <String>{};
+    for (final row in rows) {
+      final path = (row['path'] as String?)?.trim() ?? '';
+      if (path.isEmpty) continue;
+      final ext = p.extension(path).toLowerCase().replaceAll('.', '');
+      if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
+      if (!seen.add(path)) continue;
+
+      final size = (row['size'] as num?)?.toInt() ?? 0;
+      if (size > 0 && size < 20 * 1024) continue; // 过滤碎片文件
+
+      final modifiedMs = (row['dateModified'] as num?)?.toInt() ?? 0;
+      final modified = modifiedMs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(modifiedMs)
+          : DateTime.now();
+      final name = (row['name'] as String?)?.trim();
+      existingPaths.add(path);
+      found.add(VideoModel(
+        id: _uuid.v5(Namespace.url.value, path),
+        path: path,
+        name: (name != null && name.isNotEmpty)
+            ? p.basenameWithoutExtension(name)
+            : p.basenameWithoutExtension(path),
+        folderPath: p.dirname(path),
+        size: size,
+        // 媒体库直接给了时长，进度条/时长无需等播放才知道
+        durationMs: (row['duration'] as num?)?.toInt() ?? 0,
+        dateAdded: modified,
+        dateModified: modified,
+        thumbnailPath: '',
+      ));
+    }
+
+    if (removeMissing) {
+      await _db.removeVideosNotInPaths(existingPaths);
+    }
+    if (found.isNotEmpty) {
+      await _db.upsertScannedVideos(found);
+    }
+    return found;
+  }
+
+  final _bridge = NativeBridgeService.instance;
+
 
   /// 最大递归深度，防止符号链接循环 / 超深层级卡死
   static const _maxDepth = 8;

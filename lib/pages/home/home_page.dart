@@ -10,6 +10,7 @@ import '../../models/video_model.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/permission_provider.dart';
 import '../../providers/player_provider.dart';
+import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -38,7 +39,7 @@ class LibraryView extends ConsumerStatefulWidget {
 }
 
 class _LibraryViewState extends ConsumerState<LibraryView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _listAnimController;
   VideoModel? _selectedVideo;
 
@@ -49,18 +50,49 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
+    WidgetsBinding.instance.addObserver(this);
     // 延迟到首帧后初始化，避免 provider 在 build 周期内被修改（Riverpod 禁止）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _initLibrary();
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从「所有文件访问」设置页返回时刷新权限并重新扫描
+    if (state == AppLifecycleState.resumed) {
+      _onResumed();
+    }
+  }
+
+  Future<void> _onResumed() async {
+    if (!mounted) return;
+    final notifier = ref.read(permissionProvider.notifier);
+    final before = ref.read(permissionProvider).hasAllFilesAccess;
+    await notifier.refreshAllFilesAccess();
+    final after = ref.read(permissionProvider).hasAllFilesAccess;
+    if (!before && after) {
+      // 刚授予「所有文件访问」→ 立刻重扫
+      await ref.read(libraryProvider.notifier).scan();
+    }
+  }
+
   /// 启动时：检查权限 → 仅当影库为空（首次）才自动扫描，否则只加载缓存
   Future<void> _initLibrary() async {
     final permissionNotifier = ref.read(permissionProvider.notifier);
     await permissionNotifier.requestVideoPermission();
-    final hasPermission = ref.read(permissionProvider).hasVideoPermission;
-    if (!hasPermission) return;
+    await permissionNotifier.refreshAllFilesAccess();
+    final perm = ref.read(permissionProvider);
+    if (!perm.hasVideoPermission) return;
+
+    // 首次引导「所有文件访问权限」：与其他播放器一致，直接跳到系统开关页
+    if (Platform.isAndroid &&
+        !perm.hasAllFilesAccess &&
+        !AppSettingsService.instance.allFilesPrompted) {
+      await AppSettingsService.instance.setAllFilesPrompted(true);
+      await permissionNotifier.requestAllFilesAccess();
+      return; // 用户授权返回后，resume 时会自动重扫
+    }
 
     // 已有缓存视频则不重复全盘扫描（避免每次进首页都扫）
     final current = ref.read(libraryProvider).valueOrNull;
@@ -71,6 +103,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _listAnimController.dispose();
     super.dispose();
   }
@@ -577,6 +610,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   Widget _buildEmptyLibrary(BuildContext context) {
     final hasPermission = ref.watch(permissionProvider).hasVideoPermission;
+    final hasAllFiles = ref.watch(permissionProvider).hasAllFilesAccess;
     return Center(
       child: GlassPanel(
         padding: const EdgeInsets.all(40),
@@ -621,6 +655,27 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               ),
             ),
             const SizedBox(height: 12),
+            // 「所有文件访问权限」入口（未授权时显示，扫描才能扫全）
+            if (!hasAllFiles)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Semantics(
+                  button: true,
+                  label: '开启所有文件访问权限',
+                  child: GlassButton.outlined(
+                    icon: Icons.admin_panel_settings_rounded,
+                    label: '开启所有文件访问权限',
+                    width: double.infinity,
+                    height: 48,
+                    foregroundColor: GlassTheme.accentTeal,
+                    onTap: () async {
+                      await ref
+                          .read(permissionProvider.notifier)
+                          .requestAllFilesAccess();
+                    },
+                  ),
+                ),
+              ),
             // 本地文件夹入口
             Semantics(
               button: true,

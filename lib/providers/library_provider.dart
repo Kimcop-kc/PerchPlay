@@ -27,7 +27,10 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
   Future<void> scan() async {
     state = const AsyncLoading();
     try {
-      final videos = await _scanner.scanCommonDirectories();
+      // 首选 MediaStore 索引：毫秒级出结果，且自带时长
+      final viaMediaStore = await _scanner.scanViaMediaStore();
+      final videos =
+          viaMediaStore ?? await _scanner.scanCommonDirectories();
       // 生成缩略图并持久化到数据库。
       // 注意：x86_64 模拟器上 flutter_video_thumbnail_plus 的 native 解码会
       // SIGILL/SIGABRT 崩溃（无法用 try-catch 捕获），故模拟器上跳过缩略图，

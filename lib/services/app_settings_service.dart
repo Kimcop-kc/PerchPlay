@@ -13,6 +13,7 @@ class AppSettingsService {
   static const _kAutoPlayNext = 'settings.autoPlayNext';
   static const _kBackgroundPlay = 'settings.backgroundPlay';
   static const _kHardwareDecoding = 'settings.hardwareDecoding';
+  static const _kAllFilesPrompted = 'settings.allFilesPrompted';
 
   double _defaultSpeed = 1.0;
   int _skipSeconds = 10;
@@ -29,6 +30,10 @@ class AppSettingsService {
   /// 硬件解码（默认开启；关闭则用软解，兼容花屏/黑屏的机型）
   bool get hardwareDecoding => _hardwareDecoding;
 
+  /// 是否已经引导过「所有文件访问权限」（只自动跳一次，避免反复打扰）
+  bool _allFilesPrompted = false;
+  bool get allFilesPrompted => _allFilesPrompted;
+
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     try {
@@ -38,6 +43,7 @@ class AppSettingsService {
       _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
       _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
+      _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -81,6 +87,14 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kHardwareDecoding, value);
+    } catch (_) {}
+  }
+
+  Future<void> setAllFilesPrompted(bool value) async {
+    _allFilesPrompted = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kAllFilesPrompted, value);
     } catch (_) {}
   }
 }

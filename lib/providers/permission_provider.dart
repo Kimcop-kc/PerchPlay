@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../services/native_bridge_service.dart';
 
 final permissionProvider =
     StateNotifierProvider<PermissionNotifier, PermissionState>(
@@ -10,11 +11,22 @@ final permissionProvider =
 
 class PermissionState {
   final bool hasVideoPermission;
-  const PermissionState({this.hasVideoPermission = false});
 
-  PermissionState copyWith({bool? hasVideoPermission}) {
+  /// 是否已获得「所有文件访问权限」（Android 11+ MANAGE_EXTERNAL_STORAGE）
+  final bool hasAllFilesAccess;
+
+  const PermissionState({
+    this.hasVideoPermission = false,
+    this.hasAllFilesAccess = false,
+  });
+
+  PermissionState copyWith({
+    bool? hasVideoPermission,
+    bool? hasAllFilesAccess,
+  }) {
     return PermissionState(
       hasVideoPermission: hasVideoPermission ?? this.hasVideoPermission,
+      hasAllFilesAccess: hasAllFilesAccess ?? this.hasAllFilesAccess,
     );
   }
 }
@@ -51,7 +63,25 @@ class PermissionNotifier extends StateNotifier<PermissionState> {
       final p = await _videoPermission.status;
       granted = p.isGranted || p.isLimited;
     }
-    state = state.copyWith(hasVideoPermission: granted);
+    final allFiles = Platform.isAndroid
+        ? await NativeBridgeService.instance.hasAllFilesAccess()
+        : true;
+    state = state.copyWith(
+      hasVideoPermission: granted,
+      hasAllFilesAccess: allFiles,
+    );
+  }
+
+  /// 刷新「所有文件访问」状态（从系统设置页返回后调用）
+  Future<void> refreshAllFilesAccess() async {
+    if (!Platform.isAndroid) return;
+    final ok = await NativeBridgeService.instance.hasAllFilesAccess();
+    state = state.copyWith(hasAllFilesAccess: ok);
+  }
+
+  /// 跳到系统「所有文件访问」授权开关页
+  Future<void> requestAllFilesAccess() async {
+    await NativeBridgeService.instance.requestAllFilesAccess();
   }
 
   /// 请求视频读取权限，返回是否已授权。

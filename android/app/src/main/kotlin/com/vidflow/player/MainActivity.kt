@@ -3,7 +3,9 @@ package com.vidflow.player
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
@@ -120,6 +122,22 @@ class MainActivity : FlutterActivity() {
                         result.success(pm.isIgnoringBatteryOptimizations(packageName))
                     }
 
+                    // ── 所有文件访问权限（Android 11+ 的 MANAGE_EXTERNAL_STORAGE）──
+                    "hasAllFilesAccess" -> {
+                        result.success(hasAllFilesAccess())
+                    }
+
+                    // ── 直接跳到「所有文件访问」授权开关页 ──
+                    "requestAllFilesAccess" -> {
+                        openAllFilesAccessSettings()
+                        result.success(true)
+                    }
+
+                    // ── 用 MediaStore 索引取全部视频（毫秒级，带时长/分辨率）──
+                    "queryMediaStoreVideos" -> {
+                        result.success(queryMediaStoreVideos())
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -150,6 +168,118 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    // ──────────────────────────────
+    // 所有文件访问权限 + MediaStore 扫描
+    // ──────────────────────────────
+
+    private fun hasAllFilesAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
+    }
+
+    /**
+     * 跳到系统「所有文件访问权限」开关页（其他播放器也是这么做的）。
+     * 部分 ROM 没有应用级页面，退回总列表页。
+     */
+    private fun openAllFilesAccessSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            openAppSettings()
+            return
+        }
+        try {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Exception) {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (_: Exception) {
+                openAppSettings()
+            }
+        }
+    }
+
+    /**
+     * 用系统媒体库索引查询视频。
+     *
+     * 比逐个目录遍历快几个数量级，而且自带时长/分辨率/修改时间，
+     * 不用再为每个文件单独 stat 和探测。
+     */
+    private fun queryMediaStoreVideos(): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DATA,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+        )
+        try {
+            contentResolver.query(
+                collection, projection, null, null,
+                "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+            )?.use { c ->
+                val idCol = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+                val dataCol = c.getColumnIndex(MediaStore.Video.Media.DATA)
+                val nameCol = c.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
+                val sizeCol = c.getColumnIndex(MediaStore.Video.Media.SIZE)
+                val durCol = c.getColumnIndex(MediaStore.Video.Media.DURATION)
+                val dateCol = c.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED)
+                val wCol = c.getColumnIndex(MediaStore.Video.Media.WIDTH)
+                val hCol = c.getColumnIndex(MediaStore.Video.Media.HEIGHT)
+                val bucketCol =
+                    c.getColumnIndex(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+
+                while (c.moveToNext()) {
+                    // 真实路径：授予「所有文件访问」后 DATA 才有值
+                    val path = if (dataCol >= 0 && !c.isNull(dataCol)) {
+                        c.getString(dataCol)
+                    } else {
+                        null
+                    } ?: continue
+                    val name = if (nameCol >= 0 && !c.isNull(nameCol)) {
+                        c.getString(nameCol)
+                    } else {
+                        path.substringAfterLast('/')
+                    }
+                    out.add(
+                        mapOf(
+                            "id" to c.getLong(idCol),
+                            "path" to path,
+                            "name" to name,
+                            "size" to if (sizeCol >= 0) c.getLong(sizeCol) else 0L,
+                            "duration" to if (durCol >= 0) c.getLong(durCol) else 0L,
+                            "dateModified" to
+                                (if (dateCol >= 0) c.getLong(dateCol) * 1000L else 0L),
+                            "width" to if (wCol >= 0) c.getInt(wCol) else 0,
+                            "height" to if (hCol >= 0) c.getInt(hCol) else 0,
+                            "bucket" to
+                                (if (bucketCol >= 0 && !c.isNull(bucketCol))
+                                    c.getString(bucketCol) else null)
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            return emptyList()
+        }
+        return out
     }
 
     // ──────────────────────────────
