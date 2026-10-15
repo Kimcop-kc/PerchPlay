@@ -71,7 +71,7 @@
 ## 界面
 
 - 玻璃拟态：毛玻璃卡片/面板/导航栏 + 紫青渐变 + 大圆角 + 顶部高光
-- **导航栏实时模糊可在设置里开关**（默认开启）：关闭只是不做实时模糊、外观不变，供低端机省电
+- **导航栏实时模糊可在设置里开关**（默认开启）：关闭只是不做实时模糊、外观不变，适合低端机或发热明显的场景
 - Android 上 `BackdropFilter` 会按 GPU 兼容策略自动降级为半透明叠加（导航栏除外，它走真实模糊 + 开关）
 - 响应式：手机（底栏导航 + 全屏播放）／平板竖屏（NavigationRail + 放大控件）／平板横屏（双栏 Master-Detail + 播放器分栏）
 - 导航栏 6 个标签：首页 · 文件夹 · 列表 · 历史 · NAS · 设置（投屏不占底栏，从播放页进入）
@@ -105,8 +105,7 @@ lib/
 │   ├── nas_discovery_service.dart             局域网 NAS 自动发现 + 品牌识别
 │   ├── native_bridge_service.dart             MethodChannel 桥接
 │   ├── app_settings_service.dart              设置持久化（SharedPreferences）
-│   ├── device_info_service.dart               设备/品牌/能力检测
-│   ├── rom_optimization_service.dart          国内 ROM 省电/自启动引导（按机型出现）
+│   ├── device_info_service.dart               设备型号 / 系统 / 能力检测
 │   └── ipad_optimization_service.dart         iPad 能力检测
 ├── providers/                                 library / player / playlist / permission /
 │                                              cast / nas / ui_settings（Riverpod）
