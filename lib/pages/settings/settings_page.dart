@@ -394,7 +394,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 color: Colors.white, size: 28),
           ),
           const SizedBox(height: 12),
-          const Text('VidFlow',
+          const Text('PerchPlay',
               style: TextStyle(
                   color: GlassTheme.textPrimary,
                   fontSize: 20,

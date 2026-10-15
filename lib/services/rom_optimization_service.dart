@@ -19,16 +19,16 @@ class RomOptimizationService {
 
   String get batteryOptimizationGuideText {
     if (_device.isXiaomi) {
-      return '长按 VidFlow 图标 → 应用信息 → 省电策略 → 选择「无限制」';
+      return '长按 PerchPlay 图标 → 应用信息 → 省电策略 → 选择「无限制」';
     }
     if (_device.isHuawei) {
-      return '设置 → 应用 → 应用启动管理 → VidFlow → 手动管理（全部开启）';
+      return '设置 → 应用 → 应用启动管理 → PerchPlay → 手动管理（全部开启）';
     }
     if (_device.isOppo) {
-      return '设置 → 电池 → 应用耗电管理 → VidFlow → 允许后台运行';
+      return '设置 → 电池 → 应用耗电管理 → PerchPlay → 允许后台运行';
     }
     if (_device.isVivo) {
-      return '设置 → 电池 → 后台高耗电 → VidFlow → 允许';
+      return '设置 → 电池 → 后台高耗电 → PerchPlay → 允许';
     }
     return '';
   }
@@ -40,16 +40,16 @@ class RomOptimizationService {
 
   String get overlayPermissionGuideText {
     if (_device.isXiaomi) {
-      return '设置 → 应用设置 → 授权管理 → 应用权限管理 → VidFlow → 显示悬浮窗 → 允许';
+      return '设置 → 应用设置 → 授权管理 → 应用权限管理 → PerchPlay → 显示悬浮窗 → 允许';
     }
     if (_device.isHuawei) {
-      return '设置 → 应用 → 权限管理 → 悬浮窗 → VidFlow → 允许';
+      return '设置 → 应用 → 权限管理 → 悬浮窗 → PerchPlay → 允许';
     }
     if (_device.isOppo) {
-      return '设置 → 应用管理 → 悬浮窗管理 → VidFlow → 允许';
+      return '设置 → 应用管理 → 悬浮窗管理 → PerchPlay → 允许';
     }
     if (_device.isVivo) {
-      return '设置 → 更多设置 → 权限管理 → 悬浮窗 → VidFlow → 允许';
+      return '设置 → 更多设置 → 权限管理 → 悬浮窗 → PerchPlay → 允许';
     }
     return '';
   }
@@ -63,13 +63,13 @@ class RomOptimizationService {
 
   String get autoStartGuideText {
     if (_device.isHuawei) {
-      return '手机管家 → 应用启动管理 → VidFlow → 手动管理 → 开启「自启动」';
+      return '手机管家 → 应用启动管理 → PerchPlay → 手动管理 → 开启「自启动」';
     }
     if (_device.isOppo) {
-      return '设置 → 应用管理 → 自启动管理 → VidFlow → 开启';
+      return '设置 → 应用管理 → 自启动管理 → PerchPlay → 开启';
     }
     if (_device.isVivo) {
-      return 'i管家 → 应用管理 → 权限管理 → 自启动 → VidFlow → 开启';
+      return 'i管家 → 应用管理 → 权限管理 → 自启动 → PerchPlay → 开启';
     }
     return '';
   }
@@ -96,7 +96,7 @@ class RomOptimizationService {
       _device.isXiaomi; // 小米账号优化
 
   String get miuiVideoToolboxGuide =>
-      '安全中心 → 视频工具箱 → 添加 VidFlow → 开启画质增强 / 动态补偿';
+      '安全中心 → 视频工具箱 → 添加 PerchPlay → 开启画质增强 / 动态补偿';
 
   // ────────────── 全面屏凹口安全区 ──────────────
 
@@ -163,7 +163,7 @@ class RomOptimizationService {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '为确保 VidFlow 正常使用，建议进行以下设置：',
+                '为确保 PerchPlay 正常使用，建议进行以下设置：',
                 style: TextStyle(color: Color(0xFF3C3C43), fontSize: 14),
               ),
               const SizedBox(height: 16),

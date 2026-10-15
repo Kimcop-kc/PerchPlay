@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
 	<key>CFBundleDisplayName</key>
-	<string>VidFlow</string>
+	<string>PerchPlay</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>VidFlow</string>
+	<string>PerchPlay</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -116,9 +116,9 @@
 
 	<!-- ──────── 隐私描述 ──────── -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>VidFlow 需要访问照片库以播放其中的视频文件</string>
+	<string>PerchPlay 需要访问照片库以播放其中的视频文件</string>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>VidFlow 需要访问媒体库以播放视频</string>
+	<string>PerchPlay 需要访问媒体库以播放视频</string>
 	<key>UISupportsTrueScreenSize</key>
 	<true/>
 

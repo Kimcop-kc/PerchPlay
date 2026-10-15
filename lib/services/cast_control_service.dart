@@ -89,7 +89,7 @@ class CastControlService {
   Future<String> _fetchDeviceDescription(String location) async {
     final uri = Uri.parse(location);
     final req = await _httpClient!.getUrl(uri);
-    req.headers.set('User-Agent', 'VidFlow/1.0 DLNA/1.0');
+    req.headers.set('User-Agent', 'PerchPlay/1.0 DLNA/1.0');
     final res = await req.close();
     return await res.transform(utf8.decoder).join();
   }
@@ -118,7 +118,7 @@ class CastControlService {
       );
       req.headers.set('SOAPACTION',
           '"urn:schemas-upnp-org:service:AVTransport:1#$action"');
-      req.headers.set('User-Agent', 'VidFlow/1.0 DLNA/1.0');
+      req.headers.set('User-Agent', 'PerchPlay/1.0 DLNA/1.0');
       req.write(soapBody);
 
       final res = await req.close();
