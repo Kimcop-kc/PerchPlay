@@ -24,6 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    env:
+      # 走官方源：pubspec.lock 里记录的是 pub.flutter-io.cn 镜像地址，
+      # 显式设置 PUB_HOSTED_URL 会让 pub 按当前源重新解析，
+      # 避免 GitHub runner 依赖国内镜像（延迟高、偶发不可达）
+      PUB_HOSTED_URL: https://pub.dev
+      FLUTTER_STORAGE_BASE_URL: https://storage.googleapis.com
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,26 +47,26 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      - name: 生成 Android 平台文件
-        run: |
-          flutter create --platforms=android --org com.vidflow .
-          echo "✅ flutter create 完成"
-
-      - name: 设置 compileSdkVersion 36 (media_kit 要求)
-        run: |
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 36/' android/app/build.gradle.kts
-          echo "✅ compileSdkVersion 已设为 36"
-
-      - name: 覆盖自定义文件
-        run: |
-          cp android/manifest-backup/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          cp android/manifest-backup/styles.xml android/app/src/main/res/values/styles.xml
-          cp android/manifest-backup/BackgroundAudioService.kt android/app/src/main/kotlin/com/vidflow/player/BackgroundAudioService.kt
-          cp android/manifest-backup/MainActivity.kt android/app/src/main/kotlin/com/vidflow/player/MainActivity.kt
-          echo "✅ 自定义文件已覆盖"
-
+      # 说明（重要）：
+      # 1) 不再执行 `flutter create --platforms=android`。仓库里的 android/ 是
+      #    完整且经过验证的：create 会按**目录名**推断项目名，生成错误包名的
+      #    MainActivity（com.vidflow.video_player_app）以及引用不存在 MyApp 的
+      #    test/widget_test.dart，把 CI 的 analyze/test 一起搞挂。
+      # 2) 不再 sed 改 build.gradle.kts —— 本项目用的是 build.gradle（Groovy），
+      #    根本没有 .kts 文件，那一步会直接让 job 失败。
+      #    compileSdk 沿用 flutter.compileSdkVersion（34）即可；媒体库已按
+      #    pubspec 注释钉在 media_kit_libs_android_video 1.3.7（compileSdk 31），
+      #    不需要 36。
+      # 3) 不再用 android/manifest-backup/* 覆盖真实文件 —— 那些备份是旧版本，
+      #    会退回组播锁、后台服务通道、networkSecurityConfig 等修复。
       - name: 安装依赖
         run: flutter pub get
+
+      - name: 静态分析 + 测试（快速失败）
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos 2>&1 | tail -40
+          flutter test 2>&1 | tail -40
 
       - name: 构建 APK (分 ABI)
         if: ${{ github.event.inputs.build_type == 'apk (分 ABI)' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' }}
@@ -82,6 +89,7 @@ jobs:
           name: android-apk-${{ github.ref_name }}
           path: build/app/outputs/flutter-apk/**/*.apk
           retention-days: 30
+          if-no-files-found: warn
 
       - name: 上传 AAB
         uses: actions/upload-artifact@v4
@@ -89,6 +97,7 @@ jobs:
           name: android-aab-${{ github.ref_name }}
           path: build/app/outputs/bundle/**/*.aab
           retention-days: 30
+          if-no-files-found: warn
 
       - name: 发布到 GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
