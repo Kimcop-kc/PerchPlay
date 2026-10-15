@@ -95,10 +95,21 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 连接管理 ────
 
   /// 局域网自动发现 NAS（群晖/威联通/TrueNAS/自建…）
-  Future<void> discoverNas() async {
+  ///
+  /// 页面打开时与定时刷新时后台静默调用，不需要用户点按钮；
+  /// 重新扫描期间保留上一次结果，避免列表闪烁。
+  DateTime? _lastScanAt;
+
+  Future<void> discoverNas({bool force = false}) async {
     if (state.isDiscovering) return;
-    state = state.copyWith(
-        isDiscovering: true, candidates: const [], discoverProgress: 0);
+    final now = DateTime.now();
+    if (!force &&
+        _lastScanAt != null &&
+        now.difference(_lastScanAt!) < const Duration(seconds: 30)) {
+      return; // 刚扫过，别重复占网络
+    }
+    _lastScanAt = now;
+    state = state.copyWith(isDiscovering: true, discoverProgress: 0);
     try {
       final list = await NasDiscoveryService.instance.discover(
         onProgress: (done, total) {
@@ -107,6 +118,10 @@ class NasNotifier extends StateNotifier<NasState> {
           }
         },
       );
+      // 没有局域网（如刚开机还没拿到 IP）→ 不记“已扫描”，尽快重试
+      if (list.isEmpty && !await NasDiscoveryService.instance.hasLocalNetwork()) {
+        _lastScanAt = null;
+      }
       state = state.copyWith(
         isDiscovering: false,
         candidates: list,

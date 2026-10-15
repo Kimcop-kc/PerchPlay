@@ -66,6 +66,9 @@ class NasDiscoveryService {
     return null;
   }
 
+  /// 是否已接入局域网（用于判断“扫不到”是没网还是真没有 NAS）
+  Future<bool> hasLocalNetwork() async => (await localSubnet()) != null;
+
   /// 扫描局域网，返回发现的 NAS 候选
   ///
   /// [subnet] 可指定网段（测试用，如 '127.0.0'），
@@ -86,7 +89,12 @@ class NasDiscoveryService {
           (net == null
               ? <String>[]
               : List.generate(254, (i) => '$net.${i + 1}'));
-      if (targets.isEmpty) return const [];
+      if (targets.isEmpty) {
+        // 刚开机/刚连 Wi-Fi 时可能还没有局域网 IP：不算已扫描，
+        // 交给调用方稍后重试（否则会静默什么都不做）
+        debugPrint('[NasDiscovery] 暂无局域网网段，跳过本次扫描');
+        return const [];
+      }
 
       final portList = ports ?? probePorts.keys.toList();
       final jobs = <MapEntry<String, int>>[
@@ -118,16 +126,29 @@ class NasDiscoveryService {
         if (found.any((c) => c.isWebDav)) continue;
       }
 
-      // WebDAV 优先，其次 FTP，最后只是“发现设备”
-      found.sort((a, b) {
-        int rank(NasCandidate c) => c.isWebDav
-            ? 0
-            : (c.protocol == NasProtocol.ftp ? 1 : 2);
+      // 只保留「确实是 NAS」或「真的能用 WebDAV」的候选：
+      // 路由器/电脑上裸露的 80/445/21 端口不是 NAS，列出来只会干扰
+      final usable = found.where((c) {
+        if (c.isWebDav) return true;
+        if (c.brand.isNotEmpty) return true;
+        return false;
+      }).toList();
+      debugPrint('[NasDiscovery] 命中 ${found.length} 个端口，'
+          '其中可用 ${usable.length} 个');
+
+      // WebDAV 优先，其次识别出品牌的，最后只是“发现设备”
+      usable.sort((a, b) {
+        int rank(NasCandidate c) {
+          if (c.isWebDav) return 0;
+          if (c.brand.isNotEmpty) return 1;
+          return 2;
+        }
+
         final r = rank(a).compareTo(rank(b));
         if (r != 0) return r;
         return '${a.host}:${a.port}'.compareTo('${b.host}:${b.port}');
       });
-      return found;
+      return usable;
     } finally {
       _running = false;
     }
