@@ -12,17 +12,11 @@ class GlassNavBar extends StatefulWidget {
   final String currentRoute;
   final double height;
 
-  /// 是否让内容透过玻璃显示（首页用 true）。
-  /// 其他页面用 false：加厚磨砂，避免内容从导航栏下方透出来，
-  /// 看起来像「导航栏下面还有一层界面」。
-  final bool translucent;
-
   const GlassNavBar({
     super.key,
     required this.items,
     required this.currentRoute,
     this.height = 64,
-    this.translucent = false,
   });
 
   @override
@@ -105,7 +99,7 @@ class _GlassNavBarState extends State<GlassNavBar>
             fit: StackFit.expand,
             children: [
               // ── 轨道：毛玻璃底板 ──
-              _GlassTrack(translucent: widget.translucent),
+              _GlassTrack(),
 
               // ── 浮起透镜气泡 ──
               // Positioned 必须是 Stack 直接子级才能生效；
@@ -176,25 +170,19 @@ class _GlassNavBarState extends State<GlassNavBar>
 
 // ═══════════════ 毛玻璃轨道 ═══════════════
 //
-// BackdropFilter 毛玻璃模糊 + 白色叠加。
-// translucent=true（首页）：白色叠加轻薄，背后滚动的内容透过模糊可见；
-// translucent=false（其他页）：叠加加厚，背后内容不再显形，
-// 否则会像「导航栏下面还有一层界面」。
+// BackdropFilter 毛玻璃模糊 + 轻薄白色叠加。
+// 所有页面统一这一套参数（首页与其他页一致，避免 UI 割裂感）。
 
 class _GlassTrack extends StatelessWidget {
-  final bool translucent;
-  const _GlassTrack({required this.translucent});
+  const _GlassTrack();
 
   @override
   Widget build(BuildContext context) {
-    final topWhite = translucent ? 0.55 : 0.90;
-    final bottomWhite = translucent ? 0.35 : 0.80;
-    final blur = translucent ? 22.0 : 32.0;
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
@@ -202,8 +190,8 @@ class _GlassTrack extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withOpacity(topWhite),
-                  Colors.white.withOpacity(bottomWhite),
+                  Colors.white.withOpacity(0.55),
+                  Colors.white.withOpacity(0.35),
                 ],
               ),
               border: Border.all(

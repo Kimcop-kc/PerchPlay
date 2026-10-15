@@ -17,6 +17,7 @@ import '../../providers/player_provider.dart';
 import '../../providers/cast_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/subtitle_service.dart';
+import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -47,6 +48,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
   double? _seekPreviewMs;
+
+  /// 系统是否支持画中画（不支持则不显示该按钮）
+  bool? _pipSupported;
   late VideoController _videoController;
   late AnimationController _controlsAnim;
 
@@ -65,7 +69,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       if (!mounted) return;
       _loadVideo();
       _startAutoHideTimer();
+      _checkPipSupport();
     });
+  }
+
+  /// 查询系统是否支持画中画
+  Future<void> _checkPipSupport() async {
+    final supported = await NativeBridgeService.instance.isPipSupported();
+    if (mounted) setState(() => _pipSupported = supported);
   }
 
   @override
@@ -132,7 +143,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (_showControls) {
       _hideControls();
     } else {
-      _showControls = true;
+      // 必须 setState：控件隐藏时已从 widget 树移除，
+      // 只改标志位不会重建，之前这里导致控件再也唤不出来
+      setState(() => _showControls = true);
       _controlsAnim.forward();
       _startAutoHideTimer();
     }
@@ -649,11 +662,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                   onPressed: _toggleFullscreen,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.picture_in_picture_rounded,
-                      color: Colors.white70),
-                  onPressed: _enterPiP,
-                ),
+                // 小窗（画中画）：不支持则整个按钮不显示，避免出现点不动的按钮
+                if (_pipSupported == true)
+                  IconButton(
+                    tooltip: '小窗播放',
+                    icon: const Icon(Icons.picture_in_picture_rounded,
+                        color: Colors.white70),
+                    onPressed: _enterPiP,
+                  ),
               ],
             ),
           ),
@@ -1254,12 +1270,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         onTap: () =>
                             ref.read(playerProvider.notifier).playNext(),
                       ),
-                      // 投屏（页内搜索设备）
-                      GlassButton(
-                        icon: Icons.cast_rounded,
-                        compact: true,
-                        onTap: _showCastSheet,
-                      ),
                     ],
                   ),
                 ),
@@ -1340,8 +1350,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  void _enterPiP() {
-    // PiP via native bridge
+  void _enterPiP() async {
+    final ok = await NativeBridgeService.instance.enterPiP();
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('当前设备/系统不支持小窗播放'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   String _fmtDuration(Duration d) {

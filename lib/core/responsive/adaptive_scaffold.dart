@@ -126,9 +126,6 @@ class _MobileGlassScaffold extends StatelessWidget {
       bottomNavigationBar: GlassNavBar(
         currentRoute: currentRoute,
         items: _navItems(context),
-        // 仅首页让内容透过玻璃；其他页面加厚磨砂，
-        // 避免内容从导航栏下透出来像「还有一层界面」
-        translucent: currentRoute == '/home',
       ),
     );
   }
