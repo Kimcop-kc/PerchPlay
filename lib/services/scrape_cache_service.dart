@@ -1,6 +1,7 @@
 import 'package:perchplay/models/scrape_result.dart';
 import 'package:perchplay/services/database_service.dart';
 import 'package:perchplay/services/media_namer_service.dart';
+import 'package:perchplay/services/scrape_matcher.dart';
 import 'package:perchplay/services/tmdb_service.dart';
 
 /// 刮削缓存服务
@@ -152,7 +153,10 @@ class ScrapeCacheService {
     }
     if (results.isEmpty) return null;
 
-    final best = results.first;
+    // 不再盲取第一条：按片名相似度 + 年份挑最像的
+    final best = ScrapeMatcher.best(results, query: title, year: year);
+    if (best == null) return null;
+
     final detail = best.type == ScrapeType.tv
         ? await _tmdb!.getTvDetail(best.tmdbId)
         : await _tmdb!.getMovieDetail(best.tmdbId);
@@ -184,7 +188,9 @@ class ScrapeCacheService {
     }
     if (results.isEmpty) return null;
 
-    final series = results.first;
+    // 同样按相似度挑，而不是盲取第一条
+    final series = ScrapeMatcher.best(results, query: title);
+    if (series == null) return null;
     final seriesId = series.tmdbId;
 
     // 同一系列只拉一次整剧详情（内存缓存）

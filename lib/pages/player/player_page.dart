@@ -16,6 +16,7 @@ import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/cast_provider.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/media_namer_service.dart';
 import '../../services/subtitle_service.dart';
 import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
@@ -24,6 +25,7 @@ import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
+import '../../widgets/scrape/scrape_widgets.dart';
 import '../../widgets/keyboard_shortcut_handler.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
@@ -590,6 +592,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
+              // 刮削到的影片信息（海报/年份/评分/简介）+ 手动匹配入口。
+              // 之前刮削结果没有任何界面展示，用户看不到匹配结果。
+              ScrapeInfoSection(
+                videoPath: widget.videoPath,
+                initialQuery: MediaNamer.parse(widget.videoPath).fullTitle,
+              ),
+              const SizedBox(height: 6),
               ...rows.map((r) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
                     child: Row(

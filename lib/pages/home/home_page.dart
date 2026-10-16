@@ -15,8 +15,10 @@ import '../../providers/playlist_provider.dart';
 import '../../providers/scrape_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/library_query_service.dart';
+import '../../services/media_namer_service.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/scrape/scrape_widgets.dart';
 
 class HomePage extends StatelessWidget {
   final Widget child;
@@ -552,6 +554,23 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ),
             const SizedBox(height: 12),
             GlassButton.outlined(
+              icon: Icons.image_search_rounded,
+              label: '匹配影片信息',
+              width: double.infinity,
+              height: 46,
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: () {
+                Navigator.pop(ctx);
+                showManualMatchSheet(
+                  context,
+                  ref,
+                  videoPath: video.path,
+                  initialQuery: MediaNamer.parse(video.path).fullTitle,
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            GlassButton.outlined(
               icon: Icons.playlist_add_rounded,
               label: '添加到播放列表',
               width: double.infinity,
@@ -737,10 +756,34 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
+  /// 本地缩略图（没有刮削海报时用）
+  Widget _localThumb(VideoModel video) {
+    if (video.thumbnailPath.isEmpty) {
+      return Container(
+        color: Colors.black.withOpacity(0.08),
+        child: const Center(
+          child: Icon(Icons.movie_rounded,
+              color: GlassTheme.textTertiary, size: 40),
+        ),
+      );
+    }
+    return Image.file(
+      File(video.thumbnailPath),
+      fit: BoxFit.cover,
+      // 明确解码尺寸：缩略图按原分辨率解码会占大量内存并掉帧
+      cacheWidth: 480,
+      gaplessPlayback: true,
+    );
+  }
+
   Widget _buildVideoCard(VideoModel video, int index) {
     final progressPercent = video.durationMs > 0
         ? (video.lastPosition / video.durationMs).clamp(0.0, 1.0)
         : 0.0;
+    // 只订阅**这一个**视频的刮削结果：用 select 切片，
+    // 否则刮削批量跑时（每秒一条）所有卡片都会跟着重建
+    final scraped = ref.watch(
+        scrapeProvider.select((s) => s.results[video.path]));
 
     return GestureDetector(
       onTap: () {
@@ -756,21 +799,16 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           fit: StackFit.expand,
           children: [
             // ── 缩略图铺满整张卡片 ──
-            video.thumbnailPath.isNotEmpty
-                ? Image.file(
-                    File(video.thumbnailPath),
-                    fit: BoxFit.cover,
-                    // 明确解码尺寸：缩略图按原分辨率解码会占大量内存并掉帧
-                    cacheWidth: 480,
-                    gaplessPlayback: true,
-                  )
-                : Container(
-                    color: Colors.black.withOpacity(0.08),
-                    child: const Center(
-                      child: Icon(Icons.movie_rounded,
-                          color: GlassTheme.textTertiary, size: 40),
-                    ),
-                  ),
+            // 有刮削海报时优先用海报（这是刮削结果唯一的可见出口，
+            // 之前刮到的 posterPath 没有任何界面使用）
+            if (scraped?.posterUrl != null)
+              ScrapedPoster(
+                url: scraped!.posterUrl!,
+                fit: BoxFit.cover,
+                fallback: _localThumb(video),
+              )
+            else
+              _localThumb(video),
 
             // 播放按钮（居中）
             Center(
