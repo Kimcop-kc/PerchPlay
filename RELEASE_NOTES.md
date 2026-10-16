@@ -1,8 +1,5 @@
 # PerchPlay 更新说明
 
-> 发版流程：改完这个文件 → 改 `pubspec.yaml` 版本号 → 打 tag 推送。
-> 工作流会把本文件内容作为 Release 说明（`body_path: RELEASE_NOTES.md`）。
-
 ## 本次更新
 
 ### 影片识别与刮削（本次重点）
