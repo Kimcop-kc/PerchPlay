@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
 /// 统一响应式断点管理
+///
+/// 只保留**实际被调用**的三个方法。之前还有 isMobile / isTablet /
+/// isDesktopOrLandscape / isLandscape / cardAspectRatio / detailPaneRatio
+/// 和 ResponsiveBuilder，全项目没有任何引用，已删除 ——
+/// 留着会让"改了一处以为生效了"的风险变高。
 class AppBreakpoints {
   AppBreakpoints._();
 
@@ -13,27 +18,11 @@ class AppBreakpoints {
   /// 平板横屏 / 大屏桌面
   static const double desktopMinWidth = 1200;
 
-  // ────────── 便捷检测 ──────────
-
-  static bool isMobile(BuildContext context) =>
-      MediaQuery.of(context).size.width < mobileMaxWidth;
-
-  static bool isTablet(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    return w >= mobileMaxWidth && w < desktopMinWidth;
-  }
-
-  static bool isDesktopOrLandscape(BuildContext context) =>
-      MediaQuery.of(context).size.width >= desktopMinWidth;
-
-  static bool isLandscape(BuildContext context) =>
-      MediaQuery.of(context).orientation == Orientation.landscape;
-
+  /// 大屏判定（平板及以上）
   static bool isLargeScreen(BuildContext context) =>
       MediaQuery.of(context).size.width >= tabletMaxWidth;
 
-  // ────────── 网格列数 ──────────
-
+  /// 网格列数
   static int gridColumns(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     if (w >= desktopMinWidth) return 5;
@@ -42,45 +31,16 @@ class AppBreakpoints {
     return 2;
   }
 
-  // ────────── 内容水平内边距 ──────────
-
+  /// 内容水平内边距
+  ///
+  /// 原来 ≥1200dp 时返回 `w * 0.12`：1280dp 平板上左右各留 153dp，
+  /// 首页网格被挤成中间一小条（5 列时每张卡片只有约 187dp 宽），
+  /// 而文件夹页只用 12dp，两个页面观感完全不一致。大屏改为固定值。
   static double horizontalPadding(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    if (w >= desktopMinWidth) return w * 0.12;
+    if (w >= desktopMinWidth) return 40;
     if (w >= tabletMaxWidth) return 32;
     if (w >= mobileMaxWidth) return 24;
     return 12;
-  }
-
-  // ────────── 详情面板比例 ──────────
-
-  static double detailPaneRatio(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    if (w >= desktopMinWidth) return 0.55;
-    if (w >= tabletMaxWidth) return 0.50;
-    return 0.45;
-  }
-
-  // ────────── 卡片宽高比 ──────────
-
-  static double cardAspectRatio(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    if (w >= tabletMaxWidth) return 0.62;
-    if (w >= mobileMaxWidth) return 0.65;
-    return 0.68;
-  }
-}
-
-/// 封装 MediaQuery -> Size + Orientation 的轻量 widget
-class ResponsiveBuilder extends StatelessWidget {
-  final Widget Function(BuildContext context, Size size, Orientation orientation)
-      builder;
-
-  const ResponsiveBuilder({super.key, required this.builder});
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return builder(context, media.size, media.orientation);
   }
 }

@@ -14,10 +14,8 @@ import '../../providers/player_provider.dart';
 import '../../providers/playlist_provider.dart';
 import '../../providers/scrape_provider.dart';
 import '../../services/app_settings_service.dart';
-import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
-import '../../widgets/glass/glass_slider.dart';
 
 class HomePage extends StatelessWidget {
   final Widget child;
@@ -77,7 +75,6 @@ class LibraryView extends ConsumerStatefulWidget {
 class _LibraryViewState extends ConsumerState<LibraryView>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _listAnimController;
-  VideoModel? _selectedVideo;
 
   @override
   void initState() {
@@ -239,51 +236,6 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             bottom: MediaQuery.of(context).padding.bottom + 8,
             child: miniPlayer,
           ),
-      ],
-    );
-  }
-
-  Widget _buildTabletLayout(
-      List<VideoModel> videos, int columns, double hp) {
-    return Row(
-      children: [
-        // 左侧网格
-        SizedBox(
-          width: 420,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildHeader(hp, compact: true),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(hp, 8, hp, 24),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns - 1,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.7,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => GlassAnimations.scaleIn(
-                      controller: _listAnimController,
-                      index: index,
-                      child: _buildVideoCard(videos[index], index,
-                          showSelect: true),
-                    ),
-                    childCount: videos.length,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const VerticalDivider(width: 0.5, color: Color(0x14000000)),
-        // 右侧详情
-        Expanded(
-          child: _selectedVideo != null
-              ? _buildVideoDetail(_selectedVideo!)
-              : _buildSelectPrompt(),
-        ),
       ],
     );
   }
@@ -568,22 +520,17 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  Widget _buildVideoCard(VideoModel video, int index,
-      {bool showSelect = false}) {
+  Widget _buildVideoCard(VideoModel video, int index) {
     final progressPercent = video.durationMs > 0
         ? (video.lastPosition / video.durationMs).clamp(0.0, 1.0)
         : 0.0;
 
     return GestureDetector(
       onTap: () {
-        if (showSelect) {
-          setState(() => _selectedVideo = video);
-        } else {
-          context.pushNamed('player', extra: {
-            'videoPath': video.path,
-            'videoTitle': video.name,
-          });
-        }
+        context.pushNamed('player', extra: {
+          'videoPath': video.path,
+          'videoTitle': video.name,
+        });
       },
       onLongPress: () => _showVideoActions(video),
       child: ClipRRect(
@@ -756,124 +703,6 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     }
   }
 
-  // ── 右侧详情 ──
-
-  Widget _buildVideoDetail(VideoModel video) {
-    final progressPercent = video.durationMs > 0
-        ? video.lastPosition / video.durationMs
-        : 0.0;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 海报
-          GlassCard(
-            radius: GlassTheme.radiusXl,
-            padding: EdgeInsets.zero,
-            height: 280,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (video.thumbnailPath.isNotEmpty)
-                  ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(GlassTheme.radiusXl),
-                    child: Image.file(File(video.thumbnailPath),
-                        fit: BoxFit.cover,
-                        cacheWidth: 720,
-                        gaplessPlayback: true),
-                  )
-                else
-                  Center(
-                    child: Icon(Icons.movie_rounded,
-                        size: 64, color: GlassTheme.textTertiary),
-                  ),
-                Positioned(
-                  bottom: 20,
-                  left: 20,
-                  right: 20,
-                  child: GlassButton.filled(
-                    icon: Icons.play_arrow_rounded,
-                    label: '播放',
-                    width: double.infinity,
-                    onTap: () => context.pushNamed('player', extra: {
-                      'videoPath': video.path,
-                      'videoTitle': video.name,
-                    }),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(video.name,
-              style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: GlassTheme.textPrimary)),
-          const SizedBox(height: 8),
-          Text(video.folderPath,
-              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
-          const SizedBox(height: 20),
-          // 元数据标签
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _metadataChip(Icons.schedule_rounded,
-                  _formatDuration(video.durationMs)),
-              _metadataChip(Icons.storage_rounded, _formatSize(video.size)),
-              _metadataChip(Icons.calendar_today_rounded,
-                  _formatDate(video.dateModified)),
-              if (video.playCount > 0)
-                _metadataChip(
-                    Icons.replay_rounded, '播放 ${video.playCount} 次'),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // 进度
-          if (progressPercent > 0) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('观看进度',
-                    style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
-                Text('${(progressPercent * 100).round()}%',
-                    style: const TextStyle(
-                        color: GlassTheme.accentPurple,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            GlassSlider(
-              value: progressPercent,
-              height: 5,
-              activeColor: GlassTheme.accentPurple,
-            ),
-            const SizedBox(height: 24),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSelectPrompt() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.touch_app_rounded, size: 48, color: GlassTheme.textTertiary),
-          const SizedBox(height: 12),
-          Text('点击左侧视频查看详情',
-              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyLibrary(BuildContext context) {
     final hasPermission = ref.watch(permissionProvider).hasVideoPermission;
     final hasAllFiles = ref.watch(permissionProvider).hasAllFilesAccess;
@@ -975,24 +804,6 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  Widget _metadataChip(IconData icon, String label) {
-    return GlassPanel(
-      radius: GlassTheme.radiusXs,
-      opacity: GlassTheme.glassLight,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: GlassTheme.textTertiary),
-          const SizedBox(width: 5),
-          Text(label,
-              style: const TextStyle(
-                  color: GlassTheme.textSecondary, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
   String _formatDuration(int ms) {
     if (ms <= 0) return '--';
     final totalSec = ms ~/ 1000;
@@ -1005,17 +816,6 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     return '${m}m${s.toString().padLeft(2, '0')}s';
   }
 
-  String _formatSize(int bytes) {
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
-
-  String _formatDate(DateTime dt) {
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-  }
 }
 
 /// 后台播放悬浮小窗
