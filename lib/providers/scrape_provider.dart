@@ -5,6 +5,7 @@ import 'package:perchplay/models/scrape_result.dart';
 import 'package:perchplay/services/scrape_cache_service.dart';
 import 'package:perchplay/services/database_service.dart';
 import 'package:perchplay/services/app_settings_service.dart';
+import 'package:perchplay/services/video_source_service.dart';
 
 /// 刮削状态
 class ScrapeState {
@@ -77,9 +78,13 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   }
 
   /// 批量刮削（后台串行，不阻塞 UI，TMDB 限流友好）
+  ///
+  /// 只刮「能判定为电影 / 剧集」的视频：随手拍、录屏、测试片段这类
+  /// 判定不出来的，直接用视频自己的缩略图 —— 既不发无谓的请求，
+  /// 也避免把无关视频匹配到错误的影片上。
   void scrapeBatch(List<String> paths) {
     if (!state.isEnabled) return;
-    for (final path in paths) {
+    for (final path in _movieOrTvOnly(paths)) {
       if (state.results.containsKey(path) && state.results[path] != null) {
         continue;
       }
@@ -88,6 +93,27 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
     }
     state = state.copyWith(queueLength: _queue.length);
     _drain();
+  }
+
+  /// 先用**文件名分组规则**判断"是不是电影/剧集"，只放行这些路径。
+  /// 判定为 fallback / personal 的（没有年份、没有集数、没有片源标记的
+  /// 随手拍或录屏）一律不刮削。
+  List<String> _movieOrTvOnly(List<String> paths) {
+    if (paths.isEmpty) return const [];
+    try {
+      final groups = VideoSourceService.groupAll(paths);
+      final out = <String>[];
+      for (final g in groups) {
+        if (!(g.isSeries || g.isMovie)) continue;
+        for (final i in g.indices) {
+          if (i >= 0 && i < paths.length) out.add(paths[i]);
+        }
+      }
+      return out;
+    } catch (_) {
+      // 分组异常时宁可照旧全刮，也不要因此一个都不刮
+      return paths;
+    }
   }
 
   void _drain() {
