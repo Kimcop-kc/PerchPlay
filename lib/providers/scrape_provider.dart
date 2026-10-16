@@ -50,7 +50,13 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   /// 初始化：有保存的 API key 就立即启用（同步设 isEnabled），缓存异步加载
   Future<void> boot() async {
     final key = AppSettingsService.instance.tmdbApiKey;
-    if (key.isEmpty) return;
+    if (key.isEmpty) {
+      // 没有 Key 也要把**已有缓存**读回来。
+      // 否则用户一旦清掉 Key（或换了设备恢复数据），之前刮到的
+      // 海报/简介会全部从界面消失，看起来像"刮削结果丢了"。
+      await _loadCache();
+      return;
+    }
     ScrapeCacheService.instance.init(apiKey: key);
     // isEnabled = true 必须在 await 之前，否则 scan() 的 scrapeBatch 会被跳过
     state = state.copyWith(isEnabled: true);
