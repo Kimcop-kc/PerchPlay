@@ -45,8 +45,8 @@ android {
 
     defaultConfig {
         applicationId = "com.perchplay.player"
-        // 最低支持 Android 14 (API 34)
-        minSdk = 34
+        // 最低支持 Android 7.0 (API 24)；API 29 需要 requestLegacyExternalStorage
+        minSdk = 24
         targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
