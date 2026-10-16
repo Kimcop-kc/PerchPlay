@@ -47,20 +47,21 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   final List<String> _queue = [];
   bool _processing = false;
 
-  /// 初始化（main.dart 调用）：如果有保存的 API key 就启用并加载缓存
+  /// 初始化：有保存的 API key 就立即启用（同步设 isEnabled），缓存异步加载
   Future<void> boot() async {
     final key = AppSettingsService.instance.tmdbApiKey;
     if (key.isEmpty) return;
     ScrapeCacheService.instance.init(apiKey: key);
-    await _loadCache();
+    // isEnabled = true 必须在 await 之前，否则 scan() 的 scrapeBatch 会被跳过
     state = state.copyWith(isEnabled: true);
+    await _loadCache();
   }
 
   /// 设置 API key 并启用刮削
   Future<void> enable(String apiKey) async {
     ScrapeCacheService.instance.init(apiKey: apiKey);
     state = state.copyWith(isEnabled: true, error: null);
-    if (state.results.isEmpty) await _loadCache();
+    await _loadCache();
   }
 
   void disable() {

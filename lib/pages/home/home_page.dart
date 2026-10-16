@@ -135,14 +135,15 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       return; // 用户授权返回后，resume 时会自动重扫
     }
 
+    // 冷启动时初始化刮削（加载已缓存结果 + 启用）—— 必须在 scan 前，
+    // 否则 scan 里触发的 scrapeBatch 会因 isEnabled=false 而跳过。
+    ref.read(scrapeProvider.notifier).boot();
+
     // 已有缓存视频则不重复全盘扫描（避免每次进首页都扫）
     final current = ref.read(libraryProvider).valueOrNull;
     if (current == null || current.isEmpty) {
       await ref.read(libraryProvider.notifier).scan();
     }
-
-    // 冷启动时初始化刮削（加载已缓存结果 + 启用）
-    ref.read(scrapeProvider.notifier).boot();
   }
 
   @override
