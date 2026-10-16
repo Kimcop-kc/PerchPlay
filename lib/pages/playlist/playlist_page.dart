@@ -10,6 +10,7 @@ import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/video/cover_thumb.dart';
 
 class PlaylistPage extends ConsumerStatefulWidget {
   const PlaylistPage({super.key});
@@ -82,27 +83,37 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                             ),
                             child: Row(
                               children: [
-                                // 封面占位
-                                Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(
-                                        GlassTheme.radiusSm),
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0x2245E0D0),
-                                        Color(0x089B7EF0),
-                                      ],
+                                // 封面：取该列表第一个视频的海报/缩略图；
+                                // 空列表保留原来的渐变图标占位
+                                if (firstVideo != null)
+                                  CoverThumb(
+                                    video: firstVideo,
+                                    width: 64,
+                                    height: 64,
+                                    radius: GlassTheme.radiusSm,
+                                    iconSize: 30,
+                                  )
+                                else
+                                  Container(
+                                    width: 64,
+                                    height: 64,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                          GlassTheme.radiusSm),
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0x2245E0D0),
+                                          Color(0x089B7EF0),
+                                        ],
+                                      ),
                                     ),
+                                    child: const Icon(
+                                        Icons.playlist_play_rounded,
+                                        size: 30,
+                                        color: GlassTheme.accentTeal),
                                   ),
-                                  child: const Icon(
-                                      Icons.playlist_play_rounded,
-                                      size: 30,
-                                      color: GlassTheme.accentTeal),
-                                ),
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(

@@ -26,6 +26,17 @@ enum VideoSource {
   other,
 }
 
+/// 刮削结果给出的影片类型（[VideoSourceService.groupAll] 用它修正文件名判定）
+///
+/// 用字符串常量而不是引入 `ScrapeType` 枚举，是为了让分组服务不依赖刮削层
+/// （刮削是可选功能，服务本身要能单独跑单测）。
+class ScrapeKind {
+  ScrapeKind._();
+
+  static const String movie = 'movie';
+  static const String tv = 'tv';
+}
+
 /// 分组结果
 class SourceGroup {
   final String name;
@@ -231,17 +242,38 @@ class VideoSourceService {
   ///  1. 个人来源（相机/剪辑/短视频/录屏/社交）→ 按来源+前缀分组
   ///  2. 影视来源（other/download）→ `MediaGrouping.group()` 识别剧集
   ///  3. 影视来源中未被剧集分组的 → 按前缀兜底分组（≥2 个才成组）
-  static List<SourceGroup> groupAll(List<String> paths) {
+  ///  4. 仍未被分组的 → 统一进「电影」集合
+  ///
+  /// [scrapedTypes] 是"刮削结果给出的类型"（key = 视频路径，value = `'movie'`
+  /// 或 `'tv'`，见 [ScrapeKind]），用来**修正只看文件名判错的电影**：
+  /// 《流浪地球2》这类片名自带数字的会被 `MediaGrouping` 当成剧集，
+  /// 于是永远进不了「🎬 电影」。有了刮削结果就以它为准把这类视频挪进电影分组。
+  ///
+  /// 不传该参数时行为与以前完全一致（现有调用点不用改）。
+  static List<SourceGroup> groupAll(
+    List<String> paths, {
+    Map<String, String>? scrapedTypes,
+  }) {
     final groups = <SourceGroup>[];
+
+    /// 刮削结果说这是电影（未知路径按文件名处理）
+    bool isScrapedMovie(String path) =>
+        scrapedTypes != null && scrapedTypes[path] == ScrapeKind.movie;
 
     // ── 先按来源分桶 ──
     final personal = <int>[]; // camera/capcut/shortVideo/screenRecord/social
     final media = <int>[];    // other/download
+    // 刮削已确认是电影的影视文件：不参与剧集识别，直接进「电影」集合
+    final movies = <int>[];
 
     for (var i = 0; i < paths.length; i++) {
       final src = classify(paths[i]);
       if (src == VideoSource.other || src == VideoSource.download) {
-        media.add(i);
+        if (isScrapedMovie(paths[i])) {
+          movies.add(i);
+        } else {
+          media.add(i);
+        }
       } else {
         personal.add(i);
       }
@@ -268,10 +300,20 @@ class VideoSourceService {
         if (!usedInSeries.contains(mi)) mi,
     ];
 
+    // 落不进「电影」集合的影视文件（前缀兜底组整体是刮削电影时整组不进兜底）
+    final leftoverMedia = <int>[];
+
     if (remainingMedia.isNotEmpty) {
       final fallback = _groupByPrefix(paths, remainingMedia, minSize: 2);
       final usedInFallback = <int>{};
       for (final f in fallback) {
+        final allMovies =
+            f.indices.every((i) => isScrapedMovie(paths[i]));
+        if (allMovies) {
+          // 刮削确认是各自独立的电影，不该被共同前缀捆成一个「分组」列表
+          movies.addAll(f.indices);
+          continue;
+        }
         usedInFallback.addAll(f.indices);
         groups.add(SourceGroup(
           name: '📂 ${f.name}',
@@ -283,17 +325,19 @@ class VideoSourceService {
       // ── 4) 还是没归组的影视文件 → 统一进「电影」集合 ──
       // 单部电影（`Heartstopper.Forever.2160p.内嵌官中.mkv`）既不是剧集、
       // 前缀又凑不满 2 个，以前会**任何列表都不进**，用户在播放列表里看不到它。
-      final leftovers = <int>[
-        for (final mi in remainingMedia)
-          if (!usedInFallback.contains(mi)) mi,
-      ];
-      if (leftovers.isNotEmpty) {
-        groups.add(SourceGroup(
-          name: movieGroupName,
-          indices: leftovers,
-          isMovie: true,
-        ));
+      // 刮削确认的电影无论前缀如何，也都归到这里。
+      for (final mi in remainingMedia) {
+        if (!usedInFallback.contains(mi)) leftoverMedia.add(mi);
       }
+    }
+
+    final movieIndices = <int>[...leftoverMedia, ...movies];
+    if (movieIndices.isNotEmpty) {
+      groups.add(SourceGroup(
+        name: movieGroupName,
+        indices: movieIndices,
+        isMovie: true,
+      ));
     }
 
     return groups;

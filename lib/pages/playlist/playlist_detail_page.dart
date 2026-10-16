@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +8,7 @@ import '../../providers/library_provider.dart';
 import '../../providers/playlist_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/video/cover_thumb.dart';
 
 /// 播放列表详情：先看清单（确认分类对不对），再决定播哪一集
 class PlaylistDetailPage extends ConsumerWidget {
@@ -164,24 +164,13 @@ class PlaylistDetailPage extends ConsumerWidget {
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600)),
                                 ),
-                                // 缩略图
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: SizedBox(
-                                    width: 76,
-                                    height: 43,
-                                    child: v.thumbnailPath.isNotEmpty
-                                        ? Image.file(
-                                            File(v.thumbnailPath),
-                                            fit: BoxFit.cover,
-                                            // 列表小图按显示尺寸解码，省内存
-                                            cacheWidth: 200,
-                                            gaplessPlayback: true,
-                                            errorBuilder: (_, __, ___) =>
-                                                _thumbPlaceholder(),
-                                          )
-                                        : _thumbPlaceholder(),
-                                  ),
+                                // 封面：有刮削海报就用海报，否则本地缩略图
+                                CoverThumb(
+                                  video: v,
+                                  width: 48,
+                                  height: 64,
+                                  radius: 6,
+                                  iconSize: 20,
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
@@ -232,14 +221,6 @@ class PlaylistDetailPage extends ConsumerWidget {
       ),
     );
   }
-
-  Widget _thumbPlaceholder() => Container(
-        color: Colors.black.withOpacity(0.08),
-        child: const Center(
-          child: Icon(Icons.movie_rounded,
-              color: GlassTheme.textTertiary, size: 20),
-        ),
-      );
 
   String _subtitle(VideoModel v) {
     final parts = <String>[];

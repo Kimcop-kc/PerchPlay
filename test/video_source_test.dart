@@ -260,6 +260,106 @@ void main() {
     });
   });
 
+  group('groupAll + 刮削类型修正', () {
+    // 《流浪地球2》片名自带数字，只看文件名会被判成剧集，
+    // 刮削出 movie 之后必须改判进「🎬 电影」。
+    const moviePath = '/sdcard/Download/流浪地球2.2023.2160p.mkv';
+
+    test('刮削说电影 → 从剧集改成「电影」集合', () {
+      final groups = VideoSourceService.groupAll(
+        [
+          moviePath,
+          '/sdcard/Download/流浪地球2.2023.EP02.2160p.mkv',
+        ],
+        scrapedTypes: const {moviePath: ScrapeKind.movie},
+      );
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.indices, contains(0));
+      // 不再留在剧集分组里
+      for (final g in groups.where((g) => g.isSeries)) {
+        expect(g.indices, isNot(contains(0)));
+      }
+      // 另一个文件没有刮削结果，仍按文件名当剧集
+      final series = groups.where((g) => g.isSeries).toList();
+      expect(series.length, 1);
+      expect(series.first.indices, [1]);
+    });
+
+    test('不传刮削结果时行为与原来完全一致', () {
+      final paths = [
+        moviePath,
+        '/sdcard/Download/流浪地球2.2023.EP02.2160p.mkv',
+      ];
+      final before = VideoSourceService.groupAll(paths);
+      final after = VideoSourceService.groupAll(paths, scrapedTypes: const {});
+      expect(after.length, before.length);
+      for (var i = 0; i < before.length; i++) {
+        expect(after[i].name, before[i].name);
+        expect(after[i].indices, before[i].indices);
+        expect(after[i].isSeries, before[i].isSeries);
+        expect(after[i].isMovie, before[i].isMovie);
+        expect(after[i].isFallback, before[i].isFallback);
+      }
+    });
+
+    test('整组都是刮削电影时旧分组消失，不再有空的剧集列表', () {
+      final paths = [
+        '/sdcard/MyVideos/Show.S01E01.1080p.mkv',
+        '/sdcard/MyVideos/Show.S01E02.1080p.mkv',
+      ];
+      final scraped = {
+        for (final p in paths) p: ScrapeKind.movie,
+      };
+      final groups =
+          VideoSourceService.groupAll(paths, scrapedTypes: scraped);
+      expect(groups.where((g) => g.isSeries), isEmpty);
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.indices, [0, 1]);
+    });
+
+    test('刮削说剧集时仍按文件名走（不误判成电影）', () {
+      final groups = VideoSourceService.groupAll(
+        [
+          '/sdcard/MyVideos/Show.S01E01.1080p.mkv',
+          '/sdcard/MyVideos/Show.S01E02.1080p.mkv',
+        ],
+        scrapedTypes: const {
+          '/sdcard/MyVideos/Show.S01E01.1080p.mkv': ScrapeKind.tv,
+        },
+      );
+      expect(groups.where((g) => g.isSeries).length, 1);
+      expect(groups.where((g) => g.isMovie), isEmpty);
+    });
+
+    test('刮削出来的电影不会因为共同前缀被捆成「分组」列表', () {
+      final paths = [
+        '/sdcard/Download/电影A.2020.1080p.mkv',
+        '/sdcard/Download/电影B.2021.1080p.mkv',
+      ];
+      final groups = VideoSourceService.groupAll(
+        paths,
+        scrapedTypes: {for (final p in paths) p: ScrapeKind.movie},
+      );
+      expect(groups.where((g) => g.isFallback), isEmpty);
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.indices, [0, 1]);
+    });
+
+    test('个人来源视频不会被刮削结果挪进「电影」集合', () {
+      const cam = '/sdcard/DCIM/Camera/VID_20250101_120000.mp4';
+      final groups = VideoSourceService.groupAll(
+        [cam],
+        scrapedTypes: const {cam: ScrapeKind.movie},
+      );
+      expect(groups.where((g) => g.isMovie), isEmpty);
+      expect(groups.length, 1);
+      expect(groups.first.name, contains('📷'));
+    });
+  });
+
   group('sourceLabel', () {
     test('camera → 📷 相机', () {
       expect(VideoSourceService.sourceLabel(VideoSource.camera), '📷 相机');

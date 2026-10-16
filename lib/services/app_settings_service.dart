@@ -1,5 +1,10 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/playlist_model.dart';
+import '../models/video_model.dart';
+import 'media_grouping_service.dart';
+import 'video_source_service.dart';
+
 /// 应用设置持久化服务
 ///
 /// 所有播放/界面设置统一通过 SharedPreferences 持久化，
@@ -244,6 +249,74 @@ class AppSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kHiddenAutoPlaylists);
     } catch (_) {}
+  }
+
+  /// 清掉「手动加入 / 手动移出」的记忆（设置里恢复默认用；单测也用它复位）
+  ///
+  /// 不清的话这些记录会一直累积，用户在界面里再也没有"回到自动分组"的办法。
+  Future<void> clearAutoOverlays() async {
+    _autoAdded = <String>{};
+    _autoRemoved = <String>{};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kAutoAdded);
+      await prefs.remove(_kAutoRemoved);
+    } catch (_) {}
+  }
+
+  /// 把「按文件名（+刮削修正）算出的分组」变成最终的自动列表。
+  ///
+  /// 放在这里而不是 notifier 里，是因为这层规则完全由本服务的状态决定
+  /// （隐藏 / 手动加 / 手动移出），而且它是纯函数 —— 没有数据库依赖，
+  /// 可以直接写单测钉住"重建不会冲掉用户的手动增删"。
+  ///
+  /// 规则（原有行为，别改）：
+  ///   最终成员 =（分组内成员 − 手动移出）∪（手动加入 ∩ 库里还有 − 手动移出）
+  ///   列表为空就不生成（某个视频从剧集挪到电影后，旧剧集组空了要能消失）
+  ///   被删掉的列表（[isAutoPlaylistHidden]）直接跳过
+  List<Playlist> applyAutoOverrides(
+    List<SourceGroup> groups,
+    List<VideoModel> videos,
+  ) {
+    final existingVidIds = videos.map((v) => v.id).toSet();
+    final auto = <Playlist>[];
+    var order = -1000;
+
+    for (final g in groups) {
+      final kind = g.isSeries
+          ? 'series'
+          : g.isMovie
+              ? 'movie'
+              : g.isFallback
+                  ? 'fallback'
+                  : 'personal';
+      final id = 'auto:$kind:${MediaGrouping.normalize(g.name)}';
+      if (isAutoPlaylistHidden(id)) continue;
+
+      final removed = autoRemovedFor(id);
+      final added = autoAddedFor(id);
+
+      final ids = <String>{
+        for (final i in g.indices)
+          if (i >= 0 && i < videos.length && !removed.contains(videos[i].id))
+            videos[i].id,
+        for (final vid in added)
+          if (existingVidIds.contains(vid) && !removed.contains(vid)) vid,
+      }.toList();
+
+      if (ids.isEmpty) continue;
+
+      auto.add(Playlist(
+        id: id,
+        name: g.name,
+        videoIds: ids,
+        createdAt: DateTime.now(),
+        sortOrder: order++,
+        isAuto: true,
+      ));
+    }
+
+    return auto;
   }
 
   Future<void> setAllFilesPrompted(bool value) async {

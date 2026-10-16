@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/responsive/adaptive_scaffold.dart';
@@ -10,7 +9,6 @@ import '../../models/video_model.dart';
 import '../../models/playlist_model.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/permission_provider.dart';
-import '../../providers/player_provider.dart';
 import '../../providers/playlist_provider.dart';
 import '../../providers/scrape_provider.dart';
 import '../../services/app_settings_service.dart';
@@ -197,8 +195,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   @override
   Widget build(BuildContext context) {
     final libraryAsync = ref.watch(libraryProvider);
-    // 注意：这里**不** watch playerProvider。播放中位置每秒更新多次，
-    // 顶层 watch 会让整个网格跟着重建。小窗自己订阅需要的切片。
+    // 这里仍然**不** watch playerProvider：小窗挪到 AdaptiveScaffold 了，
+    // 首页连"有没有小窗"都不用知道，播放位置每秒更新更不该重建这层网格。
     final columns = AppBreakpoints.gridColumns(context);
     final hp = AppBreakpoints.horizontalPadding(context);
 
@@ -221,73 +219,41 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   Widget _buildMobileLayout(
       List<VideoModel> videos, int columns, double hp,
       {required int totalCount}) {
-    // 只订阅「是否有小窗」这个布尔量：播放中位置变化不会重建首页
-    final hasMini = ref.watch(playerProvider.select(
-        (p) => p.currentVideo != null && p.videoController != null));
-    // 小窗内容用 Consumer 自己订阅（不订阅位置）
-    final miniPlayer = Consumer(
-      builder: (context, ref, _) {
-        final video = ref.read(playerProvider).currentVideo;
-        final controller = ref.read(playerProvider).videoController;
-        if (video == null || controller == null) {
-          return const SizedBox.shrink();
-        }
-        return _FloatingMiniPlayer(
-          video: video,
-          playerState: ref.read(playerProvider),
-          onTap: () => context.pushNamed('player', extra: {
-            'videoPath': video.path,
-            'videoTitle': video.name,
-          }),
-          onClose: () => ref.read(playerProvider.notifier).stop(),
-        );
-      },
-    );
-
-    return Stack(
-      children: [
-        CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            _buildHeader(hp, totalCount: totalCount, shownCount: videos.length),
-            if (videos.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildNoMatch(),
-              )
-            else
-              SliverPadding(
-                // 底部预留：导航栏(72)+手势条(24)=96 为基线；
-                // 有 miniPlayer 时再多留 miniPlayer 高度(56)+间距(8)
-                padding: EdgeInsets.fromLTRB(
-                    hp, 8, hp, hasMini ? 160 : 96),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    // 横向卡片（16:9），缩略图铺满整张卡片
-                    childAspectRatio: 1.7,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => GlassAnimations.scaleIn(
-                      controller: _listAnimController,
-                      index: index,
-                      child: _buildVideoCard(videos[index], index),
-                    ),
-                    childCount: videos.length,
-                  ),
-                ),
+    // 小窗已经上移到 AdaptiveScaffold（所有 tab 共用），这里不再自己画一个，
+    // 原来为了叠加小窗而套的 Stack 也就没用了。
+    // 留白固定 96：导航栏 72 + 手势条 24；小窗占位由外壳统一补，
+    // 否则首页会补两遍，切换 tab 时底部间距还会跳一下。
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        _buildHeader(hp, totalCount: totalCount, shownCount: videos.length),
+        if (videos.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildNoMatch(),
+          )
+        else
+          SliverPadding(
+            // 底部预留：导航栏(72)+手势条(24)=96。
+            // 小窗显示时它由 AdaptiveScaffold 额外补 72，见那边的注释
+            padding: EdgeInsets.fromLTRB(hp, 8, hp, 96),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                // 横向卡片（16:9），缩略图铺满整张卡片
+                childAspectRatio: 1.7,
               ),
-          ],
-        ),
-        // 悬浮小窗：底部导航栏上方（padding.bottom 已含导航栏高度，+8 为间距）
-        if (hasMini)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.of(context).padding.bottom + 8,
-            child: miniPlayer,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => GlassAnimations.scaleIn(
+                  controller: _listAnimController,
+                  index: index,
+                  child: _buildVideoCard(videos[index], index),
+                ),
+                childCount: videos.length,
+              ),
+            ),
           ),
       ],
     );
@@ -1076,144 +1042,4 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     return '${m}m${s.toString().padLeft(2, '0')}s';
   }
 
-}
-
-/// 后台播放悬浮小窗
-///
-/// 显示视频实时画面 + 标题，点击返回播放器；
-/// 按住向左/右滑出屏幕边缘即可关闭小窗并停止播放。
-class _FloatingMiniPlayer extends StatefulWidget {
-  final VideoModel video;
-  final PlayerState playerState;
-  final VoidCallback onTap;
-  final VoidCallback onClose;
-
-  const _FloatingMiniPlayer({
-    required this.video,
-    required this.playerState,
-    required this.onTap,
-    required this.onClose,
-  });
-
-  @override
-  State<_FloatingMiniPlayer> createState() => _FloatingMiniPlayerState();
-}
-
-class _FloatingMiniPlayerState extends State<_FloatingMiniPlayer> {
-  // 横向偏移（用于滑出动画）
-  double _dx = 0;
-  bool _dismissing = false;
-
-  @override
-  void didUpdateWidget(covariant _FloatingMiniPlayer old) {
-    super.didUpdateWidget(old);
-    // 换了视频必须重新显示：否则上一个视频关闭动画留下的 _dismissing=true
-    // 会让新的小窗"存在但透明"，表现为"回到首页小窗没弹出来"
-    if (old.video.id != widget.video.id) {
-      _dismissing = false;
-      _dx = 0;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 视频画面 + 标题横向小长方形卡片
-    return GestureDetector(
-      onTap: widget.onTap,
-      onHorizontalDragUpdate: (details) {
-        setState(() => _dx += details.delta.dx);
-      },
-      onHorizontalDragEnd: (details) {
-        final width = MediaQuery.of(context).size.width;
-        // 滑出超过屏幕 1/3 则关闭
-        if (_dx.abs() > width / 3) {
-          _dismiss();
-        } else {
-          // 回弹
-          setState(() => _dx = 0);
-        }
-      },
-      child: Transform.translate(
-        offset: Offset(_dx, 0),
-        child: Opacity(
-          opacity: _dismissing ? 0 : 1,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            height: 56,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.5),
-                width: 0.8,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // 视频画面（横向小长方形）
-                SizedBox(
-                  width: 96,
-                  height: 56,
-                  child: Video(
-                    controller: widget.playerState.videoController!,
-                    fit: BoxFit.cover,
-                    controls: NoVideoControls,
-                  ),
-                ),
-                // 标题 + 关闭按钮
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            widget.video.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        // 关闭按钮
-                        GestureDetector(
-                          onTap: widget.onClose,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: GlassTheme.textTertiary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _dismiss() {
-    setState(() => _dismissing = true);
-    // 动画完成后触发关闭
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) widget.onClose();
-    });
-  }
 }
