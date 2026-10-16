@@ -18,6 +18,8 @@ class AppSettingsService {
   static const _kGlassBlur = 'settings.glassBlur';
   static const _kGlassBlurV2 = 'settings.glassBlurV2';
   static const _kTmdbApiKey = 'settings.tmdbApiKey';
+  static const _kLibrarySort = 'settings.librarySort';
+  static const _kLibraryFilter = 'settings.libraryFilter';
 
   double _defaultSpeed = 1.0;
 
@@ -60,6 +62,14 @@ class AppSettingsService {
   /// 免费注册即可拿到 key。
   String _tmdbApiKey = '';
   String get tmdbApiKey => _tmdbApiKey;
+
+  /// 影库列表的排序方式（LibrarySort.id，默认按名称）
+  String _librarySort = 'name';
+  String get librarySort => _librarySort;
+
+  /// 影库列表的筛选方式（LibraryFilter.id，默认全部）
+  String _libraryFilter = 'all';
+  String get libraryFilter => _libraryFilter;
 
   /// 用户手动删掉的「自动列表」id
   ///
@@ -145,10 +155,28 @@ class AppSettingsService {
       _autoRemoved =
           (prefs.getStringList(_kAutoRemoved) ?? const <String>[]).toSet();
       _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
+      _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
+      _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
     } catch (_) {
       // 读取失败时保留默认值
     }
     _loaded = true;
+  }
+
+  Future<void> setLibrarySort(String value) async {
+    _librarySort = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLibrarySort, value);
+    } catch (_) {}
+  }
+
+  Future<void> setLibraryFilter(String value) async {
+    _libraryFilter = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLibraryFilter, value);
+    } catch (_) {}
   }
 
   Future<void> setDefaultSpeed(double value) async {

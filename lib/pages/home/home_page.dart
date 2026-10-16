@@ -14,6 +14,7 @@ import '../../providers/player_provider.dart';
 import '../../providers/playlist_provider.dart';
 import '../../providers/scrape_provider.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/library_query_service.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 
@@ -76,9 +77,20 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _listAnimController;
 
+  /// 搜索词（临时，不持久化）
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  /// 排序 / 筛选（持久化，下次进入保持）
+  LibrarySort _sort = LibrarySort.name;
+  LibraryFilter _filter = LibraryFilter.all;
+
   @override
   void initState() {
     super.initState();
+    // 排序/筛选从设置读回来，避免每次进来都要重选
+    _sort = LibrarySort.fromId(AppSettingsService.instance.librarySort);
+    _filter = LibraryFilter.fromId(AppSettingsService.instance.libraryFilter);
     _listAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -147,7 +159,26 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _listAnimController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  /// 应用搜索/排序/筛选
+  List<VideoModel> _query0(List<VideoModel> videos) => LibraryQuery.apply(
+        videos,
+        query: _query,
+        sort: _sort,
+        filter: _filter,
+      );
+
+  void _setSort(LibrarySort s) {
+    setState(() => _sort = s);
+    AppSettingsService.instance.setLibrarySort(s.id);
+  }
+
+  void _setFilter(LibraryFilter f) {
+    setState(() => _filter = f);
+    AppSettingsService.instance.setLibraryFilter(f.id);
   }
 
   @override
@@ -159,9 +190,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     final hp = AppBreakpoints.horizontalPadding(context);
 
     return libraryAsync.when(
-      data: (videos) {
-        if (videos.isEmpty) return _buildEmptyLibrary(context);
-        return _buildMobileLayout(videos, columns, hp);
+      data: (all) {
+        // 影库本身为空 vs 筛选后为空，是两种情况，不能都显示"影库为空"
+        if (all.isEmpty) return _buildEmptyLibrary(context);
+        final videos = _query0(all);
+        return _buildMobileLayout(videos, columns, hp, totalCount: all.length);
       },
       loading: () => const Center(
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
@@ -173,7 +206,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   Widget _buildMobileLayout(
-      List<VideoModel> videos, int columns, double hp) {
+      List<VideoModel> videos, int columns, double hp,
+      {required int totalCount}) {
     // 只订阅「是否有小窗」这个布尔量：播放中位置变化不会重建首页
     final hasMini = ref.watch(playerProvider.select(
         (p) => p.currentVideo != null && p.videoController != null));
@@ -202,30 +236,36 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            _buildHeader(hp),
-            SliverPadding(
-              // 底部预留：导航栏(72)+手势条(24)=96 为基线；
-              // 有 miniPlayer 时再多留 miniPlayer 高度(56)+间距(8)
-              padding: EdgeInsets.fromLTRB(
-                  hp, 8, hp, hasMini ? 160 : 96),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  // 横向卡片（16:9），缩略图铺满整张卡片
-                  childAspectRatio: 1.7,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => GlassAnimations.scaleIn(
-                    controller: _listAnimController,
-                    index: index,
-                    child: _buildVideoCard(videos[index], index),
+            _buildHeader(hp, totalCount: totalCount, shownCount: videos.length),
+            if (videos.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildNoMatch(),
+              )
+            else
+              SliverPadding(
+                // 底部预留：导航栏(72)+手势条(24)=96 为基线；
+                // 有 miniPlayer 时再多留 miniPlayer 高度(56)+间距(8)
+                padding: EdgeInsets.fromLTRB(
+                    hp, 8, hp, hasMini ? 160 : 96),
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    // 横向卡片（16:9），缩略图铺满整张卡片
+                    childAspectRatio: 1.7,
                   ),
-                  childCount: videos.length,
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => GlassAnimations.scaleIn(
+                      controller: _listAnimController,
+                      index: index,
+                      child: _buildVideoCard(videos[index], index),
+                    ),
+                    childCount: videos.length,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         // 悬浮小窗：底部导航栏上方（padding.bottom 已含导航栏高度，+8 为间距）
@@ -240,7 +280,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  Widget _buildHeader(double hp, {bool compact = false}) {
+  Widget _buildHeader(double hp,
+      {bool compact = false, int totalCount = 0, int shownCount = 0}) {
     // 沉浸式：标题延伸到状态栏下，紧贴安全区顶部
     final topPad = MediaQuery.of(context).padding.top + (compact ? 8 : 16);
     return SliverToBoxAdapter(
@@ -275,7 +316,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     size: compact ? 16 : 18, color: GlassTheme.textTertiary),
                 const SizedBox(width: 6),
                 Text(
-                  '全部视频',
+                  // 有筛选/搜索时显示"命中数 / 总数"，避免误以为影库变小了
+                  (shownCount > 0 && shownCount < totalCount)
+                      ? '$shownCount / $totalCount 个视频'
+                      : '全部视频',
                   style: TextStyle(
                     color: GlassTheme.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -284,6 +328,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   ),
                 ),
                 const Spacer(),
+                _buildSortMenu(),
+                _buildFilterMenu(),
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   color: GlassTheme.textTertiary,
@@ -297,8 +343,179 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            _buildSearchField(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 排序菜单
+  Widget _buildSortMenu() {
+    return PopupMenuButton<LibrarySort>(
+      tooltip: '排序',
+      position: PopupMenuPosition.under,
+      onSelected: _setSort,
+      itemBuilder: (ctx) => [
+        for (final s in LibrarySort.values)
+          PopupMenuItem(
+            value: s,
+            child: Row(
+              children: [
+                Icon(
+                  s == _sort
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 16,
+                  color: s == _sort
+                      ? GlassTheme.accentPurple
+                      : GlassTheme.textTertiary,
+                ),
+                const SizedBox(width: 8),
+                Text(s.label,
+                    style: TextStyle(
+                        color: s == _sort
+                            ? GlassTheme.accentPurple
+                            : GlassTheme.textPrimary)),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.swap_vert_rounded,
+          size: 18,
+          color: _sort == LibrarySort.name
+              ? GlassTheme.textTertiary
+              : GlassTheme.accentPurple,
+        ),
+      ),
+    );
+  }
+
+  /// 筛选菜单
+  Widget _buildFilterMenu() {
+    return PopupMenuButton<LibraryFilter>(
+      tooltip: '筛选',
+      position: PopupMenuPosition.under,
+      onSelected: _setFilter,
+      itemBuilder: (ctx) => [
+        for (final f in LibraryFilter.values)
+          PopupMenuItem(
+            value: f,
+            child: Row(
+              children: [
+                Icon(
+                  f == _filter
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 16,
+                  color: f == _filter
+                      ? GlassTheme.accentPurple
+                      : GlassTheme.textTertiary,
+                ),
+                const SizedBox(width: 8),
+                Text(f.label,
+                    style: TextStyle(
+                        color: f == _filter
+                            ? GlassTheme.accentPurple
+                            : GlassTheme.textPrimary)),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.filter_alt_rounded,
+          size: 18,
+          color: _filter == LibraryFilter.all
+              ? GlassTheme.textTertiary
+              : GlassTheme.accentPurple,
+        ),
+      ),
+    );
+  }
+
+  /// 搜索框：按文件名 / 所在目录过滤
+  Widget _buildSearchField() {
+    return GlassPanel(
+      radius: GlassTheme.radiusFull,
+      opacity: GlassTheme.glassLight,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded,
+              size: 18, color: GlassTheme.textTertiary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _query = v),
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(
+                  color: GlassTheme.textPrimary, fontSize: 14),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: '搜索视频名或文件夹',
+                hintStyle: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 14),
+              ),
+            ),
+          ),
+          if (_query.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(Icons.close_rounded,
+                    size: 16, color: GlassTheme.textTertiary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 搜索/筛选后没有结果（与"影库为空"区分开）
+  Widget _buildNoMatch() {
+    final filtering =
+        _filter != LibraryFilter.all || _query.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(filtering ? Icons.search_off_rounded : Icons.movie_rounded,
+              size: 44, color: GlassTheme.textTertiary),
+          const SizedBox(height: 12),
+          Text(
+            filtering ? '没有符合条件的视频' : '这里还没有视频',
+            style: const TextStyle(
+                color: GlassTheme.textSecondary, fontSize: 15),
+          ),
+          if (filtering) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _query = '';
+                  _filter = LibraryFilter.all;
+                });
+                AppSettingsService.instance.setLibraryFilter('all');
+              },
+              child: const Text('清除筛选',
+                  style: TextStyle(color: GlassTheme.accentPurple)),
+            ),
+          ],
+        ],
       ),
     );
   }
