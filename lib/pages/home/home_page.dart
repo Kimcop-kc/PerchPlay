@@ -154,6 +154,16 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     final current = ref.read(libraryProvider).valueOrNull;
     if (current == null || current.isEmpty) {
       await ref.read(libraryProvider.notifier).scan();
+    } else {
+      // 不重扫，但刮削必须补齐。
+      // 刮削原来只在 scan() 之后触发，而影库非空时冷启动不扫描 ——
+      // 结果就是「刚升级 App」或「刚填好 TMDB Key」的用户，现有视频
+      // 永远不会被刮削，必须手动点一次刷新才出海报，看起来像"识别不了"。
+      // scrapeBatch 内部会跳过已有结果的；scrapeForVideo 也会先查本地缓存，
+      // 所以这里不会产生多余的网络请求。
+      ref
+          .read(scrapeProvider.notifier)
+          .scrapeBatch([for (final v in current) v.path]);
     }
   }
 
