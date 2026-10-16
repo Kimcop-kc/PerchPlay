@@ -1,20 +1,19 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:vidflow/models/scrape_result.dart';
+import 'package:perchplay/models/scrape_result.dart';
 
-/// TMDB API 刮削服务
+/// TMDB API 鍒墛鏈嶅姟
 ///
-/// 用法：
-/// ```dart
+/// 鐢ㄦ硶锛?/// ```dart
 /// final svc = TmdbService(apiKey: 'your_key_here');
-/// final results = await svc.searchMulti('进击的巨人');
+/// final results = await svc.searchMulti('杩涘嚮鐨勫法浜?);
 /// ```
 class TmdbService {
   final String apiKey;
   final String _base = 'https://api.tmdb.org/3';
   final http.Client _client = http.Client();
 
-  /// 超时 15s（TMDB 通常在 2-5s 内响应，15s 足够差网络）
+  /// 瓒呮椂 15s锛圱MDB 閫氬父鍦?2-5s 鍐呭搷搴旓紝15s 瓒冲宸綉缁滐級
   static const _timeout = Duration(seconds: 15);
 
   TmdbService({required this.apiKey});
@@ -23,9 +22,9 @@ class TmdbService {
     _client.close();
   }
 
-  // ── 搜索 ──
+  // 鈹€鈹€ 鎼滅储 鈹€鈹€
 
-  /// 混合搜索（电影 + 电视剧）
+  /// 娣峰悎鎼滅储锛堢數褰?+ 鐢佃鍓э級
   Future<List<ScrapeResult>> searchMulti(
     String query, {
     String language = 'zh-CN',
@@ -49,7 +48,7 @@ class TmdbService {
         .toList();
   }
 
-  /// 搜索电影
+  /// 鎼滅储鐢靛奖
   Future<List<ScrapeResult>> searchMovie(
     String query, {
     String language = 'zh-CN',
@@ -74,8 +73,7 @@ class TmdbService {
         .toList();
   }
 
-  /// 搜索电视剧
-  Future<List<ScrapeResult>> searchTv(
+  /// 鎼滅储鐢佃鍓?  Future<List<ScrapeResult>> searchTv(
     String query, {
     String language = 'zh-CN',
   }) async {
@@ -96,7 +94,7 @@ class TmdbService {
         .toList();
   }
 
-  // ── 详情 ──
+  // 鈹€鈹€ 璇︽儏 鈹€鈹€
 
   Future<ScrapeResult?> getMovieDetail(
     int tmdbId, {
@@ -126,9 +124,9 @@ class TmdbService {
     return _parseDetail(data, type: ScrapeType.tv);
   }
 
-  // ── 季/集详情 ──
+  // 鈹€鈹€ 瀛?闆嗚鎯?鈹€鈹€
 
-  /// [seriesInfo] 可选：已获取的系列详情，避免重复调用 getTvDetail
+  /// [seriesInfo] 鍙€夛細宸茶幏鍙栫殑绯诲垪璇︽儏锛岄伩鍏嶉噸澶嶈皟鐢?getTvDetail
   Future<ScrapeResult?> getEpisodeDetail(
     int seriesId,
     int seasonNumber,
@@ -163,7 +161,7 @@ class TmdbService {
     );
   }
 
-  // ── 内部解析 ──
+  // 鈹€鈹€ 鍐呴儴瑙ｆ瀽 鈹€鈹€
 
   ScrapeResult? _parseSearchResult(
     Map<String, dynamic> e, {
@@ -179,8 +177,7 @@ class TmdbService {
 
     final dateStr = (e['first_air_date'] ?? e['release_date'] ?? '') as String;
     final year = dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
-    // genreIds 需要查 genre map 才能转名；search 结果不带 genre 名称，留空
-    return ScrapeResult(
+    // genreIds 闇€瑕佹煡 genre map 鎵嶈兘杞悕锛泂earch 缁撴灉涓嶅甫 genre 鍚嶇О锛岀暀绌?    return ScrapeResult(
       title: title,
       originalTitle: e['original_title'] as String? ?? e['original_name'] as String?,
       year: year,

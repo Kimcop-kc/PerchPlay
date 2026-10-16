@@ -1,15 +1,12 @@
-// 删除自动列表的回归测试
-//
-// 自动列表是每次扫描后重建的：如果只删数据库记录，下次扫描就长回来，
-// 用户看到的就是"删不掉"。这里钉住「记住删除意图 / 可恢复」的行为。
-import 'package:flutter_test/flutter_test.dart';
+﻿// 鍒犻櫎鑷姩鍒楄〃鐨勫洖褰掓祴璇?//
+// 鑷姩鍒楄〃鏄瘡娆℃壂鎻忓悗閲嶅缓鐨勶細濡傛灉鍙垹鏁版嵁搴撹褰曪紝涓嬫鎵弿灏遍暱鍥炴潵锛?// 鐢ㄦ埛鐪嬪埌鐨勫氨鏄?鍒犱笉鎺?銆傝繖閲岄拤浣忋€岃浣忓垹闄ゆ剰鍥?/ 鍙仮澶嶃€嶇殑琛屼负銆?import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vidflow/services/app_settings_service.dart';
+import 'package:perchplay/services/app_settings_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('删掉的自动列表会被记住（并写进 SharedPreferences）', () async {
+  test('鍒犳帀鐨勮嚜鍔ㄥ垪琛ㄤ細琚浣忥紙骞跺啓杩?SharedPreferences锛?, () async {
     SharedPreferences.setMockInitialValues({});
     final settings = AppSettingsService.instance;
     await settings.ensureLoaded();
@@ -29,7 +26,7 @@ void main() {
     expect(saved, contains('auto:movies'));
   });
 
-  test('恢复自动列表会清空记录', () async {
+  test('鎭㈠鑷姩鍒楄〃浼氭竻绌鸿褰?, () async {
     SharedPreferences.setMockInitialValues({
       'settings.hiddenAutoPlaylists': ['auto:movies', 'auto:series:Show'],
     });

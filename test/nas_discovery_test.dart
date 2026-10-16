@@ -1,13 +1,10 @@
-// NAS 自动发现测试
+﻿// NAS 鑷姩鍙戠幇娴嬭瘯
 //
-// 需要一个本地假 NAS：
-//   python tools/fake_nas.py     （:5000 群晖页面，:5005 WebDAV）
-// 未启动时用例自动跳过。
-import 'dart:io';
+// 闇€瑕佷竴涓湰鍦板亣 NAS锛?//   python tools/fake_nas.py     锛?5000 缇ゆ櫀椤甸潰锛?5005 WebDAV锛?// 鏈惎鍔ㄦ椂鐢ㄤ緥鑷姩璺宠繃銆?import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vidflow/models/nas_connection_model.dart';
-import 'package:vidflow/services/nas_discovery_service.dart';
+import 'package:perchplay/models/nas_connection_model.dart';
+import 'package:perchplay/services/nas_discovery_service.dart';
 
 Future<bool> _fakeNasUp() async {
   try {
@@ -24,9 +21,9 @@ Future<bool> _fakeNasUp() async {
 }
 
 void main() {
-  test('发现局域网 NAS：识别品牌与 WebDAV 可用性', () async {
+  test('鍙戠幇灞€鍩熺綉 NAS锛氳瘑鍒搧鐗屼笌 WebDAV 鍙敤鎬?, () async {
     if (!await _fakeNasUp()) {
-      markTestSkipped('假 NAS(:5000/5005) 未启动，跳过');
+      markTestSkipped('鍋?NAS(:5000/5005) 鏈惎鍔紝璺宠繃');
       return;
     }
 
@@ -36,22 +33,21 @@ void main() {
       timeout: const Duration(milliseconds: 400),
     );
 
-    // 5000：群晖页面 → 应识别出品牌
+    // 5000锛氱兢鏅栭〉闈?鈫?搴旇瘑鍒嚭鍝佺墝
     final dsm = found.where((c) => c.port == 5000).toList();
-    expect(dsm, isNotEmpty, reason: '端口 5000 应被发现');
-    expect(dsm.first.brand, contains('群晖'));
+    expect(dsm, isNotEmpty, reason: '绔彛 5000 搴旇鍙戠幇');
+    expect(dsm.first.brand, contains('缇ゆ櫀'));
 
-    // 5005：PROPFIND 返回 207 → 判定为可用 WebDAV
+    // 5005锛歅ROPFIND 杩斿洖 207 鈫?鍒ゅ畾涓哄彲鐢?WebDAV
     final dav = found.where((c) => c.port == 5005).toList();
-    expect(dav, isNotEmpty, reason: '端口 5005 应被发现');
-    expect(dav.first.isWebDav, isTrue, reason: '应识别为可直接使用的 WebDAV');
+    expect(dav, isNotEmpty, reason: '绔彛 5005 搴旇鍙戠幇');
+    expect(dav.first.isWebDav, isTrue, reason: '搴旇瘑鍒负鍙洿鎺ヤ娇鐢ㄧ殑 WebDAV');
     expect(dav.first.protocol, NasProtocol.webdav);
 
-    // 22 未监听 → 不应出现在结果里
+    // 22 鏈洃鍚?鈫?涓嶅簲鍑虹幇鍦ㄧ粨鏋滈噷
     expect(found.any((c) => c.port == 22), isFalse);
 
-    // 结果按“可直接使用”优先排序
-    expect(found.first.isWebDav || found.first.port == 5005, isTrue,
-        reason: 'WebDAV 应排在前面');
+    // 缁撴灉鎸夆€滃彲鐩存帴浣跨敤鈥濅紭鍏堟帓搴?    expect(found.first.isWebDav || found.first.port == 5005, isTrue,
+        reason: 'WebDAV 搴旀帓鍦ㄥ墠闈?);
   });
 }
