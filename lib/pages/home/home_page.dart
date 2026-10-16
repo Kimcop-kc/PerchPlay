@@ -158,17 +158,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     final libraryAsync = ref.watch(libraryProvider);
     // 注意：这里**不** watch playerProvider。播放中位置每秒更新多次，
     // 顶层 watch 会让整个网格跟着重建。小窗自己订阅需要的切片。
-    final isLarge = AppBreakpoints.isLargeScreen(context);
     final columns = AppBreakpoints.gridColumns(context);
     final hp = AppBreakpoints.horizontalPadding(context);
 
     return libraryAsync.when(
       data: (videos) {
         if (videos.isEmpty) return _buildEmptyLibrary(context);
-
-        if (isLarge) {
-          return _buildTabletLayout(videos, columns, hp);
-        }
         return _buildMobileLayout(videos, columns, hp);
       },
       loading: () => const Center(

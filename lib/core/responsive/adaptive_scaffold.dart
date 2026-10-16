@@ -4,12 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../theme/glass_theme.dart';
 import '../../widgets/glass/glass_nav_bar.dart';
 import '../../widgets/glass/safe_glass.dart';
-import 'breakpoints.dart';
 
 /// iOS 27 玻璃质感 自适应导航外壳
 ///
-/// 手机 → 玻璃底栏
-/// 平板 → 毛玻璃左侧 NavigationRail
+/// 始终使用玻璃底栏（与手机一致），不做平板 NavigationRail 切换。
 class AdaptiveScaffold extends StatelessWidget {
   final Widget child;
   final String currentRoute;
@@ -22,11 +20,8 @@ class AdaptiveScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppBreakpoints.isTablet(context) ||
-        AppBreakpoints.isDesktopOrLandscape(context)) {
-      return _TabletGlassScaffold(child: child, currentRoute: currentRoute);
-    }
-    return _MobileGlassScaffold(child: child, currentRoute: currentRoute);
+    return _MobileGlassScaffold(
+        currentRoute: currentRoute, child: child);
   }
 }
 

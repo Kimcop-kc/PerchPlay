@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.53+53
+version: 1.0.66+66
 homepage: https://github.com/Kimcop-kc/vidflow
 repository: https://github.com/Kimcop-kc/vidflow
 
@@ -20,6 +20,9 @@ dependencies:
   # 解析不了 API 36 的 android.jar（:verifyReleaseResources 报 RES_TABLE_TYPE_TYPE
   # entry offsets overlap actual entry data）。1.3.7 仍是 compileSdk 31，钉住它。
   media_kit_libs_android_video: 1.3.7
+
+  # Windows 桌面播放
+  media_kit_libs_windows_video: 1.0.9
 
   # 状态管理
   flutter_riverpod: 2.5.1

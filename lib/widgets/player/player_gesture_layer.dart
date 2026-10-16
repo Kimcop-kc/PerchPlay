@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// 视频播放器手势层
 ///
@@ -24,6 +25,13 @@ class PlayerGestureLayer extends StatefulWidget {
   /// 松手提交：真正跳转到该位置（毫秒）
   final ValueChanged<int>? onSeekCommit;
 
+  /// 长按倍速（松手恢复），空则无此手势
+  final VoidCallback? onLongPressStart;
+  final VoidCallback? onLongPressEnd;
+
+  /// 长按时显示的倍速值，例如 2.0；不为 null 时显示指示器
+  final double? longPressSpeed;
+
   /// 手势开始时的当前亮度/音量，作为滑动基准
   final double initialBrightness;
   final double initialVolume;
@@ -41,6 +49,9 @@ class PlayerGestureLayer extends StatefulWidget {
     required this.onVolumeChange,
     this.onSeekPreview,
     this.onSeekCommit,
+    this.onLongPressStart,
+    this.onLongPressEnd,
+    this.longPressSpeed,
     this.initialBrightness = 0.5,
     this.initialVolume = 0.5,
     this.positionMs = 0,
@@ -67,6 +78,9 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   double? _volumeValue;
   int? _previewTargetMs;
 
+  /// 当前是否正在长按（显示倍速指示器用）
+  bool _isLongPressing = false;
+
   /// 纵向：需要滑动「屏幕高度 × 该系数」才走完 100%，避免过于灵敏
   static const double _verticalDamping = 1.25;
 
@@ -85,6 +99,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   @override
   Widget build(BuildContext context) {
     final preview = _previewTargetMs;
+    final hasLongPress = widget.onLongPressStart != null;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -95,6 +110,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           onScaleStart: _onScaleStart,
           onScaleUpdate: _onScaleUpdate,
           onScaleEnd: _onScaleEnd,
+          onLongPressStart:
+              hasLongPress ? (_) => _onLongPressStart() : null,
+          onLongPressEnd:
+              hasLongPress ? (_) => _onLongPressEnd() : null,
           child: widget.child ?? const SizedBox.expand(),
         ),
 
@@ -113,11 +132,16 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           ),
 
         if (preview != null) _buildSeekIndicator(preview),
+
+        // 长按倍速指示器
+        if (_isLongPressing && widget.longPressSpeed != null)
+          _buildSpeedIndicator(widget.longPressSpeed!),
       ],
     );
   }
 
   void _onScaleStart(ScaleStartDetails details) {
+    if (_isLongPressing) return;
     _startPosition = details.localFocalPoint;
     _axis = _GestureAxis.none;
     // 以当前实际值作为基准，避免每次都从 50% 起算
@@ -130,6 +154,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
+    if (_isLongPressing) return;
     // 双指（缩放）不参与亮度/音量/进度调节
     if (details.pointerCount > 1 || _startPosition == null) return;
 
@@ -160,6 +185,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
+    if (_isLongPressing) return;
     final target = _previewTargetMs;
     if (_axis == _GestureAxis.horizontal && target != null) {
       widget.onSeekCommit?.call(target);
@@ -203,6 +229,48 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
 
     setState(() => _previewTargetMs = target);
     widget.onSeekPreview?.call(target);
+  }
+
+  void _onLongPressStart() {
+    HapticFeedback.mediumImpact();
+    setState(() => _isLongPressing = true);
+    widget.onLongPressStart?.call();
+  }
+
+  void _onLongPressEnd() {
+    HapticFeedback.lightImpact();
+    setState(() => _isLongPressing = false);
+    widget.onLongPressEnd?.call();
+  }
+
+  Widget _buildSpeedIndicator(double speed) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: Colors.white.withOpacity(0.25), width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.fast_forward_rounded,
+                color: Colors.white, size: 32),
+            const SizedBox(height: 6),
+            Text(
+              '${speed}x 倍速',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildIndicator({

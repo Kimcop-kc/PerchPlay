@@ -1,10 +1,12 @@
-﻿// 鎶曞睆閾捐矾鐨勭湡瀹炴祴璇曪紙鍦ㄥ紑鍙戞満涓婅窇锛屼笉渚濊禆鎵嬫満锛夛細
-// 1) LocalMediaServer 蹇呴』鏀寔 Range 璇锋眰锛堢數瑙嗘嫋杩涘害鏉¤鐢級
-// 2) DLNA 杩炴帴蹇呴』浠庤澶囨弿杩伴噷瑙ｆ瀽鍑虹湡瀹炵殑 controlURL锛屽苟鎶?//    SetAVTransportURI / Play 鍙戝埌閭ｄ釜鍦板潃
+// 投屏链路的真实测试（在开发机上跑，不依赖手机）：
+// 1) LocalMediaServer 必须支持 Range 请求（电视拖进度条要用）
+// 2) DLNA 连接必须从设备描述里解析出真实的 controlURL，并把
+//    SetAVTransportURI / Play 发到那个地址
 //
-// 娴嬭瘯 2 闇€瑕佷竴涓湰鍦板亣娓叉煋鍣細
+// 测试 2 需要一个本地假渲染器：
 //   python tools/fake_dlna_renderer.py 8099
-// 鏈惎鍔ㄦ椂璇ョ敤渚嬩細琚烦杩囷紙涓嶄細璇姤澶辫触锛夈€?import 'dart:io';
+// 未启动时该用例会被跳过（不会误报失败）。
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perchplay/models/cast_device_model.dart';
@@ -27,7 +29,7 @@ Future<bool> _rendererUp() async {
 }
 
 void main() {
-  test('LocalMediaServer 鏆撮湶鏂囦欢骞舵敮鎸?Range', () async {
+  test('LocalMediaServer 暴露文件并支持 Range', () async {
     final tmp = File(
         '${Directory.systemTemp.path}/perchplay_ms_test_${DateTime.now().microsecondsSinceEpoch}.bin');
     final payload = List<int>.generate(1000, (i) => i % 256);
@@ -35,25 +37,26 @@ void main() {
 
     final server = LocalMediaServer.instance;
     final url = await server.urlFor(tmp.path, title: 'clip.bin');
-    expect(url, isNotNull, reason: '搴旇兘鐢熸垚鎶曞睆 URL');
+    expect(url, isNotNull, reason: '应能生成投屏 URL');
     expect(url!.startsWith('http://'), isTrue);
 
-    // 鎹㈡垚鍥炵幆鍦板潃璁块棶锛堟湰鍦?IP 鍦ㄥ紑鍙戞満涓婂悓鏍峰彲璺敱锛?    final localUrl =
+    // 换成回环地址访问（本地 IP 在开发机上同样可路由）
+    final localUrl =
         'http://127.0.0.1:${server.port}${Uri.parse(url).path}';
     final client = HttpClient();
 
-    // 瀹屾暣璇锋眰
+    // 完整请求
     var res = await (await client.getUrl(Uri.parse(localUrl))).close();
     expect(res.statusCode, 200);
     var bytes = await res.fold<List<int>>([], (a, b) => a..addAll(b));
     expect(bytes.length, 1000);
     expect(res.headers.value(HttpHeaders.acceptRangesHeader), 'bytes');
 
-    // Range 璇锋眰锛堟嫋鍔ㄨ繘搴︼級
+    // Range 请求（拖动进度）
     final req = await client.getUrl(Uri.parse(localUrl));
     req.headers.set(HttpHeaders.rangeHeader, 'bytes=10-19');
     res = await req.close();
-    expect(res.statusCode, 206, reason: 'Range 蹇呴』杩斿洖 206');
+    expect(res.statusCode, 206, reason: 'Range 必须返回 206');
     expect(res.headers.value(HttpHeaders.contentRangeHeader), 'bytes 10-19/1000');
     bytes = await res.fold<List<int>>([], (a, b) => a..addAll(b));
     expect(bytes.length, 10);
@@ -64,14 +67,14 @@ void main() {
     await tmp.delete();
   });
 
-  test('DLNA锛氳В鏋?controlURL 骞跺彂閫?SetAVTransportURI + Play', () async {
+  test('DLNA：解析 controlURL 并发送 SetAVTransportURI + Play', () async {
     if (!await _rendererUp()) {
-      markTestSkipped('鍋?DLNA 娓叉煋鍣ㄦ湭鍚姩锛岃烦杩?);
+      markTestSkipped('假 DLNA 渲染器未启动，跳过');
       return;
     }
 
     final logFile = File('${Directory.current.path}/../tools/soap.log');
-    // 娓呮帀鍘嗗彶璁板綍锛堟覆鏌撳櫒姣忔鍚姩涔熶細娓咃級
+    // 清掉历史记录（渲染器每次启动也会清）
     if (await logFile.exists()) {
       await logFile.writeAsString('');
     }
@@ -89,22 +92,22 @@ void main() {
 
     final connected = await control.connect(device);
     expect(connected, isTrue,
-        reason: '搴斾粠鎻忚堪閲岃В鏋愬嚭 AVTransport controlURL锛?{control.lastError}锛?);
+        reason: '应从描述里解析出 AVTransport controlURL（${control.lastError}）');
 
     final mediaUrl = 'http://192.168.1.50:41234/video/movie.mp4';
-    final ok = await control.playUrl(mediaUrl, title: '娴嬭瘯褰辩墖');
-    expect(ok, isTrue, reason: 'SetAVTransportURI + Play 搴旀垚鍔燂紙${control.lastError}锛?);
+    final ok = await control.playUrl(mediaUrl, title: '测试影片');
+    expect(ok, isTrue, reason: 'SetAVTransportURI + Play 应成功（${control.lastError}）');
 
     await control.disconnect();
 
-    // 鏍￠獙娓叉煋鍣ㄥ疄闄呮敹鍒扮殑璇锋眰
-    expect(await logFile.exists(), isTrue, reason: '娓叉煋鍣ㄥ簲鍐欏叆 soap.log');
+    // 校验渲染器实际收到的请求
+    expect(await logFile.exists(), isTrue, reason: '渲染器应写入 soap.log');
     final log = await logFile.readAsString();
     expect(log.contains('POST /AVTransport/control'), isTrue,
-        reason: '蹇呴』 POST 鍒版弿杩伴噷缁欏嚭鐨?controlURL锛屽疄闄呮棩蹇楋細\n$log');
+        reason: '必须 POST 到描述里给出的 controlURL，实际日志：\n$log');
     expect(log.contains('SetAVTransportURI'), isTrue);
     expect(log.contains('Play'), isTrue);
     expect(log.contains(mediaUrl), isTrue,
-        reason: 'SOAP 閲屽簲甯︿笂寰呮姇鐨勫獟浣?URL');
+        reason: 'SOAP 里应带上待投的媒体 URL');
   });
 }

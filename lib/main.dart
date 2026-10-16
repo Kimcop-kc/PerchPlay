@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'core/router/app_router.dart';
+import 'core/system/orientation_policy.dart';
 import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
@@ -56,12 +57,10 @@ void main() async {
     debugPrint('[PerchPlay] Settings load failed: $e');
   }
 
-  // 首页/列表/设置固定竖屏；只有播放器全屏时临时切横屏
-  // （之前放开 4 个方向，导致横屏看视频退出后停在横屏）
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // 方向策略：手机锁竖屏，平板跟随物理方向。
+  // 不能无脑锁竖屏 —— 平板横放时会被系统加黑边，画面缩成竖条、
+  // 导航栏挤到侧边（见 OrientationPolicy 注释）。
+  await OrientationPolicy.applyIdle();
 
   // 浸入式状态栏（浅色主题：深色图标）
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

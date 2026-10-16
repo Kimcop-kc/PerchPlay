@@ -1,15 +1,14 @@
 /// 视频播放器页面 — iOS 27 玻璃质感
 ///
-/// 手机/竖屏 → 全屏视频 + 玻璃控制栏
-/// 平板横屏 → 左视频 / 右毛玻璃控制面板
+/// 手机 / 平板统一：全屏视频 + 玻璃控制栏（浮层自动隐藏）
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../core/system/orientation_policy.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../models/cast_device_model.dart';
@@ -23,7 +22,6 @@ import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
-import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/keyboard_shortcut_handler.dart';
@@ -57,6 +55,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
   double? _seekPreviewMs;
 
+  /// 长按前的速度，松手时恢复这个值
+  double? _speedBeforeLongPress;
+
   /// 控件自动隐藏定时器（可取消）
   Timer? _autoHideTimer;
 
@@ -75,6 +76,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       duration: const Duration(milliseconds: 350),
       value: 1,
     );
+    // 方向：平板强制横屏（只写横屏系统才会触发旋转），手机四方向全开
+    OrientationPolicy.applyPlayer();
     // 延迟到 widget tree 构建完成后加载视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -96,7 +99,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     _controlsAnim.dispose();
     // 兜底：不依赖 ref（dispose 阶段取 ref 会抛异常，
     // 一旦抛出就会跳过后面的方向重置 → 退出后卡在横屏）
-    _restorePortrait();
+    _restoreIdleOrientation();
     try {
       ref.read(playerProvider.notifier).saveProgress();
     } catch (e) {
@@ -105,21 +108,22 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     super.dispose();
   }
 
-  /// 恢复竖屏 + 退出沉浸模式（首页/列表/设置都是竖屏界面）
-  void _restorePortrait() {
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+  /// 退出播放页的方向恢复 + 退出沉浸模式。
+  ///
+  /// 注意：**不能**无脑锁竖屏 —— 平板横放时锁竖屏会被系统加黑边，
+  /// 首页又变回「竖条 + 导航栏挤到侧边」。交给 OrientationPolicy
+  /// 按设备类型决定（手机竖屏 / 平板跟随物理方向）。
+  void _restoreIdleOrientation() {
+    OrientationPolicy.applyIdle();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  /// 退出播放器：先落盘进度、恢复竖屏，再返回
+  /// 退出播放器：先落盘进度、恢复方向，再返回
   Future<void> _exitPlayer() async {
     try {
       await ref.read(playerProvider.notifier).saveProgress();
     } catch (_) {}
-    _restorePortrait();
+    _restoreIdleOrientation();
     if (mounted) context.pop();
   }
 
@@ -127,17 +131,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _toggleFullscreen() async {
     if (_isFullscreen) {
       _isFullscreen = false;
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
+      // 退出全屏 → 回到该设备的常规方向（手机竖屏 / 平板保持横屏），
+      // 不能写死竖屏，否则平板上会突然转成竖的
+      await OrientationPolicy.applyIdle();
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     } else {
       _isFullscreen = true;
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      await OrientationPolicy.applyFullscreen();
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
     if (mounted) setState(() {});
@@ -186,6 +186,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void _onSeekCommit(int targetMs) {
     ref.read(playerProvider.notifier).seekTo(Duration(milliseconds: targetMs));
     if (mounted) setState(() => _seekPreviewMs = null);
+  }
+
+  /// 长按画面开始 → 倍速播放
+  void _onLongPressStart() {
+    final notifier = ref.read(playerProvider.notifier);
+    final currentSpeed = ref.read(playerProvider).speed;
+    _speedBeforeLongPress = currentSpeed;
+    final targetSpeed = AppSettingsService.instance.longPressSpeed;
+    notifier.setSpeed(targetSpeed);
+  }
+
+  /// 松手 → 恢复原速
+  void _onLongPressEnd() {
+    final restore = _speedBeforeLongPress;
+    if (restore != null) {
+      ref.read(playerProvider.notifier).setSpeed(restore);
+      _speedBeforeLongPress = null;
+    }
   }
 
   Future<void> _loadVideo() async {
@@ -250,16 +268,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           p.secondaryEntries,
         )));
     final playerState = ref.read(playerProvider);
-    final isLandscape = AppBreakpoints.isLandscape(context);
-    final isLarge = AppBreakpoints.isLargeScreen(context);
 
-    if (isLandscape && isLarge) {
-      return _buildSplitLayout(context, playerState);
-    }
+    // 手机 / 平板统一用全屏布局：视频铺满整屏、控件浮层自动隐藏。
+    // 之前平板横屏走「左视频 62% + 右控制面板 38%」的分栏，视频铺不满、
+    // 右边像一直有块面板挡着，观感也和手机端不一致。
     return _buildFullScreenLayout(context, playerState);
   }
 
-  // ═══════════════ 全屏（手机/竖屏） ═══════════════
+  // ═══════════════ 全屏（手机 / 平板统一） ═══════════════
 
   Widget _buildFullScreenLayout(BuildContext context, PlayerState state) {
     final isLarge = AppBreakpoints.isLargeScreen(context);
@@ -312,6 +328,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     ref.read(playerProvider.notifier).setVolume(value),
                 onSeekPreview: _onSeekPreview,
                 onSeekCommit: _onSeekCommit,
+                onLongPressStart: _onLongPressStart,
+                onLongPressEnd: _onLongPressEnd,
+                longPressSpeed: AppSettingsService.instance.longPressSpeed,
               ),
             ),
             // 字幕（主字幕由 mpv 绘制；第二字幕用自绘浮层叠在下方）
@@ -374,313 +393,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ═══════════════ 平板横屏分栏 ═══════════════
-
-  Widget _buildSplitLayout(BuildContext context, PlayerState state) {
-    final size = MediaQuery.of(context).size;
-    final videoWidth = size.width * 0.62;
-
-    return KeyboardShortcutHandler(
-      onPlayPause: () => ref.read(playerProvider.notifier).togglePlayPause(),
-      onSeekForward: () => ref
-          .read(playerProvider.notifier)
-          .seekRelative(AppSettingsService.instance.skipSeconds),
-      onSeekBackward: () => ref
-          .read(playerProvider.notifier)
-          .seekRelative(-AppSettingsService.instance.skipSeconds),
-      onVolumeUp: () => ref.read(playerProvider.notifier).setVolume(
-          (state.volume + 0.05).clamp(0, 1)),
-      onVolumeDown: () => ref.read(playerProvider.notifier).setVolume(
-          (state.volume - 0.05).clamp(0, 1)),
-      onToggleSubtitles: _showSubtitleSheet,
-      onToggleSpeed: () =>
-          setState(() => _showSpeedSelector = !_showSpeedSelector),
-      onExit: _exitPlayer,
-      onSeekFraction: (fraction) {
-        final live = ref.read(playerProvider);
-        ref.read(playerProvider.notifier).seekRelative(
-              ((fraction * live.duration.inMilliseconds / 1000) -
-                      live.position.inMilliseconds / 1000)
-                  .round(),
-            );
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Row(
-          children: [
-            SizedBox(
-              width: videoWidth,
-              child: Stack(
-                children: [
-                  _buildVideoLayer(state),
-                  _LivePosition(
-                    builder: (context, live) => PlayerGestureLayer(
-                      onTap: _toggleControls,
-                      initialBrightness: state.brightness,
-                      initialVolume: state.volume,
-                      positionMs: live.position.inMilliseconds,
-                      durationMs: live.duration.inMilliseconds,
-                      onBrightnessChange: (value) => ref
-                          .read(playerProvider.notifier)
-                          .setBrightness(value),
-                      onVolumeChange: (value) => ref
-                          .read(playerProvider.notifier)
-                          .setVolume(value),
-                      onSeekPreview: _onSeekPreview,
-                      onSeekCommit: _onSeekCommit,
-                    ),
-                  ),
-                  if (state.subtitleEntries != null &&
-                      state.subtitleEntries!.isNotEmpty)
-                    Positioned(
-                      bottom: _hasSecondaryOverlay(state) ? 126 : 90,
-                      left: 40, right: 40,
-                      child: SubtitleOverlay(
-                        entries: state.subtitleEntries!,
-                        activeIndex: state.activeSubtitleIndex,
-                      ),
-                    ),
-                  if (_hasSecondaryOverlay(state))
-                    Positioned(
-                      bottom: 84, left: 60, right: 60,
-                      child: SubtitleOverlay(
-                        entries: state.secondaryEntries!,
-                        activeIndex: state.secondarySubtitleIndex,
-                        fontSize: 15,
-                        compact: true,
-                      ),
-                    ),
-                  if (state.isBuffering)
-                    const Center(
-                      child: CircularProgressIndicator(
-                          color: GlassTheme.accentPurple),
-                    ),
-                ],
-              ),
-            ),
-            const VerticalDivider(width: 0.5, color: Color(0x14000000)),
-            Expanded(
-              child: Container(
-                color: GlassTheme.bg,
-                child: _buildGlassSidePanel(context, state),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ═══════════════ 玻璃侧边面板（平板横屏） ═══════════════
-
-  Widget _buildGlassSidePanel(BuildContext context, PlayerState state) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题 + 返回
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
-                  onPressed: () => context.pop(),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(widget.videoTitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: GlassTheme.textPrimary, fontSize: 18,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // 进度条（只订阅 position，不与整页一起重建）
-            if (state.duration > Duration.zero)
-              _LivePosition(
-                builder: (context, live) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GlassSlider(
-                      value: live.position.inMilliseconds.toDouble(),
-                      min: 0,
-                      max: live.duration.inMilliseconds.toDouble(),
-                      activeColor: GlassTheme.accentPurple,
-                      height: 5,
-                      // 拖动结束才真正 seek，拖动中仅更新视觉
-                      onChangeEnd: (v) => ref
-                          .read(playerProvider.notifier)
-                          .seekTo(Duration(milliseconds: v.round())),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_fmtDuration(live.position),
-                            style: const TextStyle(
-                                color: GlassTheme.textSecondary, fontSize: 11)),
-                        Text(_fmtDuration(live.duration),
-                            style: const TextStyle(
-                                color: GlassTheme.textSecondary, fontSize: 11)),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-
-            // 播放控制按钮
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                GlassButton(
-                  icon: Icons.skip_previous_rounded,
-                  compact: true,
-                  onTap: () =>
-                      ref.read(playerProvider.notifier).playPrevious(),
-                ),
-                const SizedBox(width: 12),
-                GlassButton.filled(
-                  icon: state.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  width: 52,
-                  height: 52,
-                  padding: EdgeInsets.zero,
-                  onTap: () =>
-                      ref.read(playerProvider.notifier).togglePlayPause(),
-                ),
-                const SizedBox(width: 12),
-                GlassButton(
-                  icon: Icons.skip_next_rounded,
-                  compact: true,
-                  onTap: () => ref.read(playerProvider.notifier).playNext(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // 队列
-            if (state.queue.length > 1) ...[
-              Row(
-                children: [
-                  const Icon(Icons.queue_play_next, size: 16, color: GlassTheme.textSecondary),
-                  const SizedBox(width: 6),
-                  Text('播放队列 (${state.queue.length})',
-                      style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ...state.queue.take(5).map((v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: GlassCard(
-                      radius: GlassTheme.radiusXs,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      tint: GlassTheme.tintPurple,
-                      child: Row(
-                        children: [
-                          Icon(Icons.movie_rounded,
-                              size: 14, color: GlassTheme.accentPurple),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(v.name, maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: GlassTheme.textPrimary, fontSize: 13)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )),
-              const SizedBox(height: 20),
-            ],
-
-            // 快捷操作
-            _sideGlassRow(Icons.speed_rounded, '速度', '${state.speed}x',
-                () => setState(() => _showSpeedSelector = !_showSpeedSelector)),
-            const SizedBox(height: 8),
-            _sideGlassRow(
-                Icons.subtitles_rounded,
-                '字幕',
-                state.activeSubtitle?.language ??
-                    (state.activeTrackId != null ? '内嵌' : '无'),
-                _showSubtitleSheet),
-            const SizedBox(height: 8),
-            _sideGlassRow(Icons.picture_in_picture_rounded, '画中画', '开启',
-                _enterPiP),
-            const SizedBox(height: 8),
-            _sideGlassRow(Icons.cast_rounded, '投屏', '搜索设备', _showCastSheet),
-            const SizedBox(height: 20),
-
-            // 音量
-            _sliderRow(Icons.volume_up_rounded, '音量', state.volume,
-                (v) => ref.read(playerProvider.notifier).setVolume(v)),
-            const SizedBox(height: 12),
-            // 亮度
-            _sliderRow(Icons.brightness_6_rounded, '亮度', state.brightness,
-                (v) => ref.read(playerProvider.notifier).setBrightness(v)),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sideGlassRow(
-      IconData icon, String label, String value, VoidCallback onTap) {
-    return GlassCard(
-      radius: GlassTheme.radiusSm,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      onTap: onTap,
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: GlassTheme.textSecondary),
-          const SizedBox(width: 10),
-          Text(label,
-              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
-          const Spacer(),
-          Text(value,
-              style: const TextStyle(
-                  color: GlassTheme.accentPurple, fontSize: 13)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded,
-              color: GlassTheme.textTertiary, size: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _sliderRow(
-      IconData icon, String label, double value, ValueChanged<double> onChange) {
-    return GlassCard(
-      radius: GlassTheme.radiusSm,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: GlassTheme.textSecondary),
-          const SizedBox(width: 10),
-          Text(label,
-              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: GlassSlider(
-              value: value,
-              height: 3,
-              activeColor: GlassTheme.accentPurple,
-              showThumb: false,
-              onChanged: onChange,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1421,13 +1133,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   // ═══════════════ Video Layer ═══════════════
 
-  Widget _buildVideoLayer(PlayerState state) {
+  Widget _buildVideoLayer(PlayerState state, {bool rounded = true}) {
     return Positioned.fill(
       child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(GlassTheme.radiusLg),
-          topRight: Radius.circular(GlassTheme.radiusLg),
-        ),
+        borderRadius: rounded
+            ? const BorderRadius.only(
+                topLeft: Radius.circular(GlassTheme.radiusLg),
+                topRight: Radius.circular(GlassTheme.radiusLg),
+              )
+            : BorderRadius.zero,
         child: Video(
           controller: _videoController,
           fit: BoxFit.contain,

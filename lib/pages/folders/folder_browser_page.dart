@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../core/responsive/breakpoints.dart';
 import '../../core/constants/app_constants.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -303,13 +304,21 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildGridView() {
+    final w = MediaQuery.of(context).size.width;
+    // 手机用原来的 3 列，平板按屏幕宽度动态列数（≥600dp 起）
+    final bool isMobile = w < 600;
+    final columns = isMobile ? 3 : AppBreakpoints.gridColumns(context);
+    // 扣除 padding(24) + 列间距后，每张卡片宽度
+    final cardW = (w - 24 - (columns - 1) * 10) / columns;
+    // 文件夹卡片只展示图标(40px) + 标题(1-2行)，~115dp 高度足够
+    final ratio = isMobile ? 0.85 : (cardW / 115).clamp(0.9, 2.0);
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12 + GlassTheme.navBarOverlay),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.85,
+        childAspectRatio: ratio,
       ),
       itemCount: _entries.length,
       itemBuilder: (context, index) {

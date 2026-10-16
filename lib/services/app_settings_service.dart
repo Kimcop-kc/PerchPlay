@@ -9,6 +9,7 @@ class AppSettingsService {
   static final instance = AppSettingsService._();
 
   static const _kDefaultSpeed = 'settings.defaultSpeed';
+  static const _kLongPressSpeed = 'settings.longPressSpeed';
   static const _kSkipSeconds = 'settings.skipSeconds';
   static const _kAutoPlayNext = 'settings.autoPlayNext';
   static const _kBackgroundPlay = 'settings.backgroundPlay';
@@ -19,6 +20,10 @@ class AppSettingsService {
   static const _kTmdbApiKey = 'settings.tmdbApiKey';
 
   double _defaultSpeed = 1.0;
+
+  /// 长按视频画面时的临时倍速（松手恢复原速），默认 2.0x
+  double _longPressSpeed = 2.0;
+
   int _skipSeconds = 10;
   bool _autoPlayNext = true;
   bool _backgroundPlay = true;
@@ -26,6 +31,10 @@ class AppSettingsService {
   bool _loaded = false;
 
   double get defaultSpeed => _defaultSpeed;
+
+  /// 长按画面时的临时倍速（松手恢复原速）
+  double get longPressSpeed => _longPressSpeed;
+
   int get skipSeconds => _skipSeconds;
   bool get autoPlayNext => _autoPlayNext;
   bool get backgroundPlay => _backgroundPlay;
@@ -114,6 +123,7 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       _defaultSpeed = prefs.getDouble(_kDefaultSpeed) ?? 1.0;
+      _longPressSpeed = prefs.getDouble(_kLongPressSpeed) ?? 2.0;
       _skipSeconds = prefs.getInt(_kSkipSeconds) ?? 10;
       _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
@@ -146,6 +156,14 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kDefaultSpeed, value);
+    } catch (_) {}
+  }
+
+  Future<void> setLongPressSpeed(double value) async {
+    _longPressSpeed = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kLongPressSpeed, value);
     } catch (_) {}
   }
 

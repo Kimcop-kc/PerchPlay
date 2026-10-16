@@ -139,6 +139,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           _divider(),
           _settingRow(
+            Icons.touch_app_rounded,
+            '长按倍速',
+            trailing: Text('${_settings.longPressSpeed}x',
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontWeight: FontWeight.w600)),
+            onTap: () => _showLongPressSpeedPicker(),
+          ),
+          _divider(),
+          _settingRow(
             Icons.fast_forward_rounded,
             '快进/快退秒数',
             trailing: Text('${_settings.skipSeconds}s',
@@ -606,6 +616,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  void _showLongPressSpeedPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _pickerSheet(
+        title: '长按倍速',
+        subtitle: '播放时按住画面即可以此速度播放，松手恢复',
+        items: [1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0],
+        current: _settings.longPressSpeed,
+        onSelect: (v) => _settings.setLongPressSpeed(v).then((_) {
+          if (mounted) setState(() {});
+        }),
+        format: (v) => '${v}x',
+      ),
+    );
+  }
+
   void _showSkipPicker() {
     // 无极滑动选择快进/快退秒数（1-60 秒连续可调）
     showModalBottomSheet(
@@ -728,6 +755,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _pickerSheet({
     required String title,
+    String? subtitle,
     required List<double> items,
     required double current,
     required void Function(double) onSelect,
@@ -773,6 +801,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       color: GlassTheme.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
+              if (subtitle != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(subtitle,
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 13)),
+                ),
               const SizedBox(height: 12),
               ...items.map((v) {
                 final isActive = v == current;

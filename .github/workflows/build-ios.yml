@@ -1,9 +1,8 @@
 name: iOS — 构建 IPA
 
+# iOS 构建暂不启用自动触发（目前无有效签名证书，无法真机安装）
+# 保留 workflow_dispatch 供将来手动构建
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       export_method:

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -6,14 +6,14 @@ import 'package:perchplay/models/video_model.dart';
 import 'package:perchplay/pages/home/home_page.dart';
 import 'package:perchplay/providers/library_provider.dart';
 
-/// 绌哄奖搴撶殑 Notifier锛堝鐢ㄧ幇鏈夌被鍨嬶級
+/// 空影库的 Notifier（复用现有类型）
 class EmptyVideoListNotifier extends VideoListNotifier {
   @override
   Future<List<VideoModel>> build() async => [];
 }
 
 void main() {
-  testWidgets('绌哄奖搴撴樉绀烘湰鍦版枃浠跺す鍜?NAS 涓や釜鍙偣鍑诲叆鍙?, (tester) async {
+  testWidgets('空影库显示本地文件夹和 NAS 两个可点击入口', (tester) async {
     final router = GoRouter(
       initialLocation: '/home',
       routes: [
@@ -48,11 +48,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('娴忚鏈湴鏂囦欢澶?), findsOneWidget);
-    expect(find.text('娴忚 NAS'), findsOneWidget);
+    expect(find.text('浏览本地文件夹'), findsOneWidget);
+    expect(find.text('浏览 NAS'), findsOneWidget);
 
-    await tester.tap(find.text('娴忚鏈湴鏂囦欢澶?));
+    await tester.tap(find.text('浏览本地文件夹'));
     await tester.pumpAndSettle();
     expect(find.text('FOLDERS_PAGE'), findsOneWidget);
-  }, skip: true); // 闇€瑕?media_kit 鍘熺敓搴擄紝绾?Dart 娴嬭瘯鐜璺宠繃
+  }, skip: true); // 需要 media_kit 原生库，纯 Dart 测试环境跳过
 }
