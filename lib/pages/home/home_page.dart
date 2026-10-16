@@ -18,6 +18,7 @@ import '../../services/library_query_service.dart';
 import '../../services/media_namer_service.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/glass/glass_sheet.dart';
 import '../../widgets/scrape/scrape_widgets.dart';
 
 class HomePage extends StatelessWidget {
@@ -534,19 +535,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   /// 长按视频卡片：添加到播放列表 / 移除
   Future<void> _showVideoActions(VideoModel video) async {
-    await showModalBottomSheet(
+    await showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: GlassTheme.bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Text(video.name,
                 style: const TextStyle(
                     color: GlassTheme.textPrimary,
@@ -603,8 +597,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 _confirmDeleteVideo(video);
               },
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -616,22 +609,13 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     final playlists = ref.read(playlistListProvider).valueOrNull ??
         const <Playlist>[];
 
-    await showModalBottomSheet(
+    await showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.6),
-        decoration: const BoxDecoration(
-          color: GlassTheme.bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      maxHeightFactor: 0.7,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             const Text('添加到播放列表',
                 style: TextStyle(
                     color: GlassTheme.textPrimary,
@@ -671,10 +655,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 ),
               )
             else
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: playlists.length,
+              // 外壳已经是 SingleChildScrollView，这里的列表不能再自己滚动
+              // （否则嵌套滚动 + 无界高度约束会报 RenderFlex 错误）
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: playlists.length,
                   itemBuilder: (_, i) {
                     final pl = playlists[i];
                     final added = pl.videoIds.contains(video.id);
@@ -725,10 +711,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     );
                   },
                 ),
-              ),
           ],
         ),
-      ),
     );
   }
 

@@ -580,7 +580,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 28 + MediaQuery.of(ctx).viewPadding.bottom),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -659,7 +659,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -888,7 +888,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1384,7 +1384,7 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 28 + MediaQuery.of(context).viewPadding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

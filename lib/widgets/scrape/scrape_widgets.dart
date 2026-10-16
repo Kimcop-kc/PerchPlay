@@ -290,7 +290,8 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, 20 + MediaQuery.of(context).viewPadding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
