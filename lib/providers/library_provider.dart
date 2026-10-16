@@ -79,11 +79,12 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
             .syncAutoPlaylists(videos);
       }
       // 后台自动刮削（不阻塞 UI，逐个处理）
-      final scrape = ref.read(scrapeProvider.notifier);
-      if (scrape.state.isEnabled) {
+      // 注意：状态要从 provider 读，不能读 notifier 的 .state
+      // （那是 StateNotifier 的 protected 成员，analyze 会报 warning → CI 挂）
+      if (ref.read(scrapeProvider).isEnabled) {
         final paths = videos.map((v) => v.path).toList();
         // 不 await：刮削在后台慢慢跑
-        scrape.scrapeBatch(paths);
+        ref.read(scrapeProvider.notifier).scrapeBatch(paths);
       }
     } catch (e, st) {
       state = AsyncError(e, st);
