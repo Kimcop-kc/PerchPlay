@@ -119,6 +119,10 @@ class PlayerState {
     bool clearMediaInfo = false,
     bool clearSecondaryTrackId = false,
     bool clearSecondarySubtitle = false,
+    // 注意：currentVideo 用 `??` 合并，传 null 是"不改"而不是"清空"。
+    // 想表达"停止播放、没有当前视频"必须用这个显式标志，
+    // 否则 stop() 清不掉它 —— 首页小窗会以为自己还该显示。
+    bool clearCurrentVideo = false,
   }) {
     return PlayerState(
       player: player ?? this.player,
@@ -131,7 +135,8 @@ class PlayerState {
       volume: volume ?? this.volume,
       brightness: brightness ?? this.brightness,
       speed: speed ?? this.speed,
-      currentVideo: currentVideo ?? this.currentVideo,
+      currentVideo:
+          clearCurrentVideo ? null : (currentVideo ?? this.currentVideo),
       queue: queue ?? this.queue,
       currentIndex: currentIndex ?? this.currentIndex,
       availableSubtitles: availableSubtitles ?? this.availableSubtitles,
@@ -401,7 +406,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 停止播放后不再需要前台服务（否则通知会一直挂着耗电）
     _shutdownBackgroundService();
     state = state.copyWith(
-      currentVideo: null,
+      clearCurrentVideo: true,
       isPlaying: false,
       isCompleted: false,
       position: Duration.zero,

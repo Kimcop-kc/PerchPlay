@@ -1100,6 +1100,17 @@ class _FloatingMiniPlayerState extends State<_FloatingMiniPlayer> {
   bool _dismissing = false;
 
   @override
+  void didUpdateWidget(covariant _FloatingMiniPlayer old) {
+    super.didUpdateWidget(old);
+    // 换了视频必须重新显示：否则上一个视频关闭动画留下的 _dismissing=true
+    // 会让新的小窗"存在但透明"，表现为"回到首页小窗没弹出来"
+    if (old.video.id != widget.video.id) {
+      _dismissing = false;
+      _dx = 0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // 视频画面 + 标题横向小长方形卡片
     return GestureDetector(
