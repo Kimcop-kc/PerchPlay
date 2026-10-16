@@ -463,7 +463,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 8),
           const Text(
             '扫描视频后自动匹配 TMDB 海报、简介、评分。\n'
-            '去 themoviedb.org 免费注册即可拿 API Key。',
+            '去 themoviedb.org 免费申请即可拿到凭证。\n'
+            '「API 密钥 (v3 auth)」和「API 读访问令牌」都支持，粘哪个都能用。',
             style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 12),
@@ -476,7 +477,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   obscuringCharacter: '\u2022',
                   style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary),
                   decoration: InputDecoration(
-                    hintText: isEnabled ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '粘贴 TMDB API Key (v3 auth)',
+                    hintText: isEnabled ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '粘贴 TMDB API Key 或 读访问令牌',
                     hintStyle: const TextStyle(fontSize: 12, color: GlassTheme.textTertiary),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(

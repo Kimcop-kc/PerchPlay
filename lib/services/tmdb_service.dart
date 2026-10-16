@@ -23,6 +23,26 @@ class TmdbService {
   TmdbService({required this.apiKey, http.Client? client})
       : _client = client ?? http.Client();
 
+  /// 凭证有两种，TMDB 官网上都会给，用户很容易复制错那个：
+  ///  · API 密钥（v3 auth）：32 位十六进制，走 `?api_key=`
+  ///  · API 读访问令牌（v4）：`eyJ` 开头的 JWT，走 `Authorization: Bearer`
+  /// 混用会一律 401，所以这里自动识别，两种都能直接用。
+  bool get _isBearerToken => apiKey.startsWith('eyJ');
+
+  /// 统一发请求。URL 里照旧带 api_key（v3 用），
+  /// 若凭证是读访问令牌则去掉 api_key、改用 Bearer 头。
+  Future<http.Response> _get(Uri url) {
+    if (_isBearerToken) {
+      final params = Map<String, String>.from(url.queryParameters)
+        ..remove('api_key');
+      return _client
+          .get(url.replace(queryParameters: params),
+              headers: {'Authorization': 'Bearer $apiKey'})
+          .timeout(_timeout);
+    }
+    return _client.get(url).timeout(_timeout);
+  }
+
   void dispose() {
     _client.close();
   }
@@ -42,7 +62,7 @@ class TmdbService {
       'page': page.toString(),
       'include_adult': 'false',
     });
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -67,7 +87,7 @@ class TmdbService {
     };
     if (year != null) params['year'] = year.toString();
     final url = Uri.parse('$_base/search/movie').replace(queryParameters: params);
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -89,7 +109,7 @@ class TmdbService {
       'language': language,
       'include_adult': 'false',
     });
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -110,7 +130,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     return _parseDetail(data, type: ScrapeType.movie);
@@ -124,7 +144,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     return _parseDetail(data, type: ScrapeType.tv);
@@ -145,7 +165,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await _client.get(url).timeout(_timeout);
+    final resp = await _get(url);
     if (resp.statusCode != 200) return null;
     final epData = jsonDecode(resp.body) as Map<String, dynamic>;
     final series = seriesInfo ?? await getTvDetail(seriesId, language: language);
