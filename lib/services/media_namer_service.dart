@@ -119,31 +119,6 @@ class MediaNamer {
     );
   }
 
-  /// 所在文件夹名（用于「文件夹即剧集名」的回退识别）
-  ///
-  /// 位于通用目录（Movies/Download/DCIM…）时返回 null，避免把
-  /// `Movies/xxx.mp4` 整层当成剧集名。
-  static String? folderTitle(String filePath) {
-    final dir = p.dirname(filePath);
-    if (dir.isEmpty || dir == '.' || dir == '/') return null;
-    final name = p.basename(dir).trim();
-    if (name.isEmpty) return null;
-    if (_genericFolders.contains(name.toLowerCase())) return null;
-    // 纯数字/过长的目录名不作为剧集名
-    if (RegExp(r'^\d+$').hasMatch(name)) return null;
-    if (name.length > 80) return null;
-    return name;
-  }
-
-  static const _genericFolders = {
-    'movies', 'movie', 'video', 'videos', 'download', 'downloads', 'dcim',
-    'camera', 'pictures', 'picture', 'music', 'document', 'documents',
-    'sdcard', 'storage', 'emulated', '0', 'screenshots', 'screenrecord',
-    'screenrecords', 'recorder', 'recordings', 'telegram', 'whatsapp',
-    'wechat', 'weixin', 'bluetooth', 'temp', 'tmp', 'others', 'other',
-    '电影', '影视', '下载', '视频', '相册', '录屏', '其他',
-  };
-
   /// 清洗标题：去噪标签、年份、发布组、括号内容、分隔符
   static String _cleanTitle(String raw) {
     var s = raw;

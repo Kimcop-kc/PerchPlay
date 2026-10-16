@@ -53,6 +53,54 @@ class AppSettingsService {
   Set<String> get hiddenAutoPlaylists => _hiddenAutoPlaylists;
   bool isAutoPlaylistHidden(String id) => _hiddenAutoPlaylists.contains(id);
 
+  /// 用户在「自动列表」里手动加进来 / 手动移出去的视频
+  ///
+  /// 自动列表每次扫描都会按文件名重建；如果不管用户的增删，手动加进去的会被
+  /// 清掉、手动删掉的会长回来（用起来就是"锁死、改不动"）。这里记住差异，
+  /// 重建时套用：
+  ///   最终成员 =（按文件名算出的成员 − 手动移出）∪ 手动加入
+  static const _kAutoAdded = 'settings.autoPlaylistAdded';
+  static const _kAutoRemoved = 'settings.autoPlaylistRemoved';
+  Set<String> _autoAdded = <String>{};
+  Set<String> _autoRemoved = <String>{};
+
+  static String _ovKey(String playlistId, String videoId) =>
+      '$playlistId\u0000$videoId';
+
+  static Set<String> _idsFor(Set<String> set, String playlistId) => set
+      .where((e) => e.startsWith('$playlistId\u0000'))
+      .map((e) => e.substring(playlistId.length + 1))
+      .toSet();
+
+  /// 某个自动列表里被用户手动加入的视频 id
+  Set<String> autoAddedFor(String playlistId) => _idsFor(_autoAdded, playlistId);
+
+  /// 某个自动列表里被用户手动移除的视频 id
+  Set<String> autoRemovedFor(String playlistId) =>
+      _idsFor(_autoRemoved, playlistId);
+
+  /// 记录「用户手动加入」
+  Future<void> markAutoAdded(String playlistId, String videoId) async {
+    _autoAdded.add(_ovKey(playlistId, videoId));
+    _autoRemoved.remove(_ovKey(playlistId, videoId));
+    await _saveOverlays();
+  }
+
+  /// 记录「用户手动移除」
+  Future<void> markAutoRemoved(String playlistId, String videoId) async {
+    _autoRemoved.add(_ovKey(playlistId, videoId));
+    _autoAdded.remove(_ovKey(playlistId, videoId));
+    await _saveOverlays();
+  }
+
+  Future<void> _saveOverlays() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kAutoAdded, _autoAdded.toList());
+      await prefs.setStringList(_kAutoRemoved, _autoRemoved.toList());
+    } catch (_) {}
+  }
+
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     try {
@@ -74,6 +122,10 @@ class AppSettingsService {
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
+      _autoAdded =
+          (prefs.getStringList(_kAutoAdded) ?? const <String>[]).toSet();
+      _autoRemoved =
+          (prefs.getStringList(_kAutoRemoved) ?? const <String>[]).toSet();
     } catch (_) {
       // 读取失败时保留默认值
     }

@@ -39,6 +39,11 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     final playlist = playlists[index];
     if (playlist.videoIds.contains(videoId)) return;
 
+    // 自动列表：记住"这是用户手动加进来的"，下次扫描重建时不会被清掉
+    if (playlistId.startsWith('auto:')) {
+      await AppSettingsService.instance.markAutoAdded(playlistId, videoId);
+    }
+
     final updated = playlist.copyWith(
       videoIds: [...playlist.videoIds, videoId],
     );
@@ -53,6 +58,12 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     if (index == -1) return;
 
     final playlist = playlists[index];
+
+    // 自动列表：记住"这是用户手动移出去的"，下次扫描不会又长回来
+    if (playlistId.startsWith('auto:')) {
+      await AppSettingsService.instance.markAutoRemoved(playlistId, videoId);
+    }
+
     final updated = playlist.copyWith(
       videoIds: playlist.videoIds.where((id) => id != videoId).toList(),
     );
@@ -76,11 +87,12 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     await syncAutoPlaylists(videos);
   }
 
-  /// 扫描后重建「自动列表」：
-  /// - 剧集：文件名里的 S01E02 / 第02集 / EP02，或「子文件夹 + 序号」聚集，
-  ///   合成一个列表并按季集排序（详见 [MediaGrouping]）
-  /// - 其余（含没凑成剧集的孤立文件）归入「电影」列表
-  /// - 用户手动删过的自动列表不再生成
+  /// 扫描后重建「自动列表」：**按视频文件名**分成剧集列表
+  /// - 文件名里的剧名 + 季集（S01E02 / 第02集 / EP05 / Show - 01…）
+  ///   → 一个剧名一个列表，按季集排序
+  /// - 没有集数信息的（电影等）**不进任何列表**（不再有「电影」桶）
+  /// - 用户手动删掉的列表不再生成
+  /// - 用户手动加进来 / 移出去的视频会保留（见 AppSettingsService 的 overlay）
   /// 手动创建的列表不受影响。
   Future<void> syncAutoPlaylists(List<VideoModel> videos) async {
     try {
@@ -88,16 +100,29 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
       await _db.deleteAutoPlaylists();
 
       final groups = MediaGrouping.group(videos.map((v) => v.path).toList());
+      final existingIds = videos.map((v) => v.id).toSet();
 
       final auto = <Playlist>[];
       var order = -1000; // 自动列表排前面
       for (final g in groups) {
-        final id = g.isMovieBucket ? 'auto:movies' : 'auto:series:${g.name}';
+        final id = 'auto:series:${MediaGrouping.normalize(g.name)}';
         if (AppSettingsService.instance.isAutoPlaylistHidden(id)) continue;
+
+        final removed = AppSettingsService.instance.autoRemovedFor(id);
+        final added = AppSettingsService.instance.autoAddedFor(id);
+
+        // 按文件名算出的成员 → 去掉用户手动移出的 → 补上用户手动加入的
+        final ids = <String>[
+          for (final i in g.indices)
+            if (!removed.contains(videos[i].id)) videos[i].id,
+          for (final vid in added)
+            if (existingIds.contains(vid) && !removed.contains(vid)) vid,
+        ];
+
         auto.add(Playlist(
           id: id,
           name: g.name,
-          videoIds: g.indices.map((i) => videos[i].id).toList(),
+          videoIds: ids,
           createdAt: DateTime.now(),
           sortOrder: order++,
           isAuto: true,

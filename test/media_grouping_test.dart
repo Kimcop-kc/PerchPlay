@@ -1,11 +1,15 @@
-// 自动分组测试：剧集列表 / 电影列表的划分逻辑
-// （文件名识别 + 文件夹回退 + 同类聚集 + 孤立剧集回落）
+// 自动分组测试（按**文件名**分到剧集列表）
+//
+// 需求要点：
+//  - 分组只看文件名，不看文件夹名（不再用文件夹名兜底命名）
+//  - 不再有「电影」列表：没有集数信息的视频不进任何自动列表
+//  - 明确季集标记 → 一集也成列表；只有末尾序号 → 需要同类聚集才认
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vidflow/services/media_grouping_service.dart';
 
 void main() {
-  group('明确标记的剧集', () {
-    test('同剧集不同写法归成一个列表，并按季集排序', () {
+  group('明确季集标记', () {
+    test('S01E01/02/03 归成一个列表并按季集排序', () {
       final groups = MediaGrouping.group([
         '/m/Show.S01E03.1080p.mkv',
         '/m/Show.S01E01.1080p.mkv',
@@ -13,8 +17,7 @@ void main() {
       ]);
       expect(groups.length, 1);
       expect(groups.first.name, 'Show');
-      expect(groups.first.isMovieBucket, isFalse);
-      expect(groups.first.indices, [1, 2, 0]); // E01, E02, E03
+      expect(groups.first.indices, [1, 2, 0]);
     });
 
     test('中文 第N集', () {
@@ -27,99 +30,103 @@ void main() {
       expect(groups.first.indices, [1, 0]);
     });
 
+    test('明确标记时一集也成列表', () {
+      final groups = MediaGrouping.group(['/m/Show.S01E05.1080p.mkv']);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Show');
+      expect(groups.first.indices, [0]);
+    });
+
     test('Show.S01.01 / Show.S01.02（季单独成段）', () {
       final groups = MediaGrouping.group([
         '/m/Show.S01.02.1080p.mkv',
         '/m/Show.S01.01.1080p.mkv',
       ]);
       expect(groups.length, 1);
-      expect(groups.first.name, 'Show'); // S01 不应残留在名字里
+      expect(groups.first.name, 'Show'); // S01 不残留在名字里
       expect(groups.first.indices, [1, 0]);
+    });
+
+    test('跨文件夹的同名剧集合成一个列表（只看文件名）', () {
+      final groups = MediaGrouping.group([
+        '/m/Season1/Show.S01E01.mkv',
+        '/m/Season2/Show.S02E01.mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Show');
+      expect(groups.first.indices.length, 2);
+    });
+
+    test('大小写不同也算同一个剧集', () {
+      final groups = MediaGrouping.group([
+        '/m/show.S01E01.mkv',
+        '/m/SHOW.S01E02.mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.indices.length, 2);
     });
   });
 
-  group('文件夹回退（文件名里没有剧集名）', () {
-    test('Movies/Show/01,02,03 聚成一个剧集，名字取文件夹名', () {
+  group('末尾序号（弱标记）', () {
+    test('Show - 01 / Show - 02 有聚集 → 成列表', () {
       final groups = MediaGrouping.group([
-        '/storage/emulated/0/Movies/MyShow/01.mp4',
-        '/storage/emulated/0/Movies/MyShow/02.mp4',
-        '/storage/emulated/0/Movies/MyShow/03.mp4',
+        '/m/Show - 02 [1080p].mkv',
+        '/m/Show - 01 [1080p].mkv',
       ]);
       expect(groups.length, 1);
-      expect(groups.first.name, 'MyShow');
-      expect(groups.first.indices, [0, 1, 2]);
-    });
-
-    test('Show - 01 [1080p] 这类末尾序号也能识别', () {
-      final groups = MediaGrouping.group([
-        '/m/Series/Show - 02 [1080p].mkv',
-        '/m/Series/Show - 01 [1080p].mkv',
-      ]);
-      expect(groups.length, 1);
-      // 文件名里已经能看出剧集名，优先用它（而不是文件夹名 Series）
       expect(groups.first.name, 'Show');
       expect(groups.first.indices, [1, 0]);
     });
 
-    test('同一目录下 Show.01 / Show.02 也能聚起来', () {
+    test('Show.02.1080p / Show.03.1080p 有聚集 → 成列表', () {
       final groups = MediaGrouping.group([
-        '/m/Movies/Show.01.1080p.mkv',
-        '/m/Movies/Show.02.1080p.mkv',
+        '/m/Show.02.1080p.mkv',
+        '/m/Show.03.1080p.mkv',
       ]);
       expect(groups.length, 1);
       expect(groups.first.name, 'Show');
-      expect(groups.first.indices, [0, 1]);
+    });
+
+    test('孤立的 Rocky 2.mkv 不成列表（避免把电影当剧集）', () {
+      final groups = MediaGrouping.group(['/m/Rocky 2.mkv']);
+      expect(groups, isEmpty);
     });
   });
 
-  group('电影与误判保护', () {
-    test('片名里带数字的电影不会被吞掉（Liuliang.Earth.2.2023）', () {
+  group('不应进入任何列表', () {
+    test('只有编号、没有剧名的文件（不看文件夹名）', () {
       final groups = MediaGrouping.group([
-        '/m/Movies/Liuliang.Earth.2.2023.2160p.HDR.mp4',
-        '/m/Movies/Interstellar.2014.1080p.BluRay.mp4',
+        '/m/MyShow/01.mp4',
+        '/m/MyShow/02.mp4',
+        '/m/MyShow/03.mp4',
       ]);
-      expect(groups.length, 1);
-      expect(groups.first.isMovieBucket, isTrue);
-      expect(groups.first.name, '电影');
-      expect(groups.first.indices.length, 2);
+      expect(groups, isEmpty, reason: '文件名里没有剧名，按需求不分组');
     });
 
-    test('孤立的一集不建列表，回落进电影', () {
+    test('电影（带年份/画质标签）', () {
       final groups = MediaGrouping.group([
-        '/m/Movies/Some.Show.S01E05.1080p.mkv', // 只有一集
-        '/m/Movies/Movie.2019.1080p.mkv',
+        '/m/Interstellar.2014.1080p.BluRay.x264.mp4',
+        '/m/Liuliang.Earth.2.2023.2160p.HDR.mp4',
+        '/m/1917.2019.1080p.mkv',
+        '/m/Se7en.mkv',
       ]);
-      expect(groups.length, 1);
-      expect(groups.first.isMovieBucket, isTrue);
-      expect(groups.first.indices.length, 2);
+      expect(groups, isEmpty);
     });
 
-    test('剧集与电影共存时分成两个列表，电影桶排最后', () {
+    test('剧集与电影混在一起时只出剧集列表', () {
       final groups = MediaGrouping.group([
         '/m/Show.S01E01.mkv',
         '/m/Show.S01E02.mkv',
         '/m/MovieA.2019.1080p.mkv',
         '/m/MovieB.2020.1080p.mkv',
       ]);
-      expect(groups.length, 2);
-      expect(groups[0].name, 'Show');
-      expect(groups[0].isMovieBucket, isFalse);
-      expect(groups[1].isMovieBucket, isTrue);
-      expect(groups[1].indices.length, 2);
-    });
-
-    test('只有 1 个视频时不生成任何列表', () {
-      expect(MediaGrouping.group(['/m/Movies/Only.Movie.2019.mkv']), isEmpty);
-    });
-
-    test('通用目录名不会被当成剧集名', () {
-      // /Movies/ 是通用目录：里面两个片子应进电影桶，而不是叫「Movies」的剧集
-      final groups = MediaGrouping.group([
-        '/storage/emulated/0/Movies/Film.One.2019.1080p.mkv',
-        '/storage/emulated/0/Movies/Film.Two.2020.1080p.mkv',
-      ]);
       expect(groups.length, 1);
-      expect(groups.first.isMovieBucket, isTrue);
+      expect(groups.first.name, 'Show');
+      expect(groups.first.indices, [0, 1]);
+    });
+
+    test('单个普通视频', () {
+      expect(MediaGrouping.group(['/m/test_video.mp4']), isEmpty);
     });
   });
 }

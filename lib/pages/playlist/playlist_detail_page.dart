@@ -207,19 +207,19 @@ class PlaylistDetailPage extends ConsumerWidget {
                                     ],
                                   ),
                                 ),
-                                // 手动列表可移除
-                                if (playlist?.isAuto != true)
-                                  IconButton(
-                                    tooltip: '从列表移除',
-                                    icon: const Icon(
-                                        Icons.remove_circle_outline_rounded,
-                                        size: 20,
-                                        color: GlassTheme.textTertiary),
-                                    onPressed: () => ref
-                                        .read(playlistProvider.notifier)
-                                        .removeVideoFromPlaylist(
-                                            playlistId, v.id),
-                                  ),
+                                // 所有列表都能移除条目；自动列表会记住这次移除，
+                                // 下次扫描不会又把它长回来
+                                IconButton(
+                                  tooltip: '从列表移除',
+                                  icon: const Icon(
+                                      Icons.remove_circle_outline_rounded,
+                                      size: 20,
+                                      color: GlassTheme.textTertiary),
+                                  onPressed: () => ref
+                                      .read(playlistProvider.notifier)
+                                      .removeVideoFromPlaylist(
+                                          playlistId, v.id),
+                                ),
                               ],
                             ),
                           ),
