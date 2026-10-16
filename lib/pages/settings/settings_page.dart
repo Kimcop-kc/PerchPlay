@@ -11,7 +11,6 @@ import '../../services/app_settings_service.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_settings_provider.dart';
 import '../../providers/scrape_provider.dart';
-import '../../services/scrape_cache_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -25,13 +24,27 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   final _settings = AppSettingsService.instance;
+  late final TextEditingController _tmdbController;
 
   @override
   void initState() {
     super.initState();
+    _tmdbController = TextEditingController(text: _settings.tmdbApiKey);
     _settings.ensureLoaded().then((_) {
-      if (mounted) setState(() {});
+      // ensureLoaded 可能从 SharedPreferences 读到比 init 时的默认值更新的 apiKey
+      if (mounted && _tmdbController.text != _settings.tmdbApiKey) {
+        _tmdbController.text = _settings.tmdbApiKey;
+        setState(() {});
+      } else if (mounted) {
+        setState(() {});
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _tmdbController.dispose();
+    super.dispose();
   }
 
   @override
@@ -448,7 +461,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Expanded(
                 child: TextField(
-                  controller: TextEditingController(text: apiKey),
+                  controller: _tmdbController,
                   obscureText: true,
                   obscuringCharacter: '\u2022',
                   style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary),
@@ -474,7 +487,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onChanged: (v) {
                     _settings.setTmdbApiKey(v.trim());
                     if (v.trim().isNotEmpty) {
-                      ScrapeCacheService.instance.init(apiKey: v.trim());
                       ref.read(scrapeProvider.notifier).enable(v.trim());
                     } else {
                       ref.read(scrapeProvider.notifier).disable();
@@ -491,6 +503,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   foregroundColor: GlassTheme.accentPink,
                   onTap: () {
                     _settings.setTmdbApiKey('');
+                    _tmdbController.clear();
                     ref.read(scrapeProvider.notifier).disable();
                     if (mounted) setState(() {});
                   },

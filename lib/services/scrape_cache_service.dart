@@ -22,8 +22,16 @@ class ScrapeCacheService {
 
   /// 必须在 init 之后才能调用刮削
   void init({required String apiKey}) {
+    _tmdb?.dispose();
     _apiKey = apiKey;
     _tmdb = TmdbService(apiKey: apiKey);
+  }
+
+  /// 释放 HTTP 连接
+  void dispose() {
+    _tmdb?.dispose();
+    _tmdb = null;
+    _apiKey = null;
   }
 
   bool get isReady => _apiKey != null && _apiKey!.isNotEmpty;

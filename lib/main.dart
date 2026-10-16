@@ -8,7 +8,6 @@ import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
 import 'services/native_bridge_service.dart';
-import 'services/scrape_cache_service.dart';
 
 /// 应用根组件是否已成功挂载。
 /// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
@@ -55,16 +54,6 @@ void main() async {
     await AppSettingsService.instance.ensureLoaded();
   } catch (e) {
     debugPrint('[PerchPlay] Settings load failed: $e');
-  }
-
-  // 如果已设置过 TMDB API key，启用刮削
-  final apiKey = AppSettingsService.instance.tmdbApiKey;
-  if (apiKey.isNotEmpty) {
-    try {
-      ScrapeCacheService.instance.init(apiKey: apiKey);
-    } catch (e) {
-      debugPrint('[PerchPlay] Scrape init failed: $e');
-    }
   }
 
   // 首页/列表/设置固定竖屏；只有播放器全屏时临时切横屏

@@ -12,8 +12,16 @@ import 'package:vidflow/models/scrape_result.dart';
 class TmdbService {
   final String apiKey;
   final String _base = 'https://api.tmdb.org/3';
+  final http.Client _client = http.Client();
+
+  /// 超时 15s（TMDB 通常在 2-5s 内响应，15s 足够差网络）
+  static const _timeout = Duration(seconds: 15);
 
   TmdbService({required this.apiKey});
+
+  void dispose() {
+    _client.close();
+  }
 
   // ── 搜索 ──
 
@@ -30,7 +38,7 @@ class TmdbService {
       'page': page.toString(),
       'include_adult': 'false',
     });
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -55,7 +63,7 @@ class TmdbService {
     };
     if (year != null) params['year'] = year.toString();
     final url = Uri.parse('$_base/search/movie').replace(queryParameters: params);
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -77,7 +85,7 @@ class TmdbService {
       'language': language,
       'include_adult': 'false',
     });
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
@@ -98,7 +106,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     return _parseDetail(data, type: ScrapeType.movie);
@@ -112,7 +120,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     return _parseDetail(data, type: ScrapeType.tv);
@@ -131,7 +139,7 @@ class TmdbService {
       'api_key': apiKey,
       'language': language,
     });
-    final resp = await http.get(url);
+    final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return null;
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     // Also get series overview

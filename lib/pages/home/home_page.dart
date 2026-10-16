@@ -12,6 +12,7 @@ import '../../providers/library_provider.dart';
 import '../../providers/permission_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/playlist_provider.dart';
+import '../../providers/scrape_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -139,6 +140,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     if (current == null || current.isEmpty) {
       await ref.read(libraryProvider.notifier).scan();
     }
+
+    // 冷启动时初始化刮削（加载已缓存结果 + 启用）
+    ref.read(scrapeProvider.notifier).boot();
   }
 
   @override

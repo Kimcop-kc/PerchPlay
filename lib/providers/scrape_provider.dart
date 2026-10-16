@@ -4,31 +4,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vidflow/models/scrape_result.dart';
 import 'package:vidflow/services/scrape_cache_service.dart';
 import 'package:vidflow/services/database_service.dart';
+import 'package:vidflow/services/app_settings_service.dart';
 
 /// 刮削状态
 class ScrapeState {
   final Map<String, ScrapeResult?> results; // videoPath → result
-  final Set<String> pending; // 正在刮削的 videoPath
   final bool isEnabled;
+  final int queueLength; // 还有几个在排队（含当前正在处理的）
   final String? error;
 
   const ScrapeState({
     this.results = const {},
-    this.pending = const {},
     this.isEnabled = false,
+    this.queueLength = 0,
     this.error,
   });
 
   ScrapeState copyWith({
     Map<String, ScrapeResult?>? results,
-    Set<String>? pending,
     bool? isEnabled,
+    int? queueLength,
     String? error,
   }) {
     return ScrapeState(
       results: results ?? this.results,
-      pending: pending ?? this.pending,
       isEnabled: isEnabled ?? this.isEnabled,
+      queueLength: queueLength ?? this.queueLength,
       error: error,
     );
   }
@@ -37,71 +38,74 @@ class ScrapeState {
 /// 刮削 Provider
 ///
 /// 核心流程：
-/// 1. 用户设置 TMDB API key → isEnabled 变为 true
-/// 2. 扫描完成后调用 [scrapeBatch] → 后台逐个刮削
+/// 1. 用户设置 TMDB API key → enable → loadCache（恢复已有结果）
+/// 2. 扫描完成后调用 [scrapeBatch] → 后台逐个刮削，每次间隔 1s
 /// 3. 结果通过 [scrapeResultProvider] 按 videoPath 查询
 class ScrapeNotifier extends StateNotifier<ScrapeState> {
   ScrapeNotifier() : super(const ScrapeState());
 
-  /// 初始化：加载已缓存的刮削结果
-  Future<void> loadCache() async {
-    try {
-      final rows = await DatabaseService.instance.getAllScrapeCache();
-      final results = <String, ScrapeResult?>{};
-      for (final row in rows) {
-        final path = row['video_path'] as String?;
-        if (path != null && path.isNotEmpty) {
-          results[path] = ScrapeResult.fromRow(row);
-        }
-      }
-      state = state.copyWith(results: results);
-    } catch (e) {
-      debugPrint('[Scrape] loadCache error: $e');
-    }
+  final List<String> _queue = [];
+  bool _processing = false;
+
+  /// 初始化（main.dart 调用）：如果有保存的 API key 就启用并加载缓存
+  Future<void> boot() async {
+    final key = AppSettingsService.instance.tmdbApiKey;
+    if (key.isEmpty) return;
+    ScrapeCacheService.instance.init(apiKey: key);
+    await _loadCache();
+    state = state.copyWith(isEnabled: true);
   }
 
   /// 设置 API key 并启用刮削
-  void enable(String apiKey) {
+  Future<void> enable(String apiKey) async {
     ScrapeCacheService.instance.init(apiKey: apiKey);
     state = state.copyWith(isEnabled: true, error: null);
+    if (state.results.isEmpty) await _loadCache();
   }
 
   void disable() {
-    state = state.copyWith(isEnabled: false);
+    _queue.clear();
+    _processing = false;
+    state = state.copyWith(isEnabled: false, queueLength: 0);
   }
 
-  /// 批量刮削（后台，不阻塞 UI）
-  Future<void> scrapeBatch(List<String> paths) async {
+  /// 批量刮削（后台串行，不阻塞 UI，TMDB 限流友好）
+  void scrapeBatch(List<String> paths) {
     if (!state.isEnabled) return;
-
     for (final path in paths) {
-      // 跳过已缓存
       if (state.results.containsKey(path) && state.results[path] != null) {
         continue;
       }
-      // 跳过正在处理
-      if (state.pending.contains(path)) continue;
-
-      // 异步处理，不等待
-      _scrapeOne(path);
+      // 不在队列里也不再处理中才加
+      if (!_queue.contains(path)) _queue.add(path);
     }
+    state = state.copyWith(queueLength: _queue.length);
+    _drain();
   }
 
-  Future<void> _scrapeOne(String path) async {
-    state = state.copyWith(pending: {...state.pending, path});
-    try {
-      final result = await ScrapeCacheService.instance.scrapeForVideo(path);
-      state = state.copyWith(
-        results: {...state.results, path: result},
-        pending: state.pending.difference({path}),
-      );
-    } catch (e) {
-      debugPrint('[Scrape] $path error: $e');
-      state = state.copyWith(
-        pending: state.pending.difference({path}),
-        error: e.toString(),
-      );
+  void _drain() {
+    if (_processing || _queue.isEmpty) return;
+    _processing = true;
+    _next();
+  }
+
+  Future<void> _next() async {
+    while (_queue.isNotEmpty) {
+      final path = _queue.removeAt(0);
+      state = state.copyWith(queueLength: _queue.length);
+      try {
+        final result = await ScrapeCacheService.instance.scrapeForVideo(path);
+        state = state.copyWith(
+          results: {...state.results, path: result},
+        );
+      } catch (e) {
+        debugPrint('[Scrape] $path error: $e');
+        state = state.copyWith(error: e.toString());
+      }
+      // TMDB 免费 API 限流 ≈ 50 req/s，1 秒间隔绰绰有余
+      if (_queue.isNotEmpty) await Future<void>.delayed(const Duration(seconds: 1));
     }
+    _processing = false;
   }
 
   /// 按系列名刮削（播放列表用）
@@ -136,6 +140,24 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
       results: {...state.results, videoPath: result},
     );
     return result;
+  }
+
+  // ── private ──
+
+  Future<void> _loadCache() async {
+    try {
+      final rows = await DatabaseService.instance.getAllScrapeCache();
+      final results = <String, ScrapeResult?>{};
+      for (final row in rows) {
+        final path = row['video_path'] as String?;
+        if (path != null && path.isNotEmpty) {
+          results[path] = ScrapeResult.fromRow(row);
+        }
+      }
+      state = state.copyWith(results: results);
+    } catch (e) {
+      debugPrint('[Scrape] loadCache error: $e');
+    }
   }
 }
 
