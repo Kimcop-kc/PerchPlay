@@ -4,6 +4,7 @@ import '../models/video_model.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/media_grouping_service.dart';
+import '../services/video_source_service.dart';
 import 'package:uuid/uuid.dart';
 
 final playlistListProvider =
@@ -87,37 +88,46 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     await syncAutoPlaylists(videos);
   }
 
-  /// 扫描后重建「自动列表」：**按视频文件名**分成剧集列表
-  /// - 文件名里的剧名 + 季集（S01E02 / 第02集 / EP05 / Show - 01…）
-  ///   → 一个剧名一个列表，按季集排序
-  /// - 没有集数信息的（电影等）**不进任何列表**（不再有「电影」桶）
-  /// - 用户手动删掉的列表不再生成
-  /// - 用户手动加进来 / 移出去的视频会保留（见 AppSettingsService 的 overlay）
+  /// 扫描后重建「自动列表」：
+  ///   - 个人视频（相机/剪辑/短视频/录屏/社交）→ 按来源+前缀分组，不走 TMDB
+  ///   - 影视（other/download）→ 按文件名识别剧名+季集，可走 TMDB 刮削
+  ///   - 未被剧集分组的影视路径 → 前缀兜底（≥2 个相同前缀才成组）
+  ///   - 用户手动删掉的列表不再生成
+  ///   - 用户手动加进来 / 移出去的视频会保留
   /// 手动创建的列表不受影响。
   Future<void> syncAutoPlaylists(List<VideoModel> videos) async {
     try {
       await AppSettingsService.instance.ensureLoaded();
       await _db.deleteAutoPlaylists();
 
-      final groups = MediaGrouping.group(videos.map((v) => v.path).toList());
-      final existingIds = videos.map((v) => v.id).toSet();
+      final paths = videos.map((v) => v.path).toList();
+      final existingVidIds = videos.map((v) => v.id).toSet();
+
+      final allGroups = VideoSourceService.groupAll(paths);
 
       final auto = <Playlist>[];
-      var order = -1000; // 自动列表排前面
-      for (final g in groups) {
-        final id = 'auto:series:${MediaGrouping.normalize(g.name)}';
+      var order = -1000;
+
+      for (final g in allGroups) {
+        final kind = g.isSeries
+            ? 'series'
+            : g.isFallback
+                ? 'fallback'
+                : 'personal';
+        final id = 'auto:$kind:${MediaGrouping.normalize(g.name)}';
         if (AppSettingsService.instance.isAutoPlaylistHidden(id)) continue;
 
         final removed = AppSettingsService.instance.autoRemovedFor(id);
         final added = AppSettingsService.instance.autoAddedFor(id);
 
-        // 按文件名算出的成员 → 去掉用户手动移出的 → 补上用户手动加入的
-        final ids = <String>[
+        final ids = <String>{
           for (final i in g.indices)
             if (!removed.contains(videos[i].id)) videos[i].id,
           for (final vid in added)
-            if (existingIds.contains(vid) && !removed.contains(vid)) vid,
-        ];
+            if (existingVidIds.contains(vid) && !removed.contains(vid)) vid,
+        }.toList();
+
+        if (ids.isEmpty) continue;
 
         auto.add(Playlist(
           id: id,

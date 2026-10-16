@@ -129,9 +129,17 @@ class MediaNamer {
     }
 
     // ── 4) 前缀即剧名 ──
-    final prefix = splitAt != null ? fileName.substring(0, splitAt) : fileName;
-    var title = _cleanTitle(prefix);
-    if (title.isEmpty && splitAt != null) title = _cleanTitle(fileName);
+    String raw;
+    if (splitAt == null) {
+      raw = fileName;
+    } else if (splitAt > 0) {
+      raw = fileName.substring(0, splitAt);
+    } else {
+      // splitAt == 0：季集标记在最开头（01 概論 / EP01 - Show / 第02集 XXX）
+      raw = _stripLeadingEpisode(fileName);
+    }
+    var title = _cleanTitle(raw);
+    if (title.isEmpty) title = _cleanTitle(fileName);
 
     return MediaInfo(
       isEpisode: episode != null,
@@ -141,6 +149,45 @@ class MediaNamer {
       year: int.tryParse(_year.firstMatch(fileName)?.group(0) ?? ''),
       weakEpisode: weak,
     );
+  }
+
+  /// splitAt==0 时：剥掉最开头的季集标记，余下的文字就是剧名。
+  /// 例：`01 概論` → `概論`、`EP05 - Show Name` → `Show Name`、`第02集 某某` → `某某`
+  static String _stripLeadingEpisode(String fileName) {
+    // 按优先级逐个试 matchAsPrefix（仅匹配字符串开头）
+    final se = _seasonEpisode.matchAsPrefix(fileName);
+    if (se != null) return _trimAfter(fileName, se.end);
+
+    final x = _xFormat.matchAsPrefix(fileName);
+    if (x != null) return _trimAfter(fileName, x.end);
+
+    final cn = _cnSeasonEpisode.matchAsPrefix(fileName);
+    if (cn != null) return _trimAfter(fileName, cn.end);
+
+    final cnEp = _cnEpisode.matchAsPrefix(fileName);
+    if (cnEp != null) return _trimAfter(fileName, cnEp.end);
+
+    final ep = _epPrefix.matchAsPrefix(fileName);
+    if (ep != null) return _trimAfter(fileName, ep.end);
+
+    final br = _bracketNum.matchAsPrefix(fileName);
+    if (br != null) return _trimAfter(fileName, br.end);
+
+    // 弱标记：第一个 1~3 位数字
+    final num = _firstNumber(fileName);
+    if (num != null && num.$1 == 0) {
+      return _trimAfter(fileName, _leadingDigitsLen(fileName));
+    }
+
+    return fileName;
+  }
+
+  static String _trimAfter(String s, int pos) =>
+      s.substring(pos).replaceAll(RegExp(r'^[\s._\-\–—–\[\]\(\)]+'), '');
+
+  static int _leadingDigitsLen(String s) {
+    final m = RegExp(r'^\d+').firstMatch(s);
+    return m == null ? 0 : m.group(0)!.length;
   }
 
   /// 找第一个 1~3 位数字，返回 (下标, 数值)；跳过括号内容、噪标签与 4 位以上数字。

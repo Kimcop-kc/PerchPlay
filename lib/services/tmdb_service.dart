@@ -128,11 +128,13 @@ class TmdbService {
 
   // ── 季/集详情 ──
 
+  /// [seriesInfo] 可选：已获取的系列详情，避免重复调用 getTvDetail
   Future<ScrapeResult?> getEpisodeDetail(
     int seriesId,
     int seasonNumber,
     int episodeNumber, {
     String language = 'zh-CN',
+    ScrapeResult? seriesInfo,
   }) async {
     final url = Uri.parse('$_base/tv/$seriesId/season/$seasonNumber/episode/$episodeNumber')
         .replace(queryParameters: {
@@ -141,24 +143,23 @@ class TmdbService {
     });
     final resp = await _client.get(url).timeout(_timeout);
     if (resp.statusCode != 200) return null;
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    // Also get series overview
-    final series = await getTvDetail(seriesId, language: language);
+    final epData = jsonDecode(resp.body) as Map<String, dynamic>;
+    final series = seriesInfo ?? await getTvDetail(seriesId, language: language);
     return ScrapeResult(
       title: series?.title ?? '',
       originalTitle: series?.originalTitle,
       year: series?.year,
-      overview: data['overview'] as String? ?? series?.overview,
-      posterPath: data['still_path'] as String? ?? series?.posterPath,
+      overview: epData['overview'] as String? ?? series?.overview,
+      posterPath: epData['still_path'] as String? ?? series?.posterPath,
       backdropPath: series?.backdropPath,
-      rating: (data['vote_average'] as num?)?.toDouble() ?? series?.rating,
-      voteCount: data['vote_count'] as int? ?? series?.voteCount,
+      rating: (epData['vote_average'] as num?)?.toDouble() ?? series?.rating,
+      voteCount: epData['vote_count'] as int? ?? series?.voteCount,
       genres: series?.genres ?? [],
       type: ScrapeType.tv,
       tmdbId: seriesId,
       seasonNumber: seasonNumber,
       episodeNumber: episodeNumber,
-      episodeTitle: data['name'] as String?,
+      episodeTitle: epData['name'] as String?,
     );
   }
 

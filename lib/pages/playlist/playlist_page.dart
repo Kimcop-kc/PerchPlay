@@ -125,23 +125,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                           ),
                                           if (playlist.isAuto) ...[
                                             const SizedBox(width: 6),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 1),
-                                              decoration: BoxDecoration(
-                                                color: GlassTheme.accentPurple
-                                                    .withOpacity(0.12),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: const Text('自动',
-                                                  style: TextStyle(
-                                                      color: GlassTheme
-                                                          .accentPurple,
-                                                      fontSize: 10)),
-                                            ),
+                                            _autoBadge(playlist),
                                           ],
                                         ],
                                       ),
@@ -358,6 +342,63 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     if (name != null && name.isNotEmpty && mounted) {
       await ref.read(playlistProvider.notifier).createPlaylist(name);
     }
+  }
+
+  /// 自动列表的类型标签
+  Widget _autoBadge(Playlist list) {
+    if (list.id.startsWith('auto:series:')) {
+      return _badge('影视', GlassTheme.accentPurple);
+    }
+    if (list.id.startsWith('auto:fallback:')) {
+      return _badge('分组', const Color(0xFFF0A500));
+    }
+    // personal → 来源 emoji + 绿色小标
+    final emoji = _extractEmoji(list.name);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: GlassTheme.accentTeal.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (emoji.isNotEmpty) Text(emoji, style: const TextStyle(fontSize: 10)),
+          if (emoji.isNotEmpty) const SizedBox(width: 2),
+          const Text('个人',
+              style: TextStyle(color: GlassTheme.accentTeal, fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10)),
+    );
+  }
+
+  /// 从字符串开头取一个绘文字/图标（📷、✂️ 等）
+  String _extractEmoji(String s) {
+    if (s.isEmpty) return '';
+    final runes = s.runes.toList();
+    final first = runes.first;
+    // 常见 emoji 范围（大致覆盖）
+    if ((first >= 0x1F300 && first <= 0x1F9FF) ||
+        (first >= 0x2600 && first <= 0x27BF) ||
+        (first >= 0x2702 && first <= 0x27B0) ||
+        (first >= 0x1FA00 && first <= 0x1FA6F) ||
+        (first >= 0x1F600 && first <= 0x1F64F) ||
+        (first >= 0x1F680 && first <= 0x1F6FF) ||
+        (first >= 0x231A && first <= 0x23FF)) {
+      return String.fromCharCode(first);
+    }
+    return '';
   }
 
   String _fmtDuration(int ms) {

@@ -106,4 +106,53 @@ void main() {
       expect(info.seriesTitle, 'test video');
     });
   });
+
+  group('编号开头文件', () {
+    test('01 讲座 / 02 讲座 应提取相同剧名', () {
+      final a = MediaNamer.parse('/x/01 讲座.mp4');
+      final b = MediaNamer.parse('/x/02 讲座.mp4');
+      expect(a.isEpisode, isTrue);
+      expect(b.isEpisode, isTrue);
+      expect(a.seriesTitle, '讲座');
+      expect(b.seriesTitle, '讲座');
+      // 两个文件的系列名相同，应该能归组
+      expect(MediaGrouping.normalize(a.seriesTitle),
+          MediaGrouping.normalize(b.seriesTitle));
+    });
+
+    test('EP05 在开头仍能识别剧名', () {
+      final info = MediaNamer.parse('/x/EP05 - Great Show [1080p].mkv');
+      expect(info.isEpisode, isTrue);
+      expect(info.episode, 5);
+      expect(info.seriesTitle, contains('Great Show'));
+    });
+
+    test('[03] 在开头仍能识别剧名', () {
+      final info = MediaNamer.parse('/x/[03] 某动画.mp4');
+      expect(info.isEpisode, isTrue);
+      expect(info.episode, 3);
+      expect(info.seriesTitle, '某动画');
+    });
+
+    test('第02集 在开头仍能识别剧名', () {
+      final info = MediaNamer.parse('/x/第02集 讲座主题.mp4');
+      expect(info.isEpisode, isTrue);
+      expect(info.episode, 2);
+      expect(info.seriesTitle, '讲座主题');
+    });
+
+    test('S01E03 在开头仍能识别剧名', () {
+      final info = MediaNamer.parse('/x/S01E03 Show Name [1080p].mkv');
+      expect(info.season, 1);
+      expect(info.episode, 3);
+      expect(info.seriesTitle, 'Show Name');
+    });
+
+    test('1x05 在开头仍能识别剧名', () {
+      final info = MediaNamer.parse('/x/1x05 Series Name.mkv');
+      expect(info.season, 1);
+      expect(info.episode, 5);
+      expect(info.seriesTitle, 'Series Name');
+    });
+  });
 }

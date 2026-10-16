@@ -185,5 +185,23 @@ void main() {
       ]);
       expect(groups, isEmpty);
     });
+
+    test('编号开头文件 01 讲座 / 02 讲座 能归到同一组', () {
+      final groups = MediaGrouping.group([
+        '/m/01 讲座.mp4',
+        '/m/02 讲座.mp4',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.indices.length, 2);
+    });
+
+    test('EP05 - Show 和 EP06 - Show 能归到同一组', () {
+      final groups = MediaGrouping.group([
+        '/m/EP05 - Great Show.mkv',
+        '/m/EP06 - Great Show.mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Great Show');
+    });
   });
 }

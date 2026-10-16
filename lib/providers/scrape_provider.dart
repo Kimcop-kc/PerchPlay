@@ -93,12 +93,15 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   Future<void> _next() async {
     while (_queue.isNotEmpty) {
       final path = _queue.removeAt(0);
-      state = state.copyWith(queueLength: _queue.length);
+      state = state.copyWith(queueLength: _queue.length, error: null);
       try {
         final result = await ScrapeCacheService.instance.scrapeForVideo(path);
-        state = state.copyWith(
-          results: {...state.results, path: result},
-        );
+        if (result != null) {
+          state = state.copyWith(
+            results: {...state.results, path: result},
+          );
+        }
+        // null = 网络/TMDB 故障，不缓存；下次扫描重试
       } catch (e) {
         debugPrint('[Scrape] $path error: $e');
         state = state.copyWith(error: e.toString());
@@ -107,6 +110,7 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
       if (_queue.isNotEmpty) await Future<void>.delayed(const Duration(seconds: 1));
     }
     _processing = false;
+    ScrapeCacheService.instance.clearSeriesInfoCache();
   }
 
   /// 按系列名刮削（播放列表用）
@@ -148,14 +152,16 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   Future<void> _loadCache() async {
     try {
       final rows = await DatabaseService.instance.getAllScrapeCache();
-      final results = <String, ScrapeResult?>{};
+      final fromDb = <String, ScrapeResult?>{};
       for (final row in rows) {
         final path = row['video_path'] as String?;
         if (path != null && path.isNotEmpty) {
-          results[path] = ScrapeResult.fromRow(row);
+          fromDb[path] = ScrapeResult.fromRow(row);
         }
       }
-      state = state.copyWith(results: results);
+      // 合并：正在跑的 scrapeBatch 可能已产出结果，内存中的优先
+      fromDb.addAll(state.results);
+      state = state.copyWith(results: fromDb);
     } catch (e) {
       debugPrint('[Scrape] loadCache error: $e');
     }

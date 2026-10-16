@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:vidflow/models/scrape_result.dart';
 import 'package:vidflow/services/database_service.dart';
 import 'package:vidflow/services/media_namer_service.dart';
@@ -20,6 +19,9 @@ class ScrapeCacheService {
   TmdbService? _tmdb;
   String? _apiKey;
 
+  /// 临时内存缓存：同一系列只查一次 getTvDetail，避免 24 集多 23 次冗余请求
+  final Map<int, Future<ScrapeResult?>> _seriesInfoCache = {};
+
   /// 必须在 init 之后才能调用刮削
   void init({required String apiKey}) {
     _tmdb?.dispose();
@@ -32,7 +34,11 @@ class ScrapeCacheService {
     _tmdb?.dispose();
     _tmdb = null;
     _apiKey = null;
+    _seriesInfoCache.clear();
   }
+
+  /// 每批刮削完成后清理系列缓存
+  void clearSeriesInfoCache() => _seriesInfoCache.clear();
 
   bool get isReady => _apiKey != null && _apiKey!.isNotEmpty;
 
@@ -136,7 +142,9 @@ class ScrapeCacheService {
   Future<ScrapeResult?> _scrapeSeriesEpisode(
       String title, int? season, int? episode,
       {String? filePath}) async {
-    final key = title.trim().toLowerCase();
+    final s = season ?? 1;
+    final e = episode ?? 1;
+    final key = '${title.trim().toLowerCase()}|${s}x${e.toString().padLeft(2, '0')}';
 
     // 先搜整剧
     final results = await _tmdb!.searchTv(title);
@@ -144,12 +152,16 @@ class ScrapeCacheService {
 
     final series = results.first;
     final seriesId = series.tmdbId;
-    final s = season ?? 1;
-    final e = episode ?? 1;
+
+    // 同一系列只拉一次整剧详情（内存缓存）
+    final seriesFuture = _seriesInfoCache.putIfAbsent(
+        seriesId, () => _tmdb!.getTvDetail(seriesId));
+    final seriesDetail = await seriesFuture;
+    if (seriesDetail == null) return null;
 
     // 拉剧集详情
     final epDetail =
-        await _tmdb!.getEpisodeDetail(seriesId, s, e);
+        await _tmdb!.getEpisodeDetail(seriesId, s, e, seriesInfo: seriesDetail);
     if (epDetail != null) {
       final row = epDetail.toRow();
       row['search_key'] = key;
@@ -159,16 +171,13 @@ class ScrapeCacheService {
     }
 
     // 集详情拿不到，回退到整剧信息
-    final detail = await _tmdb!.getTvDetail(seriesId);
-    if (detail == null) return null;
-
-    final row = detail.toRow();
+    final row = seriesDetail.toRow();
     row['search_key'] = key;
     row['video_path'] = filePath;
     row['season_number'] = s;
     row['episode_number'] = e;
     await DatabaseService.instance.upsertScrapeCache(row);
 
-    return detail;
+    return seriesDetail;
   }
 }
