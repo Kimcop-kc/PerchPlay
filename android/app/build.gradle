@@ -23,6 +23,16 @@ if (flutterVersionName == null) {
     flutterVersionName = "1.0"
 }
 
+// 发布签名：有 android/key.properties 就用正式 keystore，
+// 否则回退到 debug 签名（保证别人 clone 下来也能直接构建）。
+// key.properties 与 *.jks 都已在 .gitignore 里，不会进仓库。
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+def hasReleaseKey = keystorePropertiesFile.exists()
+if (hasReleaseKey) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.perchplay.player"
     compileSdk = flutter.compileSdkVersion
@@ -42,9 +52,22 @@ android {
         versionName = flutterVersionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+                storeFile = file(keystoreProperties["storeFile"])
+                storePassword = keystoreProperties["storePassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig = hasReleaseKey
+                    ? signingConfigs.release
+                    : signingConfigs.debug
         }
     }
 }
