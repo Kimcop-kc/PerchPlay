@@ -17,11 +17,22 @@ class MediaNamer {
   MediaNamer._();
 
   /// 需要剔除的发布组/画质标签
+  ///
+  /// 中文标签**长词必须写在前面**：正则按顺序取第一个能匹配的分支，
+  /// 若 `未删减` 排在 `未删减版` 前面，就会只剩一个孤零零的「版」。
   static final _noise = RegExp(
+    // 英文/数字标签
     r'(2160p|1080p|720p|480p|4k|8k|uhd|hdr|dolby|dv|web-?dl|webrip|bluray|blu-ray|bdrip|'
     r'hdtv|remux|x264|x265|h\.?264|h\.?265|hevc|avc|10bit|8bit|aac|ac3|dts(-hd)?|truehd|'
-    r'atmos|flac|mp3|hq|hd|sd|repack|proper|internal|multi|dual|chs|cht|gb|big5|'
-    r'v2|国语|中字|双语|字幕组|高清|蓝光|完整版|未删减)',
+    r'atmos|flac|mp3|hq|hd|sd|repack|proper|internal|multi|dual|chs|cht|gb|big5|v2|'
+    // 中文：字幕 / 音轨 / 来源
+    r'官方中字|简繁中字|中文字幕|内嵌字幕|内封字幕|外挂字幕|硬字幕|软字幕|'
+    r'内嵌|内封|外挂|官方|官中|简中|繁中|简繁|简英|繁英|中英|中字|'
+    r'国粤|台配|国配|中配|国语|粤语|双语|字幕组|'
+    // 中文：画质 / 版本
+    r'蓝光原盘|导演剪辑版|未删减版|无删减版|完整版|加长版|修复版|重制版|重置版|抢先版|枪版|'
+    r'未删减|无删减|高清|超清|蓝光|原盘|'
+    r'手动选择|默认)',
     caseSensitive: false,
   );
 
@@ -144,6 +155,9 @@ class MediaNamer {
     return MediaInfo(
       isEpisode: episode != null,
       seriesTitle: title.isEmpty ? fileName : title,
+      // 完整清洗片名（不截断集数）：`流浪地球2` 这类片名自带数字的，
+      // 按电影兜底搜索时要用它，否则会把第 2 部搜成第 1 部
+      fullTitle: _cleanTitle(fileName),
       season: season,
       episode: episode,
       year: int.tryParse(_year.firstMatch(fileName)?.group(0) ?? ''),
@@ -261,6 +275,14 @@ class MediaNamer {
 class MediaInfo {
   final bool isEpisode;
   final String seriesTitle;
+
+  /// 完整清洗片名，**不截断集数**
+  ///
+  /// 用于「弱识别」兜底：`流浪地球2` 会被当成第 2 集、seriesTitle 变成「流浪地球」，
+  /// 万一剧集路径查不到而改按电影搜，必须用带数字的 `流浪地球2`，
+  /// 否则会搜到第 1 部、贴错海报。
+  final String fullTitle;
+
   final int? season;
   final int? episode;
   final int? year;
@@ -271,6 +293,7 @@ class MediaInfo {
   const MediaInfo({
     required this.isEpisode,
     required this.seriesTitle,
+    this.fullTitle = '',
     this.season,
     this.episode,
     this.year,

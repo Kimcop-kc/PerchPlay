@@ -58,12 +58,27 @@ class ScrapeCacheService {
     final cached = await DatabaseService.instance.getScrapeCacheByPath(filePath);
     if (cached != null) return ScrapeResult.fromRow(cached);
 
-    if (info.isEpisode) {
+    if (info.isEpisode && !info.weakEpisode) {
+      // 明确写了 S01E02：只走剧集，不做电影兜底，避免给剧集贴上无关电影的海报
       return _scrapeSeriesEpisode(title, info.season, info.episode,
           filePath: filePath);
-    } else {
-      return _scrapeMovie(title, info.year, filePath: filePath);
     }
+
+    if (info.isEpisode) {
+      // 弱识别：这个「集数」多半是片名自带的数字（《流浪地球2》《阿凡达2》）
+      final ep = await _scrapeSeriesEpisode(title, info.season, info.episode,
+          filePath: filePath);
+      if (ep != null) return ep;
+      // 剧集查不到 → 按电影再试一次，并且用**带数字的完整片名**，
+      // 否则《流浪地球2》会搜到第 1 部
+      final full = info.fullTitle.trim();
+      final asMovie = await _scrapeMovie(
+          full.isEmpty ? title : full, info.year,
+          filePath: filePath);
+      if (asMovie != null) return asMovie;
+    }
+
+    return _scrapeMovie(title, info.year, filePath: filePath);
   }
 
   /// 刮削一个剧集列表（用于播放列表页展示海报）
@@ -123,17 +138,31 @@ class ScrapeCacheService {
       {String? filePath}) async {
     final key = title.trim().toLowerCase();
 
-    final results = await _tmdb!.searchMovie(title, year: year);
+    // 依次降级尝试，避免「搜不到就永远没海报」：
+    //  1) 带年份搜电影（最精确）
+    //  2) 去掉年份再搜电影 —— TMDB 的 year 是**硬过滤**，
+    //     文件名里的年份写错/写成上映年以外的年份时，会把正确结果一起滤掉
+    //  3) 混合搜索 —— 片名其实是剧集/电视电影时 search/movie 永远查不到
+    var results = await _tmdb!.searchMovie(title, year: year);
+    if (results.isEmpty && year != null) {
+      results = await _tmdb!.searchMovie(title);
+    }
+    if (results.isEmpty) {
+      results = await _tmdb!.searchMulti(title);
+    }
     if (results.isEmpty) return null;
 
     final best = results.first;
-    final detail = await _tmdb!.getMovieDetail(best.tmdbId);
+    final detail = best.type == ScrapeType.tv
+        ? await _tmdb!.getTvDetail(best.tmdbId)
+        : await _tmdb!.getMovieDetail(best.tmdbId);
     if (detail == null) return null;
 
+    // 注意：不要写死 row['type']，让 toRow() 按实际命中的是电影还是剧集来写，
+    // 否则降级命中剧集时会往缓存里写错类型
     final row = detail.toRow();
     row['search_key'] = key;
     row['video_path'] = filePath;
-    row['type'] = 'movie';
     await DatabaseService.instance.upsertScrapeCache(row);
 
     return detail;
@@ -146,8 +175,13 @@ class ScrapeCacheService {
     final e = episode ?? 1;
     final key = '${title.trim().toLowerCase()}|${s}x${e.toString().padLeft(2, '0')}';
 
-    // 先搜整剧
-    final results = await _tmdb!.searchTv(title);
+    // 先搜整剧；搜不到就退到混合搜索（TMDB 里有的剧只有本地化/别名能命中）
+    var results = await _tmdb!.searchTv(title);
+    if (results.isEmpty) {
+      results = (await _tmdb!.searchMulti(title))
+          .where((r) => r.type == ScrapeType.tv)
+          .toList();
+    }
     if (results.isEmpty) return null;
 
     final series = results.first;

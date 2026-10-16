@@ -105,6 +105,44 @@ void main() {
       expect(info.isEpisode, isFalse);
       expect(info.seriesTitle, 'test video');
     });
+
+    test('中文压片/客户端标签应被剔除（内嵌官中_手动选择）', () {
+      // 真实反馈：这个片名清洗不干净 → TMDB 搜不到 → 电影"识别不了"
+      final info = MediaNamer.parse(
+          '/x/Heartstopper.Forever.2160p.内嵌官中_手动选择.mkv');
+      expect(info.isEpisode, isFalse);
+      expect(info.seriesTitle, 'Heartstopper Forever');
+    });
+
+    test('常见中文标签组合都要能清干净', () {
+      const cases = <String, String>{
+        'Heartstopper.Forever.2160p.内嵌官中': 'Heartstopper Forever',
+        'Heartstopper.Forever.2025.2160p.官方中字_默认': 'Heartstopper Forever',
+        'Some.Movie.2020.1080p.简繁中字.国粤双语': 'Some Movie',
+        'Some.Movie.2020.1080p.内封字幕.未删减版': 'Some Movie',
+        'Some.Movie.2020.1080p.蓝光原盘.台配国语': 'Some Movie',
+        'Some.Movie.2020.1080p.导演剪辑版.硬字幕': 'Some Movie',
+      };
+      cases.forEach((input, expected) {
+        final info = MediaNamer.parse('/x/$input.mkv');
+        expect(info.seriesTitle, expected, reason: input);
+      });
+    });
+
+    test('剔除标签不能把片名里的字吃掉', () {
+      // "中" 出现在片名里，不能被当标签删掉
+      final info = MediaNamer.parse('/x/中南海保镖.1994.1080p.国语中字.mkv');
+      expect(info.seriesTitle, contains('中南海保镖'));
+      expect(info.year, 1994);
+    });
+
+    test('fullTitle 保留片名自带数字（电影兜底搜索要用它）', () {
+      final info = MediaNamer.parse('/x/流浪地球2.2023.2160p.HDR.国语中字.mkv');
+      // 剧集路径用截断后的（弱识别成第 2 集）
+      expect(info.seriesTitle, '流浪地球');
+      // 电影兜底用带数字的完整片名，否则会搜到第 1 部、贴错海报
+      expect(info.fullTitle, '流浪地球2');
+    });
   });
 
   group('编号开头文件', () {
