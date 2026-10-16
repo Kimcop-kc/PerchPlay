@@ -2,8 +2,8 @@ name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
 version: 1.0.66+66
-homepage: https://github.com/Kimcop-kc/vidflow
-repository: https://github.com/Kimcop-kc/vidflow
+homepage: https://github.com/Kimcop-kc/PerchPlay
+repository: https://github.com/Kimcop-kc/PerchPlay
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

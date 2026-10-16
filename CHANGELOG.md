@@ -81,5 +81,5 @@
 
 ## 发布链接
 
-- GitHub Releases: https://github.com/Kimcop-kc/vidflow/releases
-- 问题跟踪: https://github.com/Kimcop-kc/vidflow/issues
+- GitHub Releases: https://github.com/Kimcop-kc/PerchPlay/releases
+- 问题跟踪: https://github.com/Kimcop-kc/PerchPlay/issues

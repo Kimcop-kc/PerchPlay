@@ -15,8 +15,8 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Kimcop-kc/vidflow.git
-cd vidflow
+git clone https://github.com/Kimcop-kc/PerchPlay.git
+cd PerchPlay
 
 # 2. 安装依赖
 flutter pub get
