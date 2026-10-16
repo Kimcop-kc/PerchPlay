@@ -12,12 +12,16 @@ import 'package:perchplay/models/scrape_result.dart';
 class TmdbService {
   final String apiKey;
   final String _base = 'https://api.tmdb.org/3';
-  final http.Client _client = http.Client();
+
+  /// 可注入的 HTTP client：测试时传入 MockClient，
+  /// 就能在不联网的前提下把 JSON → 模型的解析逻辑钉住
+  final http.Client _client;
 
   /// 超时 15s（TMDB 通常在 2-5s 内响应，15s 足够差网络）
   static const _timeout = Duration(seconds: 15);
 
-  TmdbService({required this.apiKey});
+  TmdbService({required this.apiKey, http.Client? client})
+      : _client = client ?? http.Client();
 
   void dispose() {
     _client.close();
