@@ -1,6 +1,7 @@
 // 文件名识别测试：自动分组（剧集列表 / 电影列表）全靠它，
 // 分类错了会直接把片子归错列表，这里把常见写法都钉住。
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vidflow/services/media_grouping_service.dart';
 import 'package:vidflow/services/media_namer_service.dart';
 
 void main() {
@@ -72,11 +73,24 @@ void main() {
       expect(info.year, 2014);
     });
 
-    test('中文片名带画质标签', () {
+    test('中文片名带数字：只算"弱猜测"，单独一个文件不成剧集', () {
       final info =
           MediaNamer.parse('/x/流浪地球2.2023.2160p.HDR.国语中字.mp4');
-      expect(info.isEpisode, isFalse);
-      expect(info.seriesTitle, '流浪地球2');
+      // `流浪地球2` 片名自带数字，会被弱识别成"第 2 集"（这是可接受的过渡态），
+      // 关键在于：弱识别必须靠同类聚集佐证才成列表，单独一个文件不成剧集。
+      expect(info.weakEpisode, isTrue);
+      expect(
+        MediaGrouping.group(['/x/流浪地球2.2023.2160p.HDR.国语中字.mp4']),
+        isEmpty,
+      );
+      // 但如果真的存在 流浪地球1 / 流浪地球2，就会被归成一个剧集列表
+      expect(
+        MediaGrouping.group([
+          '/x/流浪地球1.2023.1080p.mp4',
+          '/x/流浪地球2.2023.1080p.mp4',
+        ]).length,
+        1,
+      );
     });
 
     test('方括号发布组应被去掉', () {

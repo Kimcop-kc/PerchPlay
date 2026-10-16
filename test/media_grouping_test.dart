@@ -129,4 +129,61 @@ void main() {
       expect(MediaGrouping.group(['/m/test_video.mp4']), isEmpty);
     });
   });
+
+  group('前缀识别（不依赖某种命名习惯）', () {
+    test('巨人01 / 巨人02（编号紧贴，无分隔符）', () {
+      final groups = MediaGrouping.group([
+        '/m/进击的巨人01.mp4',
+        '/m/进击的巨人02.mp4',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, '进击的巨人');
+      expect(groups.first.indices, [0, 1]);
+    });
+
+    test('Show01 / Show02', () {
+      final groups = MediaGrouping.group([
+        '/m/Show01.mkv',
+        '/m/Show02.mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Show');
+    });
+
+    test('中文数字：第一集 / 第二集 / 第三集', () {
+      final groups = MediaGrouping.group([
+        '/m/庆余年 第三集.mp4',
+        '/m/庆余年 第一集.mp4',
+        '/m/庆余年 第二集.mp4',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, '庆余年');
+      expect(groups.first.indices, [1, 2, 0]);
+    });
+
+    test('前缀里的季标记不会污染列表名', () {
+      final groups = MediaGrouping.group([
+        '/m/Show.S01E01.mkv',
+        '/m/Show.S02E01.mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Show');
+    });
+
+    test('发布组前缀被清掉：[Group] Show - 01 / 02', () {
+      final groups = MediaGrouping.group([
+        '/m/[Group] Show - 01 [1080p].mkv',
+        '/m/[Group] Show - 02 [1080p].mkv',
+      ]);
+      expect(groups.length, 1);
+      expect(groups.first.name, 'Show');
+    });
+
+    test('片名带年份的电影不会因前缀相同而被当剧集', () {
+      final groups = MediaGrouping.group([
+        '/m/Liuliang.Earth.2.2023.2160p.HDR.mp4',
+      ]);
+      expect(groups, isEmpty);
+    });
+  });
 }

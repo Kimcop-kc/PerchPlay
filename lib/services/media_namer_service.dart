@@ -1,113 +1,137 @@
 import 'package:path/path.dart' as p;
 
-/// 从文件名 / 所在文件夹识别「剧集」与「电影」
+/// 从**文件名前缀**识别剧名与集数
 ///
-/// 识别分三档，越往后越弱：
-///  1. **明确标记**：S01E02 / 1x02 / 第2集 / EP02 / [02] —— 可信
-///  2. **末尾序号**：`Show - 02`、`Show.02.1080p`、`02.mkv` —— 需要配合
-///     文件夹或同类聚集才能确认（见 [MediaGrouping]），单文件时按电影处理
-///  3. 无 —— 电影
+/// 思路（通用规则，不依赖某一种命名习惯）：
+///  1. 找到文件名里第一个「编号或季集标记」出现的位置；
+///  2. 这个位置**之前**的部分就是剧名（= 用户说的"文件名前几个字符"）；
+///  3. 标记本身给出季/集；标记之前什么都没有（如 `01.mp4`）→ 没有剧名，不参与分组。
+///
+/// 标记分强弱两档：
+///  - **强**：`S01E02`、`1x02`、`第1季第3集`、`第02集`、`第一集`、`EP05`、`[02]`、`Show.S01.01`
+///  - **弱**：文件名里第一个 1~3 位数字（`Show - 01`、`Show.02`、`巨人01`、`Show01`）
+///    弱识别需要「同类聚集」佐证（见 [MediaGrouping]），单文件不单独成列表。
+///
+/// 4 位数字（年份 1999/2023）与括号里的内容（[1080p]）不参与判断。
 class MediaNamer {
   MediaNamer._();
 
-  /// 常见需要剔除的发布组/画质标签
+  /// 需要剔除的发布组/画质标签
   static final _noise = RegExp(
     r'(2160p|1080p|720p|480p|4k|8k|uhd|hdr|dolby|dv|web-?dl|webrip|bluray|blu-ray|bdrip|'
     r'hdtv|remux|x264|x265|h\.?264|h\.?265|hevc|avc|10bit|8bit|aac|ac3|dts(-hd)?|truehd|'
     r'atmos|flac|mp3|hq|hd|sd|repack|proper|internal|multi|dual|chs|cht|gb|big5|'
-    r'国语|中字|双语|字幕组|高清|蓝光|完整版|未删减)',
+    r'v2|国语|中字|双语|字幕组|高清|蓝光|完整版|未删减)',
     caseSensitive: false,
   );
 
+  /// 括号内容（发布组 / 画质标签）
+  static final _bracket = RegExp(r'[\[\(\{][^\]\)\}]*[\]\)\}]');
+
+  /// 中文数字
+  static const _cnDigits = {
+    '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
+    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+  };
+  static const _numChar = r'0-9一二三四五六七八九十百';
+
   /// 季集：S01E02 / s1e2 / S01.E02 / S01 E02 / S01-E02
-  static final _seasonEpisode = RegExp(
-    r'[Ss](\d{1,2})[\s._-]*[Ee][Pp]?[\s._-]?(\d{1,3})',
-  );
+  static final _seasonEpisode =
+      RegExp(r'[Ss](\d{1,2})[\s._-]*[Ee][Pp]?[\s._-]?(\d{1,3})');
   /// 1x02
   static final _xFormat = RegExp(r'(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)');
-  /// 第1季第2集 / 第1季 第2话
+  /// 第1季第2集
   static final _cnSeasonEpisode =
-      RegExp(r'第\s*(\d{1,2})\s*季.*?第\s*(\d{1,3})\s*[集话話期]');
-  /// 第02集 / 第2话 / 第3期
-  static final _cnEpisode = RegExp(r'第\s*(\d{1,3})\s*[集话話期]');
-  /// EP02 / E02 / Ep.02（要求前后是分隔符或边界）
+      RegExp('第\\s*([$_numChar]{1,4})\\s*季.*?第\\s*([$_numChar]{1,4})\\s*[集话話期]');
+  /// 第02集 / 第2话 / 第三期 / 第一集
+  static final _cnEpisode = RegExp('第\\s*([$_numChar]{1,4})\\s*[集话話期]');
+  /// EP02 / E02 / Ep.02
   static final _epPrefix =
       RegExp(r'(?:^|[\s._\-\[\(])[Ee][Pp]?[\s._-]?(\d{1,3})(?!\d)');
   /// [02] / (02) / [02v2]
   static final _bracketNum = RegExp(r'[\[\(]\s*(\d{1,3})(?:v\d+)?\s*[\]\)]');
   /// 第1季（只有季）
-  static final _cnSeasonOnly = RegExp(r'第\s*(\d{1,2})\s*季');
-  /// 单独的 S01 段（`Show.S01.01` 这种季集分开写的写法）
+  static final _cnSeasonOnly = RegExp('第\\s*([$_numChar]{1,3})\\s*季');
+  /// 单独的 S01 段（`Show.S01.01`）
   static final _seasonToken = RegExp(r'(?:^|[\s._\-])[Ss](\d{1,2})(?![\dEePp])');
   /// 年份
   static final _year = RegExp(r'(?:19|20)\d{2}');
 
-  /// 文件名解析结果
-  ///
-  /// 用于「末尾序号」这类弱识别：清洗后最后一个 token 是 1~3 位数字
-  /// （可带 v2 之类的版本后缀），例如：
-  ///   `Show - 02 [1080p]` → 2
-  ///   `Show.02.1080p.WEB-DL` → 2
-  ///   `02.mkv` → 2
-  /// 4 位数字（年份）不算，`Se7en` 这种嵌在单词里的也不算。
+  /// 解析文件名
   static MediaInfo parse(String filePath) {
     final fileName = p.basenameWithoutExtension(filePath);
-    var work = fileName;
 
     int? season;
     int? episode;
     var weak = false;
+    int? splitAt; // 前缀截断位置：剧名 = fileName[0..splitAt]
 
-    // ── 1) 明确标记 ──
-    final se = _seasonEpisode.firstMatch(work);
+    // ── 1) 强标记 ──
+    final se = _seasonEpisode.firstMatch(fileName);
+    final x = se == null ? _xFormat.firstMatch(fileName) : null;
+    final cn =
+        (se == null && x == null) ? _cnSeasonEpisode.firstMatch(fileName) : null;
+    final cnEp = (se == null && x == null && cn == null)
+        ? _cnEpisode.firstMatch(fileName)
+        : null;
+    final epPre = (se == null && x == null && cn == null && cnEp == null)
+        ? _epPrefix.firstMatch(fileName)
+        : null;
+    final br = (se == null && x == null && cn == null && cnEp == null && epPre == null)
+        ? _bracketNum.firstMatch(fileName)
+        : null;
+
     if (se != null) {
-      season = int.tryParse(se.group(1)!);
-      episode = int.tryParse(se.group(2)!);
+      season = _num(se.group(1));
+      episode = _num(se.group(2));
+      splitAt = se.start;
+    } else if (x != null) {
+      season = _num(x.group(1));
+      episode = _num(x.group(2));
+      splitAt = x.start;
+    } else if (cn != null) {
+      season = _num(cn.group(1));
+      episode = _num(cn.group(2));
+      splitAt = cn.start;
     } else {
-      final x = _xFormat.firstMatch(work);
-      if (x != null) {
-        season = int.tryParse(x.group(1)!);
-        episode = int.tryParse(x.group(2)!);
-      } else {
-        final cn = _cnSeasonEpisode.firstMatch(work);
-        if (cn != null) {
-          season = int.tryParse(cn.group(1)!);
-          episode = int.tryParse(cn.group(2)!);
-        } else {
-          final ep = _cnEpisode.firstMatch(work) ??
-              _epPrefix.firstMatch(work) ??
-              _bracketNum.firstMatch(work);
-          if (ep != null) episode = int.tryParse(ep.group(1)!);
-          final s = _cnSeasonOnly.firstMatch(work) ??
-              _seasonToken.firstMatch(work);
-          if (s != null) season = int.tryParse(s.group(1)!);
-        }
+      final m = cnEp ?? epPre ?? br;
+      if (m != null) {
+        episode = _num(m.group(1));
+        // 季可能单独出现，且可能写在集之前（`Show 第1季 第02集`）
+        final s = _cnSeasonOnly.firstMatch(fileName) ??
+            _seasonToken.firstMatch(fileName);
+        if (s != null) season = _num(s.group(1));
+        splitAt = (s != null && s.start < m.start) ? s.start : m.start;
       }
     }
 
-    // 标题：去掉标记与噪声标签
-    var title = _cleanTitle(
-      work
-          .replaceAll(_seasonEpisode, ' ')
-          .replaceAll(_xFormat, ' ')
-          .replaceAll(_cnSeasonEpisode, ' ')
-          .replaceAll(_cnEpisode, ' ')
-          .replaceAll(_epPrefix, ' ')
-          .replaceAll(_bracketNum, ' ')
-          .replaceAll(_cnSeasonOnly, ' ')
-          .replaceAll(_seasonToken, ' '),
-    );
-
-    // ── 2) 末尾序号（弱识别）──
+    // ── 2) 只有季标记（`Show.S01.01`、`Show 第1季 01`）──
+    // 季标记后面的编号就是集数；此时算明确识别，不要求聚集
     if (episode == null) {
-      final weakHit = _weakEpisode(work);
-      if (weakHit != null) {
-        episode = weakHit.$1;
-        weak = true;
-        final cleaned = _cleanTitle(weakHit.$2);
-        if (cleaned.isNotEmpty) title = cleaned;
+      final s = _cnSeasonOnly.firstMatch(fileName) ??
+          _seasonToken.firstMatch(fileName);
+      if (s != null) {
+        season = _num(s.group(1));
+        splitAt = s.start;
+        final cut = _firstNumber(fileName.substring(s.end));
+        if (cut != null) episode = cut.$2;
       }
     }
+
+    // ── 3) 弱标记：文件名里第一个 1~3 位数字 ──
+    if (episode == null) {
+      final cut = _firstNumber(fileName);
+      if (cut != null) {
+        episode = cut.$2;
+        weak = true;
+        splitAt = cut.$1;
+      }
+    }
+
+    // ── 4) 前缀即剧名 ──
+    final prefix = splitAt != null ? fileName.substring(0, splitAt) : fileName;
+    var title = _cleanTitle(prefix);
+    if (title.isEmpty && splitAt != null) title = _cleanTitle(fileName);
 
     return MediaInfo(
       isEpisode: episode != null,
@@ -119,14 +143,59 @@ class MediaNamer {
     );
   }
 
-  /// 清洗标题：去噪标签、年份、发布组、括号内容、分隔符
+  /// 找第一个 1~3 位数字，返回 (下标, 数值)；跳过括号内容、噪标签与 4 位以上数字。
+  ///
+  /// 噪标签必须先掩掉，否则 `x264`、`1080p` 里的数字会被当成集数。
+  static (int, int)? _firstNumber(String raw) {
+    // 括号内容与噪标签替换成**等长空格**，保证下标仍能对上原串
+    var masked =
+        raw.replaceAllMapped(_bracket, (m) => ' ' * m.group(0)!.length);
+    masked =
+        masked.replaceAllMapped(_noise, (m) => ' ' * m.group(0)!.length);
+    for (final m in RegExp(r'\d+').allMatches(masked)) {
+      final text = m.group(0)!;
+      if (text.length > 3) continue; // 年份/分辨率之类
+      final v = int.tryParse(text);
+      if (v == null || v <= 0) continue;
+      // 注意：`流浪地球2`、`Se7en` 这种数字夹在标题里也会命中，
+      // 但这是**弱**识别 —— MediaGrouping 要求同类聚集才成列表，
+      // 所以单个文件不会因此被当成剧集。
+      return (m.start, v);
+    }
+    return null;
+  }
+
+  /// 中文/阿拉伯数字统一转 int
+  static int? _num(String? s) {
+    if (s == null) return null;
+    if (RegExp(r'^\d+$').hasMatch(s)) return int.tryParse(s);
+    if (s == '十') return 10;
+    final m = RegExp(r'^([一二三四五六七八九])?十([一二三四五六七八九])?$').firstMatch(s);
+    if (m != null) {
+      final tens = m.group(1);
+      final ones = m.group(2);
+      return (tens == null ? 1 : _cnDigits[tens]!) * 10 +
+          (ones == null ? 0 : _cnDigits[ones]!);
+    }
+    if (s.length == 1) return _cnDigits[s];
+    // 二十以后的多字（如 二三 这种畸形写法）取能识别的部分
+    var value = 0;
+    for (final ch in s.split('')) {
+      final d = _cnDigits[ch];
+      if (d == null) continue;
+      value = value * 10 + d;
+    }
+    return value == 0 ? null : value;
+  }
+
+  /// 清洗剧名：去括号、噪标签、年份、发布组、分隔符
   static String _cleanTitle(String raw) {
     var s = raw;
-    s = s.replaceAll(RegExp(r'[\[\(\{][^\]\)\}]*[\]\)\}]'), ' ');
+    s = s.replaceAll(_bracket, ' ');
     s = s.replaceAll(_noise, ' ');
-    // 单独的季标记段（`Show.S01.01` → 去掉 S01），否则会残留在列表名里
     s = s.replaceAll(_seasonToken, ' ');
-    // 年份：只去掉作为独立词出现的 4 位年份（1990-2099）
+    s = s.replaceAll(_cnSeasonOnly, ' ');
+    // 独立出现的 4 位年份
     s = s.replaceAll(
         RegExp(r'(?:^|[\s._\-\[\(])(?:19|20)\d{2}(?=$|[\s._\-\]\)])'), ' ');
     // 结尾发布组：场景惯例是 -全大写
@@ -139,39 +208,6 @@ class MediaNamer {
     }
     return s;
   }
-
-  /// 弱识别：清洗后的**最后一个有意义 token** 是 1~3 位数字时，
-  /// 认为它是集数，返回 (集数, 它前面的标题部分)；否则 null。
-  ///
-  /// 只认最后一个 token，是为了避开
-  /// `Liuliang.Earth.2.2023.2160p.HDR` 这种片名里夹着数字、
-  /// 后面还跟着年份/画质标签的情况（那里最后一个有意义 token 是 2023，
-  /// 4 位 → 不是集数，判定为电影）。
-  static (int, String)? _weakEpisode(String raw) {
-    // 括号里的内容（[1080p]、(v2)…）先清掉，它们不参与判断
-    final noBrackets =
-        raw.replaceAll(RegExp(r'[\[\(\{][^\]\)\}]*[\]\)\}]'), ' ');
-    final tokens = noBrackets
-        .split(RegExp(r'[\s._\-–—]+'))
-        .where((t) => t.isNotEmpty)
-        .toList();
-    if (tokens.isEmpty) return null;
-
-    // 从后往前跳过纯噪声 token（1080p / WEB-DL / x265…）
-    var i = tokens.length - 1;
-    while (i >= 0 &&
-        tokens[i].replaceAll(_noise, '').trim().isEmpty) {
-      i--;
-    }
-    if (i < 0) return null;
-
-    final m = RegExp(r'^(\d{1,3})(?:v\d+)?$').firstMatch(tokens[i]);
-    if (m == null) return null;
-    final ep = int.tryParse(m.group(1)!);
-    if (ep == null || ep <= 0) return null;
-
-    return (ep, tokens.sublist(0, i).join(' '));
-  }
 }
 
 /// 识别结果
@@ -182,7 +218,7 @@ class MediaInfo {
   final int? episode;
   final int? year;
 
-  /// 集数是否来自「末尾序号」这类弱识别（未确认前不应单独成列表）
+  /// 集数是否来自「第一个数字」这类弱识别（未聚集佐证前不应单独成列表）
   final bool weakEpisode;
 
   const MediaInfo({
