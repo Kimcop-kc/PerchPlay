@@ -16,6 +16,7 @@ class AppSettingsService {
   static const _kAllFilesPrompted = 'settings.allFilesPrompted';
   static const _kGlassBlur = 'settings.glassBlur';
   static const _kGlassBlurV2 = 'settings.glassBlurV2';
+  static const _kTmdbApiKey = 'settings.tmdbApiKey';
 
   double _defaultSpeed = 1.0;
   int _skipSeconds = 10;
@@ -43,6 +44,13 @@ class AppSettingsService {
   /// 低端机可以在设置里关掉以省电/防发热。
   bool _glassBlur = true;
   bool get glassBlur => _glassBlur;
+
+  /// TMDB API Key（用于刮削电影/电视剧海报与元数据）
+  ///
+  /// 留空 = 不启用刮削。去 https://www.themoviedb.org/settings/api
+  /// 免费注册即可拿到 key。
+  String _tmdbApiKey = '';
+  String get tmdbApiKey => _tmdbApiKey;
 
   /// 用户手动删掉的「自动列表」id
   ///
@@ -126,6 +134,7 @@ class AppSettingsService {
           (prefs.getStringList(_kAutoAdded) ?? const <String>[]).toSet();
       _autoRemoved =
           (prefs.getStringList(_kAutoRemoved) ?? const <String>[]).toSet();
+      _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -204,6 +213,14 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kGlassBlurV2, value);
+    } catch (_) {}
+  }
+
+  Future<void> setTmdbApiKey(String value) async {
+    _tmdbApiKey = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTmdbApiKey, value);
     } catch (_) {}
   }
 }

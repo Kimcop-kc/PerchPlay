@@ -1,7 +1,7 @@
 name: vidflow
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.52+52
+version: 1.0.53+53
 homepage: https://github.com/Kimcop-kc/vidflow
 repository: https://github.com/Kimcop-kc/vidflow
 
@@ -48,6 +48,10 @@ dependencies:
   uuid: 4.5.1
   # Flutter 3.22 的 flutter_test 将 collection 锁定为 1.18.0，这里不能超过它
   collection: ^1.18.0
+  # TMDB 刮削 & 海报缓存
+  http: ^1.2.0
+  cached_network_image: ^3.4.0
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:

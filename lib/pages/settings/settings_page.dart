@@ -10,6 +10,8 @@ import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_settings_provider.dart';
+import '../../providers/scrape_provider.dart';
+import '../../services/scrape_cache_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -58,6 +60,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 24),
                     _sectionHeader('界面'),
                     _buildUISettings(),
+                    const SizedBox(height: 24),
+                    _sectionHeader('刮削 (TMDB)'),
+                    _buildScrapeSettings(),
                     const SizedBox(height: 24),
                     if (device.brand.isChineseBrand)
                       _buildChineseRomOptimization(context, device),
@@ -382,6 +387,119 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildScrapeSettings() {
+    final apiKey = _settings.tmdbApiKey;
+    final isEnabled = apiKey.isNotEmpty;
+    return GlassCard(
+      radius: GlassTheme.radiusMd,
+      tint: const Color(0x1400D474),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.movie_filter_rounded,
+                  color: GlassTheme.accentTeal, size: 20),
+              const SizedBox(width: 8),
+              const Text('TMDB 刮削',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              if (isEnabled)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: GlassTheme.accentTeal.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+                  ),
+                  child: const Text('已启用',
+                      style: TextStyle(
+                          color: GlassTheme.accentTeal,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+                  ),
+                  child: const Text('未启用',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary,
+                          fontSize: 11)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '扫描视频后自动匹配 TMDB 海报、简介、评分。\n'
+            '去 themoviedb.org 免费注册即可拿 API Key。',
+            style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: TextEditingController(text: apiKey),
+                  obscureText: true,
+                  obscuringCharacter: '\u2022',
+                  style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: isEnabled ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '粘贴 TMDB API Key (v3 auth)',
+                    hintStyle: const TextStyle(fontSize: 12, color: GlassTheme.textTertiary),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+                      borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+                      borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+                      borderSide: const BorderSide(color: GlassTheme.accentTeal),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.5),
+                  ),
+                  onChanged: (v) {
+                    _settings.setTmdbApiKey(v.trim());
+                    if (v.trim().isNotEmpty) {
+                      ScrapeCacheService.instance.init(apiKey: v.trim());
+                      ref.read(scrapeProvider.notifier).enable(v.trim());
+                    } else {
+                      ref.read(scrapeProvider.notifier).disable();
+                    }
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ),
+              if (apiKey.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                GlassButton.outlined(
+                  label: '清除',
+                  height: 36,
+                  foregroundColor: GlassTheme.accentPink,
+                  onTap: () {
+                    _settings.setTmdbApiKey('');
+                    ref.read(scrapeProvider.notifier).disable();
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 

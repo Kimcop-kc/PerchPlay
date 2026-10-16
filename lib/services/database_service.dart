@@ -20,7 +20,7 @@ class DatabaseService {
     final path = join(dbPath, 'vidflow.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -69,6 +69,31 @@ class DatabaseService {
         FOREIGN KEY (videoId) REFERENCES videos(id)
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE scrape_cache (
+        search_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        original_title TEXT,
+        year INTEGER,
+        overview TEXT,
+        poster_path TEXT,
+        backdrop_path TEXT,
+        rating REAL,
+        vote_count INTEGER,
+        genres TEXT NOT NULL DEFAULT '[]',
+        type TEXT NOT NULL,
+        tmdb_id INTEGER NOT NULL,
+        season_number INTEGER,
+        episode_number INTEGER,
+        episode_title TEXT,
+        cached_at TEXT NOT NULL,
+        video_path TEXT,
+        PRIMARY KEY (search_key, type)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_scrape_cache_vpath ON scrape_cache (video_path)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -81,6 +106,35 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE playlists ADD COLUMN isAuto INTEGER DEFAULT 0');
+      } catch (_) {}
+    }
+    if (oldVersion < 4) {
+      // v4: 刮削缓存表（TMDB 海报/元数据离线可用）
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS scrape_cache (
+            search_key TEXT NOT NULL,
+            title TEXT NOT NULL,
+            original_title TEXT,
+            year INTEGER,
+            overview TEXT,
+            poster_path TEXT,
+            backdrop_path TEXT,
+            rating REAL,
+            vote_count INTEGER,
+            genres TEXT NOT NULL DEFAULT '[]',
+            type TEXT NOT NULL,
+            tmdb_id INTEGER NOT NULL,
+            season_number INTEGER,
+            episode_number INTEGER,
+            episode_title TEXT,
+            cached_at TEXT NOT NULL,
+            video_path TEXT,
+            PRIMARY KEY (search_key, type)
+          )
+        ''');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_scrape_cache_vpath ON scrape_cache (video_path)');
       } catch (_) {}
     }
   }
@@ -288,5 +342,43 @@ class DatabaseService {
       batch.delete('videos', where: 'id = ?', whereArgs: [id]);
     }
     await batch.commit(noResult: true);
+  }
+
+  // ---------- 刮削缓存 ----------
+
+  Future<void> upsertScrapeCache(Map<String, dynamic> row) async {
+    final db = await database;
+    await db.insert('scrape_cache', row,
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<Map<String, dynamic>?> getScrapeCache(String searchKey, String type) async {
+    final db = await database;
+    final rows = await db.query('scrape_cache',
+        where: 'search_key = ? AND type = ?',
+        whereArgs: [searchKey, type],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<Map<String, dynamic>?> getScrapeCacheByPath(String videoPath) async {
+    final db = await database;
+    final rows = await db.query('scrape_cache',
+        where: 'video_path = ?',
+        whereArgs: [videoPath],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllScrapeCache() async {
+    final db = await database;
+    return db.query('scrape_cache', orderBy: 'cached_at DESC');
+  }
+
+  Future<void> deleteScrapeCache(String searchKey, String type) async {
+    final db = await database;
+    await db.delete('scrape_cache',
+        where: 'search_key = ? AND type = ?',
+        whereArgs: [searchKey, type]);
   }
 }
