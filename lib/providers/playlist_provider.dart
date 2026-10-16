@@ -111,9 +111,11 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
       for (final g in allGroups) {
         final kind = g.isSeries
             ? 'series'
-            : g.isFallback
-                ? 'fallback'
-                : 'personal';
+            : g.isMovie
+                ? 'movie'
+                : g.isFallback
+                    ? 'fallback'
+                    : 'personal';
         final id = 'auto:$kind:${MediaGrouping.normalize(g.name)}';
         if (AppSettingsService.instance.isAutoPlaylistHidden(id)) continue;
 

@@ -32,12 +32,14 @@ class SourceGroup {
   final List<int> indices;
   final bool isSeries;   // true=影视剧集，false=个人视频
   final bool isFallback; // true=按前缀兜底分组
+  final bool isMovie;    // true=「电影」集合（影视文件里没归成剧集/前缀的那些）
 
   const SourceGroup({
     required this.name,
     required this.indices,
     this.isSeries = false,
     this.isFallback = false,
+    this.isMovie = false,
   });
 }
 
@@ -268,17 +270,37 @@ class VideoSourceService {
 
     if (remainingMedia.isNotEmpty) {
       final fallback = _groupByPrefix(paths, remainingMedia, minSize: 2);
+      final usedInFallback = <int>{};
       for (final f in fallback) {
+        usedInFallback.addAll(f.indices);
         groups.add(SourceGroup(
           name: '📂 ${f.name}',
           indices: f.indices,
           isFallback: true,
         ));
       }
+
+      // ── 4) 还是没归组的影视文件 → 统一进「电影」集合 ──
+      // 单部电影（`Heartstopper.Forever.2160p.内嵌官中.mkv`）既不是剧集、
+      // 前缀又凑不满 2 个，以前会**任何列表都不进**，用户在播放列表里看不到它。
+      final leftovers = <int>[
+        for (final mi in remainingMedia)
+          if (!usedInFallback.contains(mi)) mi,
+      ];
+      if (leftovers.isNotEmpty) {
+        groups.add(SourceGroup(
+          name: movieGroupName,
+          indices: leftovers,
+          isMovie: true,
+        ));
+      }
     }
 
     return groups;
   }
+
+  /// 「电影」集合的固定列表名（参与生成列表 id，改名等于换一个列表，慎改）
+  static const movieGroupName = '🎬 电影';
 
   // ═══════════════════════════════════════════════════════════════
   // 标签

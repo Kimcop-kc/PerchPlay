@@ -166,6 +166,61 @@ void main() {
       expect(groups.where((g) => g.name == 'random'), isEmpty);
     });
 
+    test('单部电影会进「电影」集合（以前任何列表都不进）', () {
+      final groups = VideoSourceService.groupAll([
+        '/sdcard/Movies/Heartstopper.Forever.2160p.内嵌官中_手动选择.mkv',
+      ]);
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.name, VideoSourceService.movieGroupName);
+      expect(movie.first.indices, [0]);
+      // 不能同时被当成剧集或前缀兜底
+      expect(groups.where((g) => g.isSeries), isEmpty);
+      expect(groups.where((g) => g.isFallback), isEmpty);
+    });
+
+    test('多部无共同前缀的电影合并进同一个「电影」集合', () {
+      final groups = VideoSourceService.groupAll([
+        '/sdcard/Movies/Heartstopper.Forever.2160p.mkv',
+        '/sdcard/Movies/Interstellar.2014.1080p.BluRay.mkv',
+        '/sdcard/Download/流浪地球2.2023.2160p.mkv',
+      ]);
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.indices.length, 3);
+    });
+
+    test('已识别的剧集不会被「电影」集合吞掉', () {
+      final groups = VideoSourceService.groupAll([
+        '/sdcard/MyVideos/Show.S01E01.1080p.mkv',
+        '/sdcard/MyVideos/Show.S01E02.1080p.mkv',
+        '/sdcard/Movies/Lone.Movie.2020.1080p.mkv',
+      ]);
+      final series = groups.where((g) => g.isSeries).toList();
+      expect(series.length, 1);
+      expect(series.first.indices, [0, 1]);
+      // 只有那部孤立电影进「电影」
+      final movie = groups.where((g) => g.isMovie).toList();
+      expect(movie.length, 1);
+      expect(movie.first.indices, [2]);
+    });
+
+    test('前缀兜底成功的文件不再重复进「电影」', () {
+      final groups = VideoSourceService.groupAll([
+        '/sdcard/MyVideos/tutorial-python.mp4',
+        '/sdcard/MyVideos/tutorial-dart.mp4',
+      ]);
+      expect(groups.where((g) => g.isFallback).length, 1);
+      expect(groups.where((g) => g.isMovie), isEmpty);
+    });
+
+    test('个人来源视频不会进「电影」集合', () {
+      final groups = VideoSourceService.groupAll([
+        '/sdcard/DCIM/Camera/VID_20250101_120000.mp4',
+      ]);
+      expect(groups.where((g) => g.isMovie), isEmpty);
+    });
+
     test('无编号的下载目录视频也能按前缀兜底', () {
       final groups = VideoSourceService.groupAll([
         '/sdcard/Download/lv-我的vlog.mp4',

@@ -349,6 +349,9 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     if (list.id.startsWith('auto:series:')) {
       return _badge('影视', GlassTheme.accentPurple);
     }
+    if (list.id.startsWith('auto:movie:')) {
+      return _badge('电影', GlassTheme.accentPurple);
+    }
     if (list.id.startsWith('auto:fallback:')) {
       return _badge('分组', const Color(0xFFF0A500));
     }
