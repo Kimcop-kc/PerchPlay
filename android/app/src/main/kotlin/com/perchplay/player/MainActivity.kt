@@ -1,4 +1,4 @@
-package com.vidflow.player
+package com.perchplay.player
 
 import android.content.Context
 import android.content.Intent
