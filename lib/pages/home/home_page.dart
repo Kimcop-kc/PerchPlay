@@ -751,22 +751,33 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   /// 本地缩略图（没有刮削海报时用）
-  Widget _localThumb(VideoModel video) {
-    if (video.thumbnailPath.isEmpty) {
-      return Container(
+  /// 本地缩略图占位
+  ///
+  /// 注意：缩略图文件是生成在系统缓存目录里的，系统清缓存后会失效，
+  /// 但数据库里的路径还在。这时如果直接 Image.file，只会渲染成**一片空白**，
+  /// 表现就是"没刮到海报的卡片什么都不显示"。所以这里必须：
+  ///   1. 先判断文件是否真的还在
+  ///   2. 给 Image.file 加 errorBuilder 兜底
+  Widget _thumbPlaceholder() => Container(
         color: Colors.black.withOpacity(0.08),
         child: const Center(
           child: Icon(Icons.movie_rounded,
               color: GlassTheme.textTertiary, size: 40),
         ),
       );
+
+  Widget _localThumb(VideoModel video) {
+    final path = video.thumbnailPath;
+    if (path.isEmpty || !File(path).existsSync()) {
+      return _thumbPlaceholder();
     }
     return Image.file(
-      File(video.thumbnailPath),
+      File(path),
       fit: BoxFit.cover,
       // 明确解码尺寸：缩略图按原分辨率解码会占大量内存并掉帧
       cacheWidth: 480,
       gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => _thumbPlaceholder(),
     );
   }
 
