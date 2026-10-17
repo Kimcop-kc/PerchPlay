@@ -149,6 +149,14 @@ class AiModelCatalog {
                 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
                 'resolve/main/tokens.txt',
           },
+          fileSha256s: <String, String>{
+            'encoder-epoch-99-avg-1.int8.onnx':
+                '8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b',
+            'decoder-epoch-99-avg-1.int8.onnx':
+                '1a70c593d71e53f023f5f55b0b4cfff5055abb786ee3992e5f63dc2e273cc4fa',
+            'joiner-epoch-99-avg-1.int8.onnx':
+                '1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0',
+          },
         ),
       ],
       notes: '80MB 的低延迟流式方案，中英混说也跟得住，低端机优先选它',
@@ -183,6 +191,10 @@ class AiModelCatalog {
                 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
                 'resolve/main/tokens.txt',
           },
+          fileSha256s: <String, String>{
+            'model.int8.onnx':
+                'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
+          },
         ),
       ],
       notes: '自带标点与语种判断，中日韩英粤一把抓，是默认首选的那一档',
@@ -204,8 +216,10 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-paraformer-zh-small-2024-03-09',
-          sha256: null,
+              'sherpa-onnx-paraformer-zh-small-2024-03-09/'
+              'resolve/main/model.int8.onnx',
+          sha256:
+              '3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec',
         ),
       ],
       notes: 'Paraformer 中文小模型，100MB 轻量但中文准确率比 Zipformer 好',
@@ -226,8 +240,10 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-paraformer-zh-2024-03-09',
-          sha256: null,
+              'sherpa-onnx-paraformer-zh-2024-03-09/'
+              'resolve/main/model.int8.onnx',
+          sha256:
+              '90bc03034ae1bef9575f8cc798cd1519c8be8aa9e8b458a033e32017ff4d584c',
         ),
       ],
       notes: '纯中文非流式的天花板，准确率最高但体积大，适合对精度要求严格的场景',
@@ -265,6 +281,12 @@ class AiModelCatalog {
                 'sherpa-onnx-streaming-paraformer-zh/'
                 'resolve/main/tokens.txt',
           },
+          fileSha256s: <String, String>{
+            'encoder.int8.onnx':
+                '81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a',
+            'decoder.int8.onnx':
+                'f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f',
+          },
         ),
       ],
       notes: '中文流式老牌方案，延迟低；标点要另配，确定纯中文时再选它',
@@ -285,8 +307,29 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en',
+              'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
+              'resolve/main/encoder.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'encoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
+                'resolve/main/encoder.int8.onnx',
+            'decoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
+                'resolve/main/decoder.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
+                'resolve/main/tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'encoder.int8.onnx':
+                '6047a644b41b236d9d8e89e3b94ef39d1b7037daab028131b722ca52e10b0357',
+            'decoder.int8.onnx':
+                '545427acf508452b7d89969be082c8128c681e3432ff43aef09f6159f4b61a7e',
+          },
         ),
       ],
       notes: '中文+粤语+英语三语流式，广东/香港用户首选，比 SenseVoice 粤语更准',
@@ -325,6 +368,12 @@ class AiModelCatalog {
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-tokens.txt',
           },
+          fileSha256s: <String, String>{
+            'base-encoder.int8.onnx':
+                '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11',
+            'base-decoder.int8.onnx':
+                '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d',
+          },
         ),
       ],
       notes: '99 语种覆盖面，中文一般但冷门语种只有它，150MB 适合先跑通流程',
@@ -361,6 +410,12 @@ class AiModelCatalog {
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'small-encoder.int8.onnx':
+                '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9',
+            'small-decoder.int8.onnx':
+                'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee',
           },
         ),
       ],
@@ -428,8 +483,10 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12',
-          sha256: null,
+              'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12/'
+              'resolve/main/model.onnx',
+          sha256:
+              'e93593a6dbd69a07f8734ef269dbe861a379755f8d1c8354719432116f2c44bd',
         ),
       ],
       notes: '给 ASR 输出补标点（句号、逗号、问号），让转写结果直接可读。100MB，中英文通用',
@@ -520,8 +577,10 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'vits-coqui-en-ljspeech',
-          sha256: null,
+              'vits-coqui-en-ljspeech/'
+              'resolve/main/model.onnx',
+          sha256:
+              '3c4468add71e72431dec810545dcb44639b0b1fa117994d72dad0864f95ee9fd',
         ),
       ],
       notes: '英文 TTS，用 LJSpeech 数据集训练，朗读腔自然，适合字幕朗读',
