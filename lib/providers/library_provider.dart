@@ -136,7 +136,8 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
         if (_disposed) return;
         final video = todo[cursor++];
         try {
-          final thumbPath = await _thumbService.generate(video.path);
+          final thumbPath = await _thumbService.generate(video.path,
+              durationMs: video.durationMs);
           if (thumbPath != null) _enqueueThumb(video.id, thumbPath);
         } catch (e) {
           debugPrint('[Thumbnail] 生成失败 ${video.name}: $e');
