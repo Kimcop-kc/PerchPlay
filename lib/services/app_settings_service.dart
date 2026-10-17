@@ -4,6 +4,7 @@ import '../models/playlist_model.dart';
 import '../models/video_model.dart';
 import 'library_hidden_service.dart';
 import 'media_grouping_service.dart';
+import 'subtitle_matcher.dart';
 import 'video_source_service.dart';
 
 /// 应用设置持久化服务
@@ -76,6 +77,17 @@ class AppSettingsService {
   /// 影库列表的筛选方式（LibraryFilter.id，默认全部）
   String _libraryFilter = 'all';
   String get libraryFilter => _libraryFilter;
+
+  /// 每个视频「上次选了什么外挂字幕」
+  ///
+  /// 为什么放这里：SharedPreferences 的读写统一收敛在这个单例，播放器不用关心
+  /// 持久化细节。键格式、最近使用排序、条数上限（[SubtitleMemory.maxEntries]）
+  /// 全在 [SubtitleMemory] 里 —— 那个类是纯逻辑，能直接单测淘汰规则。
+  ///
+  /// 存成 StringList（每行一条 JSON），而不是一个大 JSON 字符串：
+  /// 单条坏掉时只丢那一条，不会整份记忆都读不出来。
+  static const _kSubtitleMemory = 'settings.subtitleMemory';
+  List<SubtitleMemory> _subtitleMemory = const <SubtitleMemory>[];
 
   /// 用户手动删掉的「自动列表」id
   ///
@@ -177,6 +189,8 @@ class AppSettingsService {
       _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
       _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
       _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
+      _subtitleMemory = _decodeSubtitleMemory(
+          prefs.getStringList(_kSubtitleMemory) ?? const <String>[]);
     } catch (_) {
       // 读取失败时保留默认值
     }
@@ -197,6 +211,78 @@ class AppSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLibraryFilter, value);
     } catch (_) {}
+  }
+
+  // ═══════════════ 外挂字幕记忆 ═══════════════
+
+  /// 当前全部字幕记忆（最近使用的在最前）
+  List<SubtitleMemory> get subtitleMemory => _subtitleMemory;
+
+  /// 查这个视频上次选了什么字幕；没记录返回 null
+  ///
+  /// 键统一归一化（[LibraryHiddenService.normalizePath]）：Windows 路径大小写
+  /// 不敏感，`D:\A\b.mp4` 和 `d:\a\B.mp4` 是同一个文件，不归一化会记成两条，
+  /// 记忆时好时坏。
+  SubtitleMemory? subtitleMemoryFor(String videoPath) {
+    final key = LibraryHiddenService.normalizePath(videoPath);
+    if (key.isEmpty) return null;
+    return SubtitleMemory.find(_subtitleMemory, key);
+  }
+
+  /// 记住某个视频「上次选的字幕」
+  ///
+  /// [subtitlePath] 为 null 表示用户手动关掉了字幕：下次打开这个视频不要再自动挂。
+  /// 覆盖 + 淘汰规则见 [SubtitleMemory.upsert]（最近使用优先，最多 300 条）。
+  Future<void> rememberSubtitle(String videoPath, String? subtitlePath) async {
+    final key = LibraryHiddenService.normalizePath(videoPath);
+    if (key.isEmpty) return;
+    _subtitleMemory = SubtitleMemory.upsert(
+      _subtitleMemory,
+      SubtitleMemory(
+        videoPath: key,
+        subtitlePath: subtitlePath,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _kSubtitleMemory,
+        [for (final entry in _subtitleMemory) entry.encode()],
+      );
+    } catch (_) {}
+  }
+
+  /// 清空字幕记忆（设置项复位 / 单测用）
+  ///
+  /// 不给出口的话，用户手动选错一次就会一直被自动挂上，没法回到「自动挑选」。
+  Future<void> clearSubtitleMemory() async {
+    _subtitleMemory = const <SubtitleMemory>[];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kSubtitleMemory);
+    } catch (_) {}
+  }
+
+  /// 解析存储的 StringList
+  ///
+  /// 先按时间倒序再按视频去重：老版本/手工写入的数据不保证顺序，
+  /// 去重必须保留「最新的那条」，否则会恢复到上上次的选择。
+  static List<SubtitleMemory> _decodeSubtitleMemory(List<String> raw) {
+    final parsed = <SubtitleMemory>[];
+    for (final line in raw) {
+      final entry = SubtitleMemory.tryDecode(line);
+      if (entry != null) parsed.add(entry);
+    }
+    parsed.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final out = <SubtitleMemory>[];
+    final seen = <String>{};
+    for (final entry in parsed) {
+      if (!seen.add(entry.videoPath)) continue;
+      out.add(entry);
+      if (out.length >= SubtitleMemory.maxEntries) break;
+    }
+    return out;
   }
 
   Future<void> setDefaultSpeed(double value) async {

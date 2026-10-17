@@ -7,6 +7,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import '../models/video_model.dart';
 import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
+import '../services/subtitle_auto_service.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/native_bridge_service.dart';
@@ -318,6 +319,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   DateTime? _lastSaveAt;
   Duration? _pendingResume;
 
+  /// 第几次 loadVideo（自动挂字幕用）
+  ///
+  /// loadVideo 里有好几个 await（开播放器、列字幕目录、读记忆），期间用户
+  /// 可能已经切到下一集了。异步结果回来时拿它对一下：不是最新那次就丢掉，
+  /// 否则上一部的字幕会挂到这一部上。
+  int _loadToken = 0;
+
   /// 把当前进度写库（真实视频 id）
   Future<void> _persistProgress() async {
     final video = state.currentVideo;
@@ -342,6 +350,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 加载视频
   Future<void> loadVideo(VideoModel video,
       {List<VideoModel>? queue, int? startIndex}) async {
+    final token = ++_loadToken;
     // 播放页可能只传 path/title 构造的临时模型；
     // 从数据库取真实记录，拿到真实 id 与上次进度。
     VideoModel effective = video;
@@ -390,10 +399,41 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       } catch (_) {}
     }
 
-    // 加载外挂字幕
+    // 加载外挂字幕（同目录下所有同名文件，面板里可选）
     final subtitles =
         await SubtitleService.findExternalSubtitles(video.path);
+    // 切片了：这份列表属于上一部，别再往当前状态里塞
+    if (token != _loadToken) return;
     state = state.copyWith(availableSubtitles: subtitles);
+
+    // 自动挂载：优先恢复上次选择，其次按优先级挑同名字幕
+    await _autoAttachSubtitle(video.path, token);
+  }
+
+  /// 打开视频后自动挂外挂字幕
+  ///
+  /// 两个「别动手」条件：
+  ///  - token 变了：loadVideo 已经切到别的片子，这次的结论作废；
+  ///  - 已经有字幕（外挂或内嵌）：上面几个 await 之间用户自己选了，
+  ///    不能把他的选择盖掉。
+  Future<void> _autoAttachSubtitle(String videoPath, int token) async {
+    if (token != _loadToken) return;
+    if (state.activeSubtitle != null || state.activeTrackId != null) return;
+
+    final pick = await SubtitleAutoService.instance.resolve(videoPath);
+    if (token != _loadToken) return;
+    if (state.activeSubtitle != null || state.activeTrackId != null) return;
+
+    final path = pick.path;
+    // path 为 null：没有候选，或者记忆里用户上次关掉了字幕（别又自动挂回来）
+    if (path == null) return;
+
+    final candidate = pick.candidate;
+    await _applyExternalSubtitle(
+      path,
+      language: candidate?.language,
+      title: candidate?.title,
+    );
   }
 
   /// 停止播放并清除当前视频（关闭小窗/后台播放）
@@ -514,10 +554,21 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       clearActiveSubtitle: true,
       subtitleEntries: null,
     );
+    // 关掉也是一种选择：记住它，否则下次打开又被同名自动加载挂上
+    await _rememberSubtitleChoice(null);
   }
 
-  /// 加载外挂字幕文件并立即生效
+  /// 加载外挂字幕文件并立即生效（用户手动选）
   Future<void> loadExternalSubtitle(String path,
+      {String? title, String? language}) async {
+    await _applyExternalSubtitle(path, title: title, language: language);
+    // 只有手动选择才写记忆：自动挂载如果也写，等于把自动挑的结果
+    // 伪装成用户意愿，下次"恢复"的其实是自己猜的东西
+    await _rememberSubtitleChoice(path);
+  }
+
+  /// 把外挂字幕挂到播放器并解析成本地条目（不写记忆）
+  Future<void> _applyExternalSubtitle(String path,
       {String? title, String? language}) async {
     try {
       await state.player.setSubtitleTrack(
@@ -544,6 +595,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         availableSubtitles: [...state.availableSubtitles, model],
       );
     }
+  }
+
+  /// 记住「这个视频上次选了什么字幕」；[path] 为 null 表示关掉了字幕
+  Future<void> _rememberSubtitleChoice(String? path) async {
+    final video = state.currentVideo;
+    if (video == null) return;
+    await SubtitleAutoService.instance.remember(video.path, path);
   }
 
   /// 兼容旧调用
