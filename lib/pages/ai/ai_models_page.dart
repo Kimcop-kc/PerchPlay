@@ -225,17 +225,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 ),
               )
             else ...[
-              // ── 预设模型 ──
-              SliverToBoxAdapter(
-                child: _sectionHeader('预设模型'),
-              ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) =>
-                      _buildModelCard(AiModelCatalog.all[index]),
-                  childCount: AiModelCatalog.all.length,
-                ),
-              ),
+              // ── 预设模型（按类别分组）──
+              ..._buildCategorizedModels(),
               // ── 用户自行导入 ──
               if (userIds.isNotEmpty) ...[
                 SliverToBoxAdapter(
@@ -268,6 +259,77 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
               color: GlassTheme.textSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w600)),
+    );
+  }
+
+  /// 将 catalog 按类别分组生成 Sliver 列表
+  List<Widget> _buildCategorizedModels() {
+    final result = <Widget>[];
+    // 分组定义：类别名 → 包含的 ModelKind
+    const groups = <({String label, Set<ModelKind> kinds})>[
+      (label: '语音识别 (ASR)', kinds: {ModelKind.asr}),
+      (label: '语言模型 (LLM / GGUF / MLC)', kinds: {ModelKind.llm}),
+      (label: '专用翻译 (NMT)', kinds: {ModelKind.nmt}),
+      (label: '其他模型', kinds: {
+        ModelKind.vad,
+        ModelKind.ocr,
+        ModelKind.embedding,
+        ModelKind.vision,
+        ModelKind.tts,
+        ModelKind.punctuation,
+        ModelKind.keywordSpotting,
+        ModelKind.speakerDiarization,
+        ModelKind.speechEnhancement,
+      }),
+    ];
+
+    for (final group in groups) {
+      final models = AiModelCatalog.all
+          .where((m) => group.kinds.contains(m.kind))
+          .toList();
+      if (models.isEmpty) continue;
+
+      result.add(
+        SliverToBoxAdapter(child: _categoryHeader(group.label, models.length)),
+      );
+      result.add(
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) => _buildModelCard(models[index]),
+            childCount: models.length,
+          ),
+        ),
+      );
+    }
+    return result;
+  }
+
+  Widget _categoryHeader(String label, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: GlassTheme.accentPurple.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(label,
+              style: const TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 6),
+          Text('$count',
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary,
+                  fontSize: 11)),
+        ],
+      ),
     );
   }
 
@@ -463,6 +525,31 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                   ],
                 ),
 
+                // ── 下载进度条 ──
+                if (isDownloading && p > 0) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: p,
+                      minHeight: 4,
+                      backgroundColor: GlassTheme.accentPurple.withOpacity(0.1),
+                      valueColor: const AlwaysStoppedAnimation(
+                          GlassTheme.accentPurple),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text('${(p * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                          color: GlassTheme.accentPurple, fontSize: 10)),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 6),
+                  Text(error,
+                      style: const TextStyle(
+                          color: GlassTheme.accentPink, fontSize: 11)),
+                ],
+
                 // ── 展开面板：评分 + 设备推荐 + 备注 ──
                 if (expanded) ...[
                   const SizedBox(height: 12),
@@ -481,7 +568,15 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                           '体积', _sizeToStars(model.sizeMB), Icons.storage),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+
+                  // 模型定位
+                  Text(_modelPositioning(model),
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary,
+                          fontSize: 11,
+                          height: 1.5)),
+                  const SizedBox(height: 10),
 
                   // 设备推荐
                   Container(
@@ -631,6 +726,39 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     return '';
   }
 
+  /// 模型定位一句话说明（显示在评分下方）
+  String _modelPositioning(AiModel model) {
+    switch (model.kind) {
+      case ModelKind.asr:
+        if (model.capabilities.contains(AiCapability.asrStreaming)) {
+          return '实时流式识别，边说边出字。适合直播字幕、通话转写。';
+        }
+        return '整段音频转文字。适合录音后批量处理、会议纪要。';
+      case ModelKind.llm:
+        return '通用大语言模型，可在本地做翻译、分类、对话。需要 GGUF 推理运行时。';
+      case ModelKind.nmt:
+        return '专用翻译模型，比同体积 LLM 翻得更准更快。各语种对独立运行。';
+      case ModelKind.vad:
+        return '只判断有没有人声，不转写。适合前置过滤噪音或长录音切割。';
+      case ModelKind.ocr:
+        return '识别画面里的硬字幕，输出文本。适合提取影片内嵌字幕。';
+      case ModelKind.embedding:
+        return '文本→向量，用于语义搜索。配合索引检索，不生成文字。';
+      case ModelKind.vision:
+        return '画面质量打分，用于智能抽帧时挑好看的那一帧当封面。';
+      case ModelKind.tts:
+        return '文本→自然语音波形。适合旁白配音、无障碍朗读。';
+      case ModelKind.punctuation:
+        return '给 ASR 输出的无标点文本补上句号和逗号，提升可读性。';
+      case ModelKind.keywordSpotting:
+        return '从音频流中检测预定义关键词（如"你好小星"），常驻后台低功耗。';
+      case ModelKind.speakerDiarization:
+        return '标记一段多人对话中"谁在什么时候说了什么"，不负责转写内容。';
+      case ModelKind.speechEnhancement:
+        return '去除背景噪音，为下游 ASR 或听觉场景提升信噪比。';
+    }
+  }
+
   // ── 卡片头部元素 ──
 
   Widget _capIcon(AiModel model) {
@@ -714,10 +842,14 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     VoidCallback? onDelete,
   }) {
     if (error != null) {
-      return _smallButton(
-        '重试',
-        color: GlassTheme.accentPink,
-        onTap: onDownload,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isReady)
+            _smallButton('删除', color: GlassTheme.accentPink, onTap: onDelete),
+          if (isReady) const SizedBox(width: 6),
+          _smallButton('重试', color: GlassTheme.accentPurple, onTap: onDownload),
+        ],
       );
     }
     if (isDownloading) {
