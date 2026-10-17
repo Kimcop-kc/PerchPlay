@@ -592,30 +592,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildAiModelsEntry(BuildContext context) {
-    return GlassCard(
-      radius: GlassTheme.radiusMd,
-      tint: GlassTheme.tintWhite,
-      padding: const EdgeInsets.all(0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
-        child: ListTile(
-          leading: const Icon(Icons.memory,
-              color: GlassTheme.accentPurple, size: 22),
-          title: const Text('AI 模型管理',
-              style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500)),
-          subtitle: const Text('下载、切换、删除语音识别与翻译模型',
-              style: TextStyle(
-                  color: GlassTheme.textTertiary, fontSize: 12)),
-          trailing: const Icon(Icons.chevron_right,
-              color: GlassTheme.textTertiary, size: 20),
-          onTap: () {
-            GoRouter.of(context).pushNamed('aiModels');
-          },
+    return Column(
+      children: [
+        GlassCard(
+          radius: GlassTheme.radiusMd,
+          tint: GlassTheme.tintWhite,
+          padding: const EdgeInsets.all(0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+            child: ListTile(
+              leading: const Icon(Icons.memory,
+                  color: GlassTheme.accentPurple, size: 22),
+              title: const Text('AI 模型管理',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500)),
+              subtitle: const Text('下载、切换、删除语音识别与翻译模型',
+                  style: TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right,
+                  color: GlassTheme.textTertiary, size: 20),
+              onTap: () {
+                GoRouter.of(context).pushNamed('aiModels');
+              },
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        GlassCard(
+          radius: GlassTheme.radiusMd,
+          tint: GlassTheme.tintWhite,
+          padding: const EdgeInsets.all(0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+            child: ListTile(
+              leading: const Icon(Icons.transcribe,
+                  color: GlassTheme.accentTeal, size: 22),
+              title: const Text('语音转写',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500)),
+              subtitle: const Text('选择音频文件，端侧离线转写为文本',
+                  style: TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right,
+                  color: GlassTheme.textTertiary, size: 20),
+              onTap: () {
+                GoRouter.of(context).pushNamed('transcribe');
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
