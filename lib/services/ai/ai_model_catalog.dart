@@ -177,14 +177,37 @@ class AiModelCatalog {
       minRamGB: 3.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
+        // 魔搭优先，但 onnx 转换版暂无官方镜像（仅占位）
         ModelMirror(
           source: DownloadSource.modelscope,
-          url: '$_modelscopePrefix/sensevoice-small',
+          url: 'https://modelscope.invalid/models/sensevoice-small',
           sha256: null,
         ),
+        // HF 直链（每文件一次 HTTP GET，无需解压）
+        // sha256 暂无：HF CDN 有 ETag 校验，发布前补 post-download 校验值
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/FunAudioLLM/SenseVoiceSmall',
+          url: 'https://huggingface.co/csukuangfj/'
+              'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
+              'resolve/main/model.int8.onnx',
+          sha256: null,
+          fileUrls: <String, String>{
+            'model.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
+                'resolve/main/model.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
+                'resolve/main/tokens.txt',
+          },
+        ),
+        // GitHub Releases (.tar.bz2，下载后用 archive 解压——P1 补)
+        ModelMirror(
+          source: DownloadSource.githubRelease,
+          url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/'
+              'asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-'
+              '2024-07-17.tar.bz2',
           sha256: null,
         ),
       ],

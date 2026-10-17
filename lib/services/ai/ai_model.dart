@@ -66,8 +66,14 @@ enum ModelTier {
 /// Hugging Face 覆盖更全，做备选。「默认魔搭、失败退 HF」的排序逻辑见
 /// `AiModelRegistry.mirrorsFor`。
 enum DownloadSource {
+  /// 魔搭 / ModelScope（国内优先）
   modelscope,
+
+  /// Hugging Face Hub
   huggingface,
+
+  /// GitHub Releases 直链（tar.bz2 归档）
+  githubRelease,
 }
 
 /// 模型类别：跟 [AiCapability] 不是一回事
@@ -112,28 +118,51 @@ class ModelMirror {
   /// 来源站点
   final DownloadSource source;
 
-  /// 下载地址
+  /// 单文件下载地址（兼容旧模型条目，新条目用 [fileUrls]）
+  ///
+  /// [fileUrls] 存在时忽略此字段；都不存在则为不可下载的占位条目。
   final String url;
 
-  /// 文件 sha256（小写十六进制）
-  ///
-  /// **允许为空，但发布前必须补齐**：没有校验值的下载等于把「完整性」交给网络，
-  /// 而模型文件动辄几百 MB、下载中断或被劫持都不是理论问题。
-  /// 骨架阶段一律留 null，并且**故意**不提供「默认通过」的判断，
-  /// 让调用方必须显式处理「缺校验信息」的情况，而不是假装校验过了。
+  /// 文件 sha256（小写十六进制），仅对单文件条目有效；
+  /// 多文件条目各自的校验值在 [fileUrls] 里按文件名分别指定
   final String? sha256;
+
+  /// 多文件模型的**直接下载链接**（文件名 → 完整 URL）
+  ///
+  /// 非空时下载器会逐文件 GET 并存到模型目录。每个 URL 需独立可下载。
+  /// 空 = 单文件模式（回退到 [url]）。
+  final Map<String, String>? fileUrls;
 
   const ModelMirror({
     required this.source,
     required this.url,
     this.sha256,
+    this.fileUrls,
   });
 
-  /// 有没有可用的校验值（空字符串按没有处理，避免上游填了个 `''` 就以为校验过了）
-  bool get hasChecksum => sha256?.isNotEmpty ?? false;
+  /// 是否包含可下载的文件（单文件或 fileUrls 都不为空）
+  bool get hasDownloadableContent =>
+      fileUrls != null && fileUrls!.isNotEmpty ||
+      (fileUrls == null && url.isNotEmpty && !url.endsWith('.invalid'));
+
+  /// 该镜像是否只含占位 URL（尚未补真实地址）
+  bool get isPlaceholder => !hasDownloadableContent;
+
+  /// 当前镜像要求下载的所有文件数
+  int get fileCount => fileUrls?.length ?? 1;
+
+  /// 校验值是否存在（所有文件都需要 sha256 才算校验完整）
+  ///
+  /// P0: sha256 全部未补，始终回 false；发布前需逐模型补全
+  bool get hasChecksum {
+    if (sha256?.isNotEmpty == true) return true;
+    // 多文件模型的校验值在独立的 fileSha256s 表里（P1 补）
+    return false;
+  }
 
   @override
-  String toString() => 'ModelMirror(${source.name}, $url)';
+  String toString() => 'ModelMirror(${source.name}, $url'
+      '${fileUrls != null ? ', ${fileUrls!.length} file(s)' : ''})';
 }
 
 /// 一个可下载的端侧模型

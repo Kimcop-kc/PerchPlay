@@ -300,6 +300,8 @@ class AiModelSelector {
         return '魔搭';
       case DownloadSource.huggingface:
         return 'Hugging Face';
+      case DownloadSource.githubRelease:
+        return 'GitHub';
     }
   }
 
