@@ -207,9 +207,17 @@ class ModelDownloader {
       return;
     }
 
-    // 3) 分片并发下载
-    await _downloadChunked(url, dest, dstateFile, totalBytes,
-        onProgress: onProgress, expectedSha256: expectedSha256);
+    // 3) 分片并发下载（HF LFS CDN 可能吞 Range 头 → 失败时自动回退流式）
+    try {
+      await _downloadChunked(url, dest, dstateFile, totalBytes,
+          onProgress: onProgress, expectedSha256: expectedSha256);
+    } catch (e) {
+      debugPrint('[Downloader] 分片下载失败，回退到单流: $e');
+      final (chunkCount, _) = _chunkPlan(totalBytes);
+      await _cleanChunkState(dest, dstateFile, chunkCount);
+      await _downloadStreaming(url, dest,
+          onProgress: onProgress, expectedSha256: expectedSha256);
+    }
   }
 
   // ── 服务器探测 ──
@@ -609,23 +617,29 @@ class ModelDownloader {
     }
   }
 
+  /// 清分片临时文件 + .dstate（用于分片失败回退到单流前）
+  Future<void> _cleanChunkState(File dest, File dstateFile, int chunkCount) async {
+    await _deleteParts(dest, chunkCount);
+    if (await dstateFile.exists()) await dstateFile.delete();
+  }
+
   // ── 工具 ──
 
   /// 计算文件的 SHA-256 hex
-  static Future<String> _sha256File(File file) async {
+  Future<String> _sha256File(File file) async {
     final bytes = await file.readAsBytes();
     return sha256.convert(bytes).toString();
   }
 
   /// 两个 SHA-256 是否相同（忽略大小写、null 兼容）
-  static bool _sameSha(String? a, String? b) {
+  bool _sameSha(String? a, String? b) {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
     return a.toLowerCase() == b.toLowerCase();
   }
 
   /// 检查响应头是否声明了 Range 支持
-  static bool _supportsRangeHeader(http.BaseResponse resp) {
+  bool _supportsRangeHeader(http.BaseResponse resp) {
     return resp.headers['accept-ranges'] == 'bytes';
   }
 

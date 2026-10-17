@@ -422,8 +422,8 @@ class AiModelCatalog {
       notes: '中文准确率比 base 明显好，代价是慢一倍多，中端机勉强能接受',
     ),
     AiModel(
-      id: 'whisper-large-v3-turbo',
-      displayName: 'Whisper Large v3 Turbo',
+      id: 'whisper-large-v3',
+      displayName: 'Whisper Large v3 99 语种',
       capabilities: <AiCapability>{AiCapability.asr},
       kind: ModelKind.asr,
       tier: ModelTier.highQuality,
@@ -437,11 +437,32 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-whisper-large-v3-turbo',
+              'sherpa-onnx-whisper-large-v3/'
+              'resolve/main/large-v3-encoder.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'large-v3-encoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-large-v3/'
+                'resolve/main/large-v3-encoder.int8.onnx',
+            'large-v3-decoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-large-v3/'
+                'resolve/main/large-v3-decoder.int8.onnx',
+            'large-v3-tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-large-v3/'
+                'resolve/main/large-v3-tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'large-v3-encoder.int8.onnx':
+                'd531cf17248acc43e8c09b472a0877055e770877857a5332fc1304b36534ec85',
+            'large-v3-decoder.int8.onnx':
+                'ebc6bfd88e162a46cb3edee8a7e727e1dcbc65cabecb19e2573695e4d495e1af',
+          },
         ),
       ],
-      notes: '99 语种里质量最好的一档，1.6GB 还吃内存，基本只适合桌面/高配机',
+      notes: '99 语种里质量最好的一档（v3 Turbo 仓库 gated，改用非 Turbo 版），1.6GB，仅高配机',
     ),
     // ── ASR：全语种（1600+ 语言）── 旗舰超大模型 ─────────────────────
     AiModel(
@@ -460,8 +481,24 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12',
-          sha256: null,
+              'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
+              'resolve/main/model.onnx',
+          sha256:
+              '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
+          fileUrls: <String, String>{
+            'model.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
+                'resolve/main/model.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
+                'resolve/main/tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'model.onnx':
+                '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
+          },
         ),
       ],
       notes: '1600+ 语种的超级覆盖，1B 参数仅旗舰机能跑，冷门方言的最后防线',
