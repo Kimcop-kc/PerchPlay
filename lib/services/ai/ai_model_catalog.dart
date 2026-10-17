@@ -592,8 +592,24 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'vits-hf-zh-jp-zomehwh',
-          sha256: null,
+              'vits-hf-zh-jp-zomehwh/'
+              'resolve/main/vits-hf-zh-jp-zomehwh.onnx',
+          sha256:
+              '227f68cec4ee79e80845b2f7bbb9f9f654b95cab1d69be54e78af46c33e07935',
+          fileUrls: <String, String>{
+            'vits-hf-zh-jp-zomehwh.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'vits-hf-zh-jp-zomehwh/'
+                'resolve/main/vits-hf-zh-jp-zomehwh.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'vits-hf-zh-jp-zomehwh/'
+                'resolve/main/tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'vits-hf-zh-jp-zomehwh.onnx':
+                '227f68cec4ee79e80845b2f7bbb9f9f654b95cab1d69be54e78af46c33e07935',
+          },
         ),
       ],
       notes: '中文 TTS，把字幕文字读出来；VITS 质量不错但非商用训练集来源需注意',
@@ -638,8 +654,24 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'vits-cantonese-hf-xiaomaiiwn',
-          sha256: null,
+              'vits-cantonese-hf-xiaomaiiwn/'
+              'resolve/main/vits-cantonese-hf-xiaomaiiwn.onnx',
+          sha256:
+              '7d8d4f5550b607999417a99131b034c8cc2b8dca69f9e9fdefeff6655643c139',
+          fileUrls: <String, String>{
+            'vits-cantonese-hf-xiaomaiiwn.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'vits-cantonese-hf-xiaomaiiwn/'
+                'resolve/main/vits-cantonese-hf-xiaomaiiwn.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'vits-cantonese-hf-xiaomaiiwn/'
+                'resolve/main/tokens.txt',
+          },
+          fileSha256s: <String, String>{
+            'vits-cantonese-hf-xiaomaiiwn.onnx':
+                '7d8d4f5550b607999417a99131b034c8cc2b8dca69f9e9fdefeff6655643c139',
+          },
         ),
       ],
       notes: '粤语 TTS，用「小麥」开源数据集训练，适合配粤语字幕',
@@ -660,11 +692,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/Qwen/Qwen3-0.6B',
+          url: 'https://huggingface.co/Qwen/Qwen3-0.6B.invalid',
           sha256: null,
         ),
       ],
-      notes: '极小通用 LLM，专做文本分类；0.6B 做翻译还没到能用的程度，别拿它翻',
+      notes: '极小通用 LLM，专做文本分类；0.6B 做翻译还没到能用的程度，别拿它翻；仓库无 GGUF，等 llama.cpp 转化再开',
     ),
     AiModel(
       id: 'qwen3-1.7b',
@@ -681,11 +713,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/Qwen/Qwen3-1.7B',
+          url: 'https://huggingface.co/Qwen/Qwen3-1.7B.invalid',
           sha256: null,
         ),
       ],
-      notes: '小 LLM 里质量与速度的平衡点，1.1GB 需要中高端机才带得动',
+      notes: '小 LLM 里质量与速度的平衡点，1.1GB 需要中高端机才带得动；仓库无 GGUF，等 llama.cpp 转化再开',
     ),
     AiModel(
       id: 'qwen2.5-3b-instruct',
@@ -702,11 +734,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct',
+          url: 'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct.invalid',
           sha256: null,
         ),
       ],
-      notes: '指令跟随更好、翻译腔更少，但 3B 在手机上大概只有几个 token/s',
+      notes: '指令跟随更好、翻译腔更少，但 3B 在手机上大概只有几个 token/s；仓库无 GGUF，等 llama.cpp 转化再开',
     ),
     AiModel(
       id: 'gemma-3-1b',
@@ -723,11 +755,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/google/gemma-3-1b-it',
+          url: 'https://huggingface.co/google/gemma-3-1b-it.invalid',
           sha256: null,
         ),
       ],
-      notes: '质量不错的小模型；许可证是 Gemma Terms，只让用户自己下载、不随包分发',
+      notes: '质量不错的小模型；gated 需 HF token、仓库无 GGUF，等 llama.cpp 转化再开',
     ),
     // ── 翻译专用 ────────────────────────────────────────────────────────
     AiModel(
@@ -745,11 +777,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/Helsinki-NLP/opus-mt-zh-en',
+          url: 'https://huggingface.co/Helsinki-NLP/opus-mt-zh-en.invalid',
           sha256: null,
         ),
       ],
-      notes: '100MB 的专用翻译模型，比同体积 LLM 更快也更准，只做中英时首选',
+      notes: '100MB 的专用翻译模型，比同体积 LLM 更快也更准；需 PyTorch→ONNX 转化，暂不可用',
     ),
     AiModel(
       id: 'madlad-400-3b',
@@ -766,11 +798,28 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/google/madlad400-3b-mt',
-          sha256: null,
+          url: 'https://huggingface.co/google/madlad400-3b-mt/'
+              'resolve/main/model-q4k.gguf',
+          sha256:
+              'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
+          fileUrls: <String, String>{
+            'model-q4k.gguf':
+                'https://huggingface.co/google/madlad400-3b-mt/'
+                'resolve/main/model-q4k.gguf',
+            'spiece.model':
+                'https://huggingface.co/google/madlad400-3b-mt/'
+                'resolve/main/spiece.model',
+            'tokenizer.json':
+                'https://huggingface.co/google/madlad400-3b-mt/'
+                'resolve/main/tokenizer.json',
+          },
+          fileSha256s: <String, String>{
+            'model-q4k.gguf':
+                'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
+          },
         ),
       ],
-      notes: '覆盖面 400+ 语种，冷门语种几乎只有它能翻；3B 体积大，只在高配机开',
+      notes: '覆盖面 400+ 语种，冷门语种几乎只有它能翻；3B GGUF 体积大，只在高配机开',
     ),
     // ── 语义搜索（embedding）───────────────────────────────────────────
     AiModel(
@@ -788,11 +837,11 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/BAAI/bge-small-zh-v1.5',
+          url: 'https://huggingface.co/BAAI/bge-small-zh-v1.5.invalid',
           sha256: null,
         ),
       ],
-      notes: '100MB 中文嵌入模型，几百部片子的语义搜索毫秒级，性价比最高',
+      notes: '100MB 中文嵌入模型，几百部片子的语义搜索毫秒级；暂无 ONNX 导出，需自行转换',
     ),
     AiModel(
       id: 'bge-m3',
@@ -811,8 +860,41 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/BAAI/bge-m3',
-          sha256: null,
+          url: 'https://huggingface.co/BAAI/bge-m3/'
+              'resolve/main/onnx/model.onnx',
+          sha256:
+              'f84251230831afb359ab26d9fd37d5936d4d9bb5d1d5410e66442f630f24435b',
+          fileUrls: <String, String>{
+            'model.onnx':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/model.onnx',
+            'model.onnx_data':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/model.onnx_data',
+            'sentencepiece.bpe.model':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/sentencepiece.bpe.model',
+            'tokenizer.json':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/tokenizer.json',
+            'config.json':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/config.json',
+            'special_tokens_map.json':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/special_tokens_map.json',
+            'tokenizer_config.json':
+                'https://huggingface.co/BAAI/bge-m3/'
+                'resolve/main/onnx/tokenizer_config.json',
+          },
+          fileSha256s: <String, String>{
+            'model.onnx':
+                'f84251230831afb359ab26d9fd37d5936d4d9bb5d1d5410e66442f630f24435b',
+            'sentencepiece.bpe.model':
+                'cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865',
+            'tokenizer.json':
+                '6710678b12670bc442b99edc952c4d996ae309a7020c1fa0096dd245c2faf790',
+          },
         ),
       ],
       notes: '多语种语义搜索，覆盖面最广；2.2GB 体积大，只有旗舰机值得装',
@@ -833,8 +915,46 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/bluecopa/rapidocr-onnx',
+          url: 'https://huggingface.co/bluecopa/rapidocr-onnx/'
+              'resolve/main/PP-OCRv5_det.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'PP-OCRv5_det.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/PP-OCRv5_det.onnx',
+            'PP-OCRv5_server_rec_infer.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/PP-OCRv5_server_rec_infer.onnx',
+            'ch_PP-OCRv5_rec_mobile_infer.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/ch_PP-OCRv5_rec_mobile_infer.onnx',
+            'ch_ppocr_mobile_v2.0_cls_infer.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/ch_ppocr_mobile_v2.0_cls_infer.onnx',
+            'SLANet_plus.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/SLANet_plus.onnx',
+            'PP-DocLayoutV3.onnx':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/PP-DocLayoutV3.onnx',
+            'ppocrv5_dict.txt':
+                'https://huggingface.co/bluecopa/rapidocr-onnx/'
+                'resolve/main/ppocrv5_dict.txt',
+          },
+          fileSha256s: <String, String>{
+            'PP-OCRv5_det.onnx':
+                '127edf0182bb3d218ad59476377b02ca90296cfb4cc85df55042d671a3e53aeb',
+            'PP-OCRv5_server_rec_infer.onnx':
+                '13d0dda27d63dc0f4938af48df2c55b33f3c989a0bd5eacb8410e30f1735f644',
+            'ch_PP-OCRv5_rec_mobile_infer.onnx':
+                '5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5',
+            'ch_ppocr_mobile_v2.0_cls_infer.onnx':
+                'e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c',
+            'SLANet_plus.onnx':
+                'd57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b',
+            'PP-DocLayoutV3.onnx':
+                'd24809294b2f9f1a9a2767043a64df2714b66e5be056887be2233d1117d784f6',
+          },
         ),
       ],
       notes: '20MB 就能认出画面里的硬字幕，检测+识别一体，适合逐帧抽检',
@@ -854,8 +974,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: 'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx',
+          url: 'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx/'
+              'resolve/main/PP-OCRv5_server_det_infer.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'PP-OCRv5_server_det_infer.onnx':
+                'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx/'
+                'resolve/main/PP-OCRv5_server_det_infer.onnx',
+            'PP-OCRv5_server_rec_infer.onnx':
+                'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx/'
+                'resolve/main/PP-OCRv5_server_rec_infer.onnx',
+            'ppocrv5_dict.txt':
+                'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx/'
+                'resolve/main/ppocrv5_dict.txt',
+          },
+          fileSha256s: <String, String>{
+            'PP-OCRv5_server_det_infer.onnx':
+                '127edf0182bb3d218ad59476377b02ca90296cfb4cc85df55042d671a3e53aeb',
+            'PP-OCRv5_server_rec_infer.onnx':
+                '13d0dda27d63dc0f4938af48df2c55b33f3c989a0bd5eacb8410e30f1735f644',
+          },
         ),
       ],
       notes: '硬字幕转双语的主选：15MB、中文准确率高于 RapidOCR，速度也够快',
@@ -877,11 +1015,11 @@ class AiModelCatalog {
         ModelMirror(
           source: DownloadSource.huggingface,
           url: 'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-nemo-enc-dec-ctc-model',
+              'sherpa-onnx-nemo-enc-dec-ctc-model.invalid',
           sha256: null,
         ),
       ],
-      notes: '可选增强：从视频里挑「不是黑帧、不糊」的一帧当封面；纯算法也能做',
+      notes: '可选增强；仓库不存在/已删除，等找到替代模型再开启',
     ),
   ];
 }
