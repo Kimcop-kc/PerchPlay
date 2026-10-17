@@ -27,20 +27,51 @@ class SpeechService {
 
   /// 加载 SenseVoice 模型。
   ///
-  /// [modelDir] 目录下需要存在 `model.int8.onnx` 与 `tokens.txt`。
+  /// [modelDir] 目录下需要存在 `.onnx` 文件与 `tokens.txt`（自动扫描）。
   /// 重复加载同一个目录不会重建（已是该目录则跳过）。
   /// 切换到不同目录时自动释放旧模型再加载新模型。
   void loadModel(String modelDir) {
     if (_loadedDir == modelDir && _recognizer != null) return;
 
-    dispose(); // 切换到不同目录时先释放旧的
+    dispose();
 
-    final modelPath = '${modelDir}${Platform.pathSeparator}model.int8.onnx';
-    final tokensPath = '${modelDir}${Platform.pathSeparator}tokens.txt';
-    if (!File(modelPath).existsSync() || !File(tokensPath).existsSync()) {
-      debugPrint('[SpeechService] 模型文件不存在: $modelDir');
+    final d = Directory(modelDir);
+    if (!d.existsSync()) {
+      debugPrint('[SpeechService] 模型目录不存在: $modelDir');
       return;
     }
+
+    // 扫描目录找第一个 .onnx 文件
+    final onnxFile = d
+        .listSync()
+        .whereType<File>()
+        .firstWhere(
+          (f) => f.path.toLowerCase().endsWith('.onnx'),
+          orElse: () => File(''),
+        );
+    if (onnxFile.path.isEmpty) {
+      debugPrint('[SpeechService] 目录中无 .onnx 文件: $modelDir');
+      return;
+    }
+
+    // tokens.txt 或 vocab.txt
+    final tokenFile = d
+        .listSync()
+        .whereType<File>()
+        .firstWhere(
+          (f) {
+            final name = f.path.split(Platform.pathSeparator).last;
+            return name == 'tokens.txt' || name == 'vocab.txt';
+          },
+          orElse: () => File(''),
+        );
+    if (tokenFile.path.isEmpty) {
+      debugPrint('[SpeechService] 目录中无 tokens.txt: $modelDir');
+      return;
+    }
+
+    final modelPath = onnxFile.path;
+    final tokensPath = tokenFile.path;
 
     try {
       final senseVoice = sherpa.OfflineSenseVoiceModelConfig(

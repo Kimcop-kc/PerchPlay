@@ -60,11 +60,14 @@ class _TranscribePageState extends State<TranscribePage> {
     if (await dir.exists()) {
       await for (final entry in dir.list(followLinks: false)) {
         if (entry is Directory) {
-          downloaded.add(entry.path.split(Platform.pathSeparator).last);
+          final files = await entry.list().toList();
+          if (files.any((f) =>
+              f.path.toLowerCase().endsWith('.onnx') && f is File)) {
+            downloaded.add(entry.path.split(Platform.pathSeparator).last);
+          }
         }
       }
     }
-    // 只列出已下载的 ASR 模型（包含 VAD 也行，但 SpeechService 当前只用 SenseVoice）
     final models = AiModelCatalog.all.where((m) {
       return m.capabilities.contains(AiCapability.asr) ||
           m.capabilities.contains(AiCapability.asrStreaming);
@@ -90,14 +93,13 @@ class _TranscribePageState extends State<TranscribePage> {
     final dir = await ModelDownloader.modelsDir();
     final modelDir = '${dir.path}${Platform.pathSeparator}${model.id}';
 
-    // 检查模型文件是否存在
-    final onnx = File('${modelDir}${Platform.pathSeparator}model.int8.onnx');
-    final tokens = File('${modelDir}${Platform.pathSeparator}tokens.txt');
-    if (!await onnx.exists() || !await tokens.exists()) {
+    // SpeechService.loadModel 自动扫描目录找 .onnx + tokens.txt
+    _speech.loadModel(modelDir);
+    if (!_speech.isLoaded) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('模型文件不完整，请重新下载'),
+          content: Text('模型加载失败，请检查文件是否完整'),
           backgroundColor: GlassTheme.accentPink,
         ),
       );
@@ -107,16 +109,8 @@ class _TranscribePageState extends State<TranscribePage> {
     setState(() {
       _modelId = model.id;
       _error = null;
+      _step = _Step.selectAudio;
     });
-
-    // 加载模型
-    _speech.loadModel(modelDir);
-    if (!_speech.isLoaded) {
-      setState(() => _error = '模型加载失败');
-      return;
-    }
-
-    setState(() => _step = _Step.selectAudio);
   }
 
   // ── 步骤 2：选 WAV 文件 ──
@@ -162,9 +156,12 @@ class _TranscribePageState extends State<TranscribePage> {
     try {
       final text = await _speech.transcribeFile(wav);
       if (!mounted) return;
+      final display = (text == null || text.isEmpty)
+          ? '(未识别到语音内容)'
+          : text;
       setState(() {
         _step = _Step.done;
-        _result = text ?? '(未识别到语音内容)';
+        _result = display;
       });
     } catch (e) {
       if (!mounted) return;

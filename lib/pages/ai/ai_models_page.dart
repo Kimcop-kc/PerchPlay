@@ -41,7 +41,12 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     if (await dir.exists()) {
       await for (final entry in dir.list(followLinks: false)) {
         if (entry is Directory) {
-          ids.add(entry.path.split(Platform.pathSeparator).last);
+          // 目录存在不放行，必须包含至少一个 .onnx 才认为已下载
+          final files = await entry.list().toList();
+          if (files.any((f) =>
+              f.path.toLowerCase().endsWith('.onnx') && f is File)) {
+            ids.add(entry.path.split(Platform.pathSeparator).last);
+          }
         }
       }
     }
