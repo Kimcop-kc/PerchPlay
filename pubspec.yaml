@@ -58,6 +58,10 @@ dependencies:
   image: ^4.12.0
   sherpa_onnx: ^1.13.8
 
+  # 模型导入：文件选择 + 解压（zip / tar / tar.gz / tar.bz2）
+  file_picker: ^6.2.1
+  archive: ^4.5.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
