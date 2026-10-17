@@ -106,47 +106,72 @@ class Subtitles {
     );
   }
 
-  /// 决定这次打开视频挂哪条字幕
+  /// 决定这次打开视频怎么处理字幕
   ///
-  /// [remembered] 是「这个视频上次选了什么」；[exists] 用来判断记忆里的文件
-  /// 是否还在。为什么不在这里自己判文件：pick 要保持无 IO 才能在单测里跑，
-  /// 所以把「文件还在不在」做成可注入的回调（不传则按「还在」处理）。
+  /// [remembered] 是这个视频上次的选择；[exists] 用来判断记忆里的外挂文件是否
+  /// 还在（pick 保持无 IO 才能在单测里跑，所以做成可注入回调）；
+  /// [embeddedTrackIds] 是容器里**真实存在**的内嵌字幕轨 id。
   ///
-  /// 优先级：
-  ///  1. 记忆是「用户关掉了字幕」→ 什么都不挂（需求明确要求别再自动挂回来）；
-  ///  2. 记忆的字幕文件还在 → 恢复它，哪怕它不是同名候选里优先级最高的；
-  ///  3. 记忆的文件已被删 / 没有记忆 → 按 [findCandidates] 的顺序取第一条。
+  /// 判定顺序（需求明确要求）：
+  ///  1. 有记忆 → 按记忆来：
+  ///     off 不挂；external 且文件还在就挂它；embedded 且 trackId 仍在就选那轨。
+  ///     记忆失效（文件被删 / 轨道没了）才往下走。
+  ///  2. 没记忆或记忆已失效，但视频有内嵌字幕轨 → 什么都不挂：尊重片源自带的
+  ///     字幕（外挂文件仍在字幕列表里，用户想用可以手动选）。
+  ///  3. 没记忆、也没内嵌轨 → 按 [findCandidates] 的顺序取第一条。
   static SubtitlePick pick(
     List<SubtitleCandidate> candidates,
     SubtitleMemory? remembered, {
     bool Function(String path)? exists,
+    List<String> embeddedTrackIds = const <String>[],
   }) {
     if (remembered != null) {
-      if (remembered.off) {
-        return const SubtitlePick._(SubtitlePickKind.rememberedOff, null);
-      }
-      final path = remembered.subtitlePath!;
-      if (exists?.call(path) ?? true) {
-        SubtitleCandidate? hit;
-        for (final c in candidates) {
-          if (c.path == path) {
-            hit = c;
-            break;
+      switch (remembered.kind) {
+        case SubtitleMemoryKind.off:
+          return const SubtitlePick._(SubtitlePickKind.rememberedOff, null);
+        case SubtitleMemoryKind.external:
+          final path = remembered.subtitlePath;
+          if (path != null && (exists?.call(path) ?? true)) {
+            return SubtitlePick._(
+              SubtitlePickKind.rememberedFile,
+              path,
+              candidate: _candidateFor(candidates, path) ?? describe(path),
+            );
           }
-        }
-        return SubtitlePick._(
-          SubtitlePickKind.rememberedFile,
-          path,
-          hit ?? describe(path),
-        );
+          // 文件没了：当作没记忆，继续往下
+          break;
+        case SubtitleMemoryKind.embedded:
+          final trackId = remembered.trackId;
+          if (trackId != null && embeddedTrackIds.contains(trackId)) {
+            return SubtitlePick._(
+              SubtitlePickKind.rememberedEmbedded,
+              null,
+              trackId: trackId,
+            );
+          }
+          // 轨道没了（换了压制版/换了文件）：当作没记忆，继续往下
+          break;
       }
-      // 文件没了就当作没记忆，继续往下走自动挑选
+    }
+    if (embeddedTrackIds.isNotEmpty) {
+      return const SubtitlePick._(SubtitlePickKind.embeddedPreferred, null);
     }
     if (candidates.isEmpty) {
       return const SubtitlePick._(SubtitlePickKind.none, null);
     }
     final best = candidates.first;
-    return SubtitlePick._(SubtitlePickKind.auto, best.path, best);
+    return SubtitlePick._(SubtitlePickKind.auto, best.path, candidate: best);
+  }
+
+  /// 在候选里按路径找一条（找不到说明用户是从别的目录手动选的）
+  static SubtitleCandidate? _candidateFor(
+    List<SubtitleCandidate> candidates,
+    String path,
+  ) {
+    for (final c in candidates) {
+      if (c.path == path) return c;
+    }
+    return null;
   }
 
   /// 优先级档位（数字越小越优先）
@@ -277,8 +302,14 @@ enum SubtitlePickKind {
   /// 记忆里用户上次关掉了字幕 → 不要自动挂
   rememberedOff,
 
-  /// 恢复记忆里的字幕文件（文件确认还在）
+  /// 恢复记忆里的外挂字幕文件（文件确认还在）
   rememberedFile,
+
+  /// 恢复记忆里的内嵌字幕轨（trackId 确认还在）
+  rememberedEmbedded,
+
+  /// 没有可用记忆，但片源自带内嵌字幕轨 → 不自动挂外挂，尊重片源自带的字幕
+  embeddedPreferred,
 
   /// 按优先级自动挑的第一条同名候选
   auto,
@@ -288,44 +319,111 @@ enum SubtitlePickKind {
 class SubtitlePick {
   final SubtitlePickKind kind;
 
-  /// 要挂的字幕路径；null = 不挂
+  /// 要挂的外挂字幕路径；null = 不挂外挂
   final String? path;
 
   /// 对应的候选（含语言/标题），自动挑选与记忆恢复都会有
   final SubtitleCandidate? candidate;
 
-  const SubtitlePick._(this.kind, this.path, [this.candidate]);
+  /// 要恢复的内嵌字幕轨 id（仅 [SubtitlePickKind.rememberedEmbedded]）
+  final String? trackId;
 
-  /// 是否需要挂字幕
+  const SubtitlePick._(this.kind, this.path, {this.candidate, this.trackId});
+
+  /// 是否需要挂外挂字幕
   bool get shouldAttach => path != null;
 
   @override
-  String toString() => 'SubtitlePick($kind, $path)';
+  String toString() => 'SubtitlePick($kind, path=$path, trackId=$trackId)';
+}
+
+/// 一个视频上次的字幕选择类型
+enum SubtitleMemoryKind {
+  /// 上次关掉了字幕
+  off,
+
+  /// 上次选的是外挂字幕文件
+  external,
+
+  /// 上次选的是容器里的内嵌字幕轨
+  embedded,
 }
 
 /// 一个视频「上次选了什么字幕」的记忆
 ///
-/// [subtitlePath] 为 null 表示用户上次把字幕关掉了 —— 下次打开不要再自动挂。
-/// 这和「没有记忆」是两种状态，不能混（否则用户关一次字幕，下次又被自动挂上）。
+/// 三种状态不能混：
+///  - [SubtitleMemoryKind.off]：用户主动关掉，下次打开别再自动挂；
+///  - [SubtitleMemoryKind.external]：记字幕文件路径（文件可能被删）；
+///  - [SubtitleMemoryKind.embedded]：记容器内轨道 id（换文件后可能不存在）。
 class SubtitleMemory {
   /// 视频路径；**存储用的键是归一化过的**（Windows 上转小写，见
   /// AppSettingsService 的读写），归一化负责保证同一文件不会记成两条。
   final String videoPath;
 
-  /// 上次选的字幕文件路径；null = 上次关掉了字幕
+  final SubtitleMemoryKind kind;
+
+  /// external：上次选的字幕文件路径
   final String? subtitlePath;
+
+  /// embedded：上次选的内嵌字幕轨 id
+  final String? trackId;
+
+  /// embedded：轨道语言标签（只在面板显示时当兜底；恢复只认 trackId）
+  final String? language;
 
   /// 最近一次使用时间（毫秒时间戳），按最近使用淘汰时用
   final int updatedAt;
 
-  const SubtitleMemory({
+  /// 上次关掉了字幕
+  const SubtitleMemory.off({
     required this.videoPath,
     required this.updatedAt,
-    this.subtitlePath,
-  });
+  })  : kind = SubtitleMemoryKind.off,
+        subtitlePath = null,
+        trackId = null,
+        language = null;
+
+  /// 上次选的是外挂字幕文件
+  const SubtitleMemory.external({
+    required this.videoPath,
+    required String this.subtitlePath,
+    required this.updatedAt,
+  })  : kind = SubtitleMemoryKind.external,
+        trackId = null,
+        language = null;
+
+  /// 上次选的是内嵌字幕轨
+  const SubtitleMemory.embedded({
+    required this.videoPath,
+    required String this.trackId,
+    required this.updatedAt,
+    this.language,
+  })  : kind = SubtitleMemoryKind.embedded,
+        subtitlePath = null;
 
   /// 上次是不是「关掉了字幕」
-  bool get off => subtitlePath == null;
+  bool get off => kind == SubtitleMemoryKind.off;
+
+  /// 复制一份、只更新时间戳（打开视频命中记忆时刷新「最近使用」）
+  SubtitleMemory touch(int updatedAt) {
+    switch (kind) {
+      case SubtitleMemoryKind.off:
+        return SubtitleMemory.off(videoPath: videoPath, updatedAt: updatedAt);
+      case SubtitleMemoryKind.external:
+        return SubtitleMemory.external(
+          videoPath: videoPath,
+          subtitlePath: subtitlePath!,
+          updatedAt: updatedAt,
+        );
+      case SubtitleMemoryKind.embedded:
+        return SubtitleMemory.embedded(
+          videoPath: videoPath,
+          trackId: trackId!,
+          language: language,
+          updatedAt: updatedAt,
+        );
+    }
+  }
 
   /// 最多留多少条
   ///
@@ -365,7 +463,10 @@ class SubtitleMemory {
 
   Map<String, Object?> toJson() => {
         'v': videoPath,
-        's': subtitlePath,
+        'k': kind.name,
+        if (subtitlePath != null) 's': subtitlePath,
+        if (trackId != null) 'i': trackId,
+        if (language != null) 'l': language,
         't': updatedAt,
       };
 
@@ -376,21 +477,58 @@ class SubtitleMemory {
   String encode() => jsonEncode(toJson());
 
   /// 解析一行；坏数据返回 null（一条脏记录不该毁掉整份记忆）
+  ///
+  /// **兼容旧格式**：早期只有 `{"v":...,"s":路径或null,"t":...}`，没有 `k` 字段。
+  /// 这时按「有路径 = 外挂、null = 关掉」推断 —— 不兼容的话升级一次就把用户
+  /// 记过的字幕选择全丢了（这正是升级最容易被骂的地方）。
   static SubtitleMemory? tryDecode(String raw) {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
       final videoPath = decoded['v'];
       if (videoPath is! String || videoPath.isEmpty) return null;
-      final subtitlePath = decoded['s'];
-      final updatedAt = decoded['t'];
-      return SubtitleMemory(
-        videoPath: videoPath,
-        subtitlePath: subtitlePath is String && subtitlePath.isNotEmpty
-            ? subtitlePath
-            : null,
-        updatedAt: updatedAt is int ? updatedAt : 0,
-      );
+      final rawTime = decoded['t'];
+      final updatedAt = rawTime is int ? rawTime : 0;
+      final rawPath = decoded['s'];
+      final subtitlePath =
+          rawPath is String && rawPath.isNotEmpty ? rawPath : null;
+      final rawKind = decoded['k'];
+      if (rawKind is! String) {
+        // 旧格式没有类型字段，只能靠有没有路径来推断
+        return subtitlePath == null
+            ? SubtitleMemory.off(videoPath: videoPath, updatedAt: updatedAt)
+            : SubtitleMemory.external(
+                videoPath: videoPath,
+                subtitlePath: subtitlePath,
+                updatedAt: updatedAt,
+              );
+      }
+      switch (rawKind) {
+        case 'off':
+          return SubtitleMemory.off(videoPath: videoPath, updatedAt: updatedAt);
+        case 'external':
+          if (subtitlePath == null) return null;
+          return SubtitleMemory.external(
+            videoPath: videoPath,
+            subtitlePath: subtitlePath,
+            updatedAt: updatedAt,
+          );
+        case 'embedded':
+          final rawTrack = decoded['i'];
+          if (rawTrack is! String || rawTrack.isEmpty) return null;
+          final rawLanguage = decoded['l'];
+          return SubtitleMemory.embedded(
+            videoPath: videoPath,
+            trackId: rawTrack,
+            language: rawLanguage is String && rawLanguage.isNotEmpty
+                ? rawLanguage
+                : null,
+            updatedAt: updatedAt,
+          );
+        default:
+          // 不认识的类型（来自未来版本/被手工改过）：丢掉比瞎猜安全
+          return null;
+      }
     } catch (_) {
       return null;
     }

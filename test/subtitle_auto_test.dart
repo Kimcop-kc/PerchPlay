@@ -3,8 +3,9 @@
 // 需求要点（这些规则很容易写着写着走样，全部钉死）：
 //  - 同名判断不能误吃「名字更长」的文件（电影.mp4 不该挂 电影2.srt）
 //  - 语言优先级：普通同名（无后缀）永远第一 > 中文/中英双语 > 简体/繁体 > 英文 > 其它
-//  - 上次是「关掉字幕」→ 下次别再自动挂
-//  - 上次选的文件被删了 → 忽略记忆、走自动加载
+//  - 记忆三态：外挂文件 / 内嵌轨（trackId）/ 关掉；旧格式（只存路径）要能兼容
+//  - 上次是「关掉字幕」→ 下次别再自动挂；记住的文件被删 / 轨道消失 → 忽略记忆
+//  - 没有记忆但片源有内嵌字幕轨 → 不自动挂外挂
 //  - 记忆有上限（300 条，按最近使用淘汰），SharedPreferences 不会无限长
 import 'dart:io';
 
@@ -22,15 +23,19 @@ void main() {
   // ⚠️ AppSettingsService 是单例，_loaded 一旦为 true 就不会再读 SharedPreferences。
   // 所以「从磁盘读回记忆」这条必须放在最前面（测试文件内用例按声明顺序执行）。
   group('AppSettingsService：记忆的持久化', () {
-    test('ensureLoaded 读回记忆（含「关掉字幕」），坏记录被丢掉', () async {
+    test('ensureLoaded 读回三种记忆（含旧格式），坏记录被丢掉', () async {
       SharedPreferences.setMockInitialValues({
         'settings.subtitleMemory': [
-          const SubtitleMemory(videoPath: 'd:/videos/a.mp4', updatedAt: 5)
-              .encode(),
-          const SubtitleMemory(
-            videoPath: 'd:/videos/b.mp4',
-            subtitlePath: 'd:/videos/b.zh.srt',
-            updatedAt: 4,
+          // 旧版本写的外挂记录：没有 k 字段，只有 s
+          '{"v":"d:/videos/legacy.mp4","s":"d:/videos/legacy.zh.srt","t":7}',
+          // 旧版本写的「关掉字幕」：s 为 null（升级后必须仍然是 off）
+          '{"v":"d:/videos/legacyoff.mp4","s":null,"t":6}',
+          // 新版本的 embedded 记忆
+          const SubtitleMemory.embedded(
+            videoPath: 'd:/videos/emb.mp4',
+            trackId: '2',
+            language: 'chi',
+            updatedAt: 5,
           ).encode(),
           '这不是 JSON，应该被丢掉',
         ],
@@ -39,28 +44,45 @@ void main() {
       final settings = AppSettingsService.instance;
       await settings.ensureLoaded();
 
-      expect(settings.subtitleMemory.length, 2, reason: '坏记录不该让整份记忆失效');
-      expect(settings.subtitleMemory.first.videoPath, 'd:/videos/a.mp4',
+      expect(settings.subtitleMemory.length, 3, reason: '坏记录不该让整份记忆失效');
+      expect(settings.subtitleMemory.first.videoPath, 'd:/videos/legacy.mp4',
           reason: '最近使用的排最前');
-      expect(settings.subtitleMemoryFor('d:/videos/a.mp4')?.off, isTrue);
-      expect(
-        settings.subtitleMemoryFor('D:/videos/b.mp4')?.subtitlePath,
-        'd:/videos/b.zh.srt',
-        reason: 'Windows 路径大小写不敏感，查记忆时也要能对上',
-      );
+
+      final legacy = settings.subtitleMemoryFor('D:/videos/legacy.mp4');
+      expect(legacy?.kind, SubtitleMemoryKind.external,
+          reason: '旧格式有路径 = 外挂字幕，升级不能把记忆清掉');
+      expect(legacy?.subtitlePath, 'd:/videos/legacy.zh.srt');
+
+      expect(settings.subtitleMemoryFor('d:/videos/legacyoff.mp4')?.off, isTrue,
+          reason: '旧格式 s=null 仍是「关掉字幕」，不能被当成没记忆');
+
+      final embedded = settings.subtitleMemoryFor('d:/videos/emb.mp4');
+      expect(embedded?.kind, SubtitleMemoryKind.embedded);
+      expect(embedded?.trackId, '2');
+      expect(embedded?.language, 'chi');
     });
 
-    test('手动选择会写记忆：覆盖同一条、关掉字幕记为 off', () async {
+    test('手动选择会写记忆：外挂 / 内嵌 / 关掉三种状态互相覆盖', () async {
       final settings = AppSettingsService.instance;
       await settings.clearSubtitleMemory();
 
       await settings.rememberSubtitle('d:/videos/c.mp4', 'd:/videos/c.zh.srt');
-      expect(settings.subtitleMemoryFor('d:/videos/c.mp4')?.subtitlePath,
-          'd:/videos/c.zh.srt');
+      expect(settings.subtitleMemoryFor('d:/videos/c.mp4')?.kind,
+          SubtitleMemoryKind.external);
 
-      // 用户改成「关掉字幕」：同一个视频只留一条，且状态是 off
+      // 用户改选内嵌轨：同一个视频只留一条，类型变成 embedded
+      await settings.rememberEmbeddedSubtitle('d:/videos/c.mp4', '3',
+          language: 'chi');
+      var memory = settings.subtitleMemoryFor('d:/videos/c.mp4');
+      expect(memory?.kind, SubtitleMemoryKind.embedded);
+      expect(memory?.trackId, '3');
+      expect(memory?.language, 'chi');
+      expect(settings.subtitleMemory.length, 1);
+
+      // 再改成「关掉字幕」
       await settings.rememberSubtitle('d:/videos/c.mp4', null);
-      expect(settings.subtitleMemoryFor('d:/videos/c.mp4')?.off, isTrue);
+      memory = settings.subtitleMemoryFor('d:/videos/c.mp4');
+      expect(memory?.off, isTrue);
       expect(settings.subtitleMemory.length, 1);
 
       final prefs = await SharedPreferences.getInstance();
@@ -68,7 +90,7 @@ void main() {
       expect(raw, isNotNull);
       expect(raw!.length, 1);
       expect(SubtitleMemory.tryDecode(raw.single)!.off, isTrue,
-          reason: '落盘的必须也是「关掉」语义，而不是被当成没有字幕路径');
+          reason: '落盘的必须也是「关掉」语义，而不是被当成没有字幕');
     });
 
     test('记忆条数有上限，超出后淘汰最旧的', () async {
@@ -238,7 +260,7 @@ void main() {
     test('记得「关掉字幕」时什么都不挂', () {
       final pick = Subtitles.pick(
         candidates,
-        const SubtitleMemory(videoPath: video, updatedAt: 1),
+        const SubtitleMemory.off(videoPath: video, updatedAt: 1),
       );
       expect(pick.kind, SubtitlePickKind.rememberedOff);
       expect(pick.shouldAttach, isFalse);
@@ -249,7 +271,11 @@ void main() {
       final en = byName('电影.en.srt');
       final pick = Subtitles.pick(
         candidates,
-        SubtitleMemory(videoPath: video, subtitlePath: en.path, updatedAt: 1),
+        SubtitleMemory.external(
+          videoPath: video,
+          subtitlePath: en.path,
+          updatedAt: 1,
+        ),
         exists: (_) => true,
       );
       expect(pick.kind, SubtitlePickKind.rememberedFile);
@@ -261,7 +287,11 @@ void main() {
       final gone = byName('电影.en.srt').path;
       final pick = Subtitles.pick(
         candidates,
-        SubtitleMemory(videoPath: video, subtitlePath: gone, updatedAt: 1),
+        SubtitleMemory.external(
+          videoPath: video,
+          subtitlePath: gone,
+          updatedAt: 1,
+        ),
         exists: (_) => false,
       );
       expect(pick.kind, SubtitlePickKind.auto);
@@ -271,7 +301,7 @@ void main() {
     test('记得的字幕文件已被删且没有候选：不挂，也不抛异常', () {
       final pick = Subtitles.pick(
         const <SubtitleCandidate>[],
-        const SubtitleMemory(
+        const SubtitleMemory.external(
           videoPath: video,
           subtitlePath: 'd:/videos/电影.en.srt',
           updatedAt: 1,
@@ -286,7 +316,7 @@ void main() {
       const outside = 'd:/subs/外部字幕.ass';
       final pick = Subtitles.pick(
         candidates,
-        const SubtitleMemory(
+        const SubtitleMemory.external(
           videoPath: video,
           subtitlePath: outside,
           updatedAt: 1,
@@ -304,10 +334,90 @@ void main() {
       expect(pick.kind, SubtitlePickKind.none);
       expect(pick.shouldAttach, isFalse);
     });
+
+    // ─── 内嵌轨相关 ───
+
+    test('没有记忆但有内嵌字幕轨：不自动挂外挂', () {
+      final pick = Subtitles.pick(
+        candidates,
+        null,
+        embeddedTrackIds: const ['1'],
+      );
+      expect(pick.kind, SubtitlePickKind.embeddedPreferred);
+      expect(pick.shouldAttach, isFalse);
+      expect(pick.trackId, isNull);
+    });
+
+    test('记忆是内嵌轨且 trackId 还在：选回那一轨', () {
+      final pick = Subtitles.pick(
+        candidates,
+        const SubtitleMemory.embedded(
+          videoPath: video,
+          trackId: '2',
+          updatedAt: 1,
+        ),
+        embeddedTrackIds: const ['1', '2'],
+      );
+      expect(pick.kind, SubtitlePickKind.rememberedEmbedded);
+      expect(pick.trackId, '2');
+      expect(pick.shouldAttach, isFalse, reason: '内嵌轨不是外挂文件，不该又挂一份外挂');
+    });
+
+    test('记忆是内嵌轨但 trackId 已不存在：忽略记忆（有内嵌轨就不挂外挂）', () {
+      final pick = Subtitles.pick(
+        candidates,
+        const SubtitleMemory.embedded(
+          videoPath: video,
+          trackId: '9',
+          updatedAt: 1,
+        ),
+        embeddedTrackIds: const ['1'],
+      );
+      expect(pick.kind, SubtitlePickKind.embeddedPreferred);
+      expect(pick.trackId, isNull);
+    });
+
+    test('记忆是内嵌轨且 trackId 已不存在、也没有内嵌轨：回落到自动挂外挂', () {
+      final pick = Subtitles.pick(
+        candidates,
+        const SubtitleMemory.embedded(
+          videoPath: video,
+          trackId: '9',
+          updatedAt: 1,
+        ),
+      );
+      expect(pick.kind, SubtitlePickKind.auto);
+      expect(pick.path, candidates.first.path);
+    });
+
+    test('记忆优先于「有内嵌轨」：关掉字幕仍然不挂', () {
+      final pick = Subtitles.pick(
+        candidates,
+        const SubtitleMemory.off(videoPath: video, updatedAt: 1),
+        embeddedTrackIds: const ['1'],
+      );
+      expect(pick.kind, SubtitlePickKind.rememberedOff);
+    });
+
+    test('记忆优先于「有内嵌轨」：记住的外挂仍然挂', () {
+      final en = byName('电影.en.srt');
+      final pick = Subtitles.pick(
+        candidates,
+        SubtitleMemory.external(
+          videoPath: video,
+          subtitlePath: en.path,
+          updatedAt: 1,
+        ),
+        exists: (_) => true,
+        embeddedTrackIds: const ['1'],
+      );
+      expect(pick.kind, SubtitlePickKind.rememberedFile);
+      expect(pick.path, en.path);
+    });
   });
 
   group('SubtitleMemory：排序 / 去重 / 淘汰 / 编解码', () {
-    SubtitleMemory entry(int i) => SubtitleMemory(
+    SubtitleMemory entry(int i) => SubtitleMemory.external(
           videoPath: 'd:/v/$i.mp4',
           subtitlePath: 'd:/v/$i.srt',
           updatedAt: i,
@@ -319,7 +429,7 @@ void main() {
       list = SubtitleMemory.upsert(list, entry(2));
       list = SubtitleMemory.upsert(
         list,
-        const SubtitleMemory(videoPath: 'd:/v/1.mp4', updatedAt: 9),
+        const SubtitleMemory.off(videoPath: 'd:/v/1.mp4', updatedAt: 9),
       );
 
       expect([for (final e in list) e.videoPath], ['d:/v/1.mp4', 'd:/v/2.mp4']);
@@ -339,22 +449,42 @@ void main() {
       expect(SubtitleMemory.maxEntries, 300);
     });
 
-    test('编码 / 解码往返（含 null = 关掉字幕、中文路径）', () {
-      const off = SubtitleMemory(videoPath: 'd:/v/a.mp4', updatedAt: 1);
-      const on = SubtitleMemory(
+    test('三种状态编码 / 解码往返（含中文路径、语言标签）', () {
+      const off = SubtitleMemory.off(videoPath: 'd:/v/a.mp4', updatedAt: 1);
+      const external = SubtitleMemory.external(
         videoPath: 'd:/v/电影.mp4',
         subtitlePath: 'd:/v/电影.zh.srt',
         updatedAt: 2,
       );
+      const embedded = SubtitleMemory.embedded(
+        videoPath: 'd:/v/电影.mp4',
+        trackId: '2',
+        language: 'chi',
+        updatedAt: 3,
+      );
 
-      for (final memory in [off, on]) {
+      for (final memory in [off, external, embedded]) {
         final back = SubtitleMemory.tryDecode(memory.encode());
-        expect(back, isNotNull);
+        expect(back, isNotNull, reason: '${memory.kind} 应该能解析回去');
         expect(back!.videoPath, memory.videoPath);
+        expect(back.kind, memory.kind);
         expect(back.subtitlePath, memory.subtitlePath);
+        expect(back.trackId, memory.trackId);
+        expect(back.language, memory.language);
         expect(back.updatedAt, memory.updatedAt);
-        expect(back.off, memory.off);
       }
+    });
+
+    test('旧格式（没有 k 字段）仍按「有路径=外挂、null=关掉」解析', () {
+      final oldExternal = SubtitleMemory.tryDecode(
+          '{"v":"d:/v/a.mp4","s":"d:/v/a.zh.srt","t":3}');
+      expect(oldExternal?.kind, SubtitleMemoryKind.external);
+      expect(oldExternal?.subtitlePath, 'd:/v/a.zh.srt');
+
+      final oldOff =
+          SubtitleMemory.tryDecode('{"v":"d:/v/a.mp4","s":null,"t":3}');
+      expect(oldOff?.kind, SubtitleMemoryKind.off);
+      expect(oldOff?.off, isTrue);
     });
 
     test('坏数据返回 null，不抛异常', () {
@@ -362,6 +492,21 @@ void main() {
       expect(SubtitleMemory.tryDecode('{"s":"d:/v/a.srt"}'), isNull,
           reason: '没有视频路径的记录没法用');
       expect(SubtitleMemory.tryDecode('[]'), isNull);
+      expect(
+        SubtitleMemory.tryDecode('{"v":"d:/v/a.mp4","k":"embedded","t":1}'),
+        isNull,
+        reason: 'embedded 却没有 trackId，没法恢复，丢掉比猜好',
+      );
+      expect(
+        SubtitleMemory.tryDecode('{"v":"d:/v/a.mp4","k":"external","t":1}'),
+        isNull,
+        reason: 'external 却没有路径，同上',
+      );
+      expect(
+        SubtitleMemory.tryDecode('{"v":"d:/v/a.mp4","k":"something","t":1}'),
+        isNull,
+        reason: '不认识的类型（未来版本写的）丢掉',
+      );
     });
   });
 
@@ -438,6 +583,33 @@ void main() {
         LibraryHiddenService.normalizePath(video),
         reason: '打开视频恢复记忆时应把它标成最近使用，淘汰顺序才不会把它先踢掉',
       );
+    });
+
+    // ─── 内嵌轨：有片源自带字幕时不自动挂外挂 ───
+
+    test('没有记忆但有内嵌字幕轨：不自动挂同目录外挂', () async {
+      final pick = await SubtitleAutoService.instance
+          .resolve(video, embeddedTrackIds: ['1']);
+      expect(pick.kind, SubtitlePickKind.embeddedPreferred);
+      expect(pick.shouldAttach, isFalse);
+    });
+
+    test('记忆是内嵌轨：resolve 返回要恢复的 trackId', () async {
+      await AppSettingsService.instance
+          .rememberEmbeddedSubtitle(video, '2', language: 'chi');
+      final pick = await SubtitleAutoService.instance
+          .resolve(video, embeddedTrackIds: ['1', '2']);
+      expect(pick.kind, SubtitlePickKind.rememberedEmbedded);
+      expect(pick.trackId, '2');
+      expect(pick.shouldAttach, isFalse);
+    });
+
+    test('记忆的内嵌轨已不存在：忽略记忆，有内嵌轨就不挂外挂', () async {
+      await AppSettingsService.instance.rememberEmbeddedSubtitle(video, '9');
+      final pick = await SubtitleAutoService.instance
+          .resolve(video, embeddedTrackIds: ['1']);
+      expect(pick.kind, SubtitlePickKind.embeddedPreferred);
+      expect(pick.trackId, isNull);
     });
   });
 }

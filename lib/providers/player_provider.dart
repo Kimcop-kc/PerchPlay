@@ -8,6 +8,7 @@ import '../models/video_model.dart';
 import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
 import '../services/subtitle_auto_service.dart';
+import '../services/subtitle_matcher.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/native_bridge_service.dart';
@@ -410,9 +411,54 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _autoAttachSubtitle(video.path, token);
   }
 
-  /// 打开视频后自动挂外挂字幕
+  /// mpv 当前的内嵌字幕轨（直接读它属性，不等 tracks 事件）
   ///
-  /// 两个「别动手」条件：
+  /// 为什么优先读 `player.state` 而不是我们自己的 `embeddedSubtitles`：
+  /// 后者靠 tracks 事件流更新，事件还没到时会被误判成「没有内嵌字幕」。
+  /// 读 mpv 的当前属性值则可以立刻拿到结果；事件流那份留作兜底。
+  List<SubtitleTrack> _currentEmbeddedTracks() {
+    final fromMpv = state.player.state.tracks.subtitle
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .toList();
+    if (fromMpv.isNotEmpty) return fromMpv;
+    return state.embeddedSubtitles;
+  }
+
+  /// 轨道信息是否已经拿到
+  ///
+  /// mpv 的 tracks 是 `open` 之后异步推的。优先看 mpv 当前属性；再退回
+  /// 事件流落到 state 的字段（有音轨 / 有内嵌字幕轨 / 拿到帧率都算探测完）。
+  bool get _tracksProbed {
+    final mpv = state.player.state.tracks;
+    if (mpv.video.isNotEmpty ||
+        mpv.audio.isNotEmpty ||
+        mpv.subtitle.isNotEmpty) {
+      return true;
+    }
+    return state.audioTracks.isNotEmpty ||
+        state.embeddedSubtitles.isNotEmpty ||
+        state.videoFps != null;
+  }
+
+  /// 等 mpv 把轨道信息推过来（最多 1.2 秒）
+  ///
+  /// 为什么必须等：不等的话，记忆里存的内嵌 trackId 会因为「还没看到轨道」被
+  /// 误判成已不存在；有内嵌字幕的视频也会被误判成没有内嵌，结果本来该用片源
+  /// 自带字幕的片子被自动挂上了外挂。
+  Future<void> _waitForTracks() async {
+    if (_tracksProbed) return;
+    try {
+      await state.player.stream.tracks.first
+          .timeout(const Duration(milliseconds: 1200));
+    } catch (_) {
+      // 超时 / 流异常：把「没拿到轨道信息」当成「没有内嵌字幕」，
+      // 免得流程一直卡着（这种片子本来也挂不出内嵌字幕）
+    }
+  }
+
+  /// 打开视频后决定字幕：恢复记忆 / 尊重内嵌 / 自动挂同名外挂
+  ///
+  /// 三个「别动手」条件：
   ///  - token 变了：loadVideo 已经切到别的片子，这次的结论作废；
   ///  - 已经有字幕（外挂或内嵌）：上面几个 await 之间用户自己选了，
   ///    不能把他的选择盖掉。
@@ -420,20 +466,54 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (token != _loadToken) return;
     if (state.activeSubtitle != null || state.activeTrackId != null) return;
 
-    final pick = await SubtitleAutoService.instance.resolve(videoPath);
+    // 先等轨道：记忆里可能存的是内嵌轨 id，判断"有没有内嵌字幕"也靠它
+    await _waitForTracks();
     if (token != _loadToken) return;
     if (state.activeSubtitle != null || state.activeTrackId != null) return;
 
-    final path = pick.path;
-    // path 为 null：没有候选，或者记忆里用户上次关掉了字幕（别又自动挂回来）
-    if (path == null) return;
-
-    final candidate = pick.candidate;
-    await _applyExternalSubtitle(
-      path,
-      language: candidate?.language,
-      title: candidate?.title,
+    final trackIds = [for (final t in _currentEmbeddedTracks()) t.id];
+    final pick = await SubtitleAutoService.instance.resolve(
+      videoPath,
+      embeddedTrackIds: trackIds,
     );
+    if (token != _loadToken) return;
+    if (state.activeSubtitle != null || state.activeTrackId != null) return;
+
+    switch (pick.kind) {
+      case SubtitlePickKind.rememberedEmbedded:
+        await _restoreEmbeddedTrack(pick.trackId);
+      case SubtitlePickKind.embeddedPreferred:
+        // 片源自带内嵌字幕：不自动挂外挂（外挂仍在字幕列表里，想用可以手动选）
+        return;
+      case SubtitlePickKind.rememberedOff:
+      case SubtitlePickKind.none:
+        return;
+      case SubtitlePickKind.rememberedFile:
+      case SubtitlePickKind.auto:
+        final path = pick.path;
+        if (path == null) return;
+        final candidate = pick.candidate;
+        await _applyExternalSubtitle(
+          path,
+          language: candidate?.language,
+          title: candidate?.title,
+        );
+    }
+  }
+
+  /// 按记忆选中内嵌字幕轨（不写记忆：这是恢复，不是用户的新选择）
+  Future<void> _restoreEmbeddedTrack(String? trackId) async {
+    if (trackId == null) return;
+    SubtitleTrack? track;
+    for (final t in _currentEmbeddedTracks()) {
+      if (t.id == trackId) {
+        track = t;
+        break;
+      }
+    }
+    // 期间轨道变了（重新探测/换片）：不猜，宁可什么都不挂
+    if (track == null) return;
+    await _applyEmbeddedSubtitle(track);
   }
 
   /// 停止播放并清除当前视频（关闭小窗/后台播放）
@@ -530,8 +610,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   // ═══════════════ 字幕 ═══════════════
 
-  /// 选择内嵌字幕轨道（容器内的字幕流）
+  /// 选择内嵌字幕轨道（容器内的字幕流，用户手动选）
   Future<void> selectEmbeddedSubtitle(SubtitleTrack track) async {
+    await _applyEmbeddedSubtitle(track);
+    // 内嵌轨也要记：不记的话下次打开会被"自动挑外挂"或片源默认轨道盖掉
+    await _rememberEmbeddedChoice(track);
+  }
+
+  /// 选中内嵌字幕轨（不写记忆：自动恢复和用户手动选择共用）
+  Future<void> _applyEmbeddedSubtitle(SubtitleTrack track) async {
     try {
       await state.player.setSubtitleTrack(track);
     } catch (e) {
@@ -602,6 +689,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final video = state.currentVideo;
     if (video == null) return;
     await SubtitleAutoService.instance.remember(video.path, path);
+  }
+
+  /// 记住「这个视频上次选的是哪条内嵌轨」
+  Future<void> _rememberEmbeddedChoice(SubtitleTrack track) async {
+    final video = state.currentVideo;
+    if (video == null) return;
+    await SubtitleAutoService.instance.rememberEmbedded(
+      video.path,
+      track.id,
+      language: track.language,
+    );
   }
 
   /// 兼容旧调用

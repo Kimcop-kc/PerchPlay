@@ -78,7 +78,7 @@ class AppSettingsService {
   String _libraryFilter = 'all';
   String get libraryFilter => _libraryFilter;
 
-  /// 每个视频「上次选了什么外挂字幕」
+  /// 每个视频「上次选了什么字幕」（外挂文件 / 内嵌轨 / 关掉，三态）
   ///
   /// 为什么放这里：SharedPreferences 的读写统一收敛在这个单例，播放器不用关心
   /// 持久化细节。键格式、最近使用排序、条数上限（[SubtitleMemory.maxEntries]）
@@ -213,7 +213,7 @@ class AppSettingsService {
     } catch (_) {}
   }
 
-  // ═══════════════ 外挂字幕记忆 ═══════════════
+  // ═══════════════ 字幕记忆（外挂 / 内嵌 / 关掉） ═══════════════
 
   /// 当前全部字幕记忆（最近使用的在最前）
   List<SubtitleMemory> get subtitleMemory => _subtitleMemory;
@@ -229,26 +229,62 @@ class AppSettingsService {
     return SubtitleMemory.find(_subtitleMemory, key);
   }
 
-  /// 记住某个视频「上次选的字幕」
+  /// 记住某个视频「上次选的外挂字幕」
   ///
   /// [subtitlePath] 为 null 表示用户手动关掉了字幕：下次打开这个视频不要再自动挂。
   /// 覆盖 + 淘汰规则见 [SubtitleMemory.upsert]（最近使用优先，最多 300 条）。
   Future<void> rememberSubtitle(String videoPath, String? subtitlePath) async {
     final key = LibraryHiddenService.normalizePath(videoPath);
     if (key.isEmpty) return;
-    _subtitleMemory = SubtitleMemory.upsert(
-      _subtitleMemory,
-      SubtitleMemory(
+    final updatedAt = DateTime.now().millisecondsSinceEpoch;
+    await _storeSubtitleMemory(
+      subtitlePath == null
+          ? SubtitleMemory.off(videoPath: key, updatedAt: updatedAt)
+          : SubtitleMemory.external(
+              videoPath: key,
+              subtitlePath: subtitlePath,
+              updatedAt: updatedAt,
+            ),
+    );
+  }
+
+  /// 记住某个视频「上次选的内嵌字幕轨」
+  ///
+  /// 内嵌轨用 mpv 的 track id 恢复（同一文件每次打开 id 稳定）；
+  /// 换文件/id 对不上时由 [Subtitles.pick] 判定记忆失效并回落到自动逻辑。
+  Future<void> rememberEmbeddedSubtitle(
+    String videoPath,
+    String trackId, {
+    String? language,
+  }) async {
+    final key = LibraryHiddenService.normalizePath(videoPath);
+    if (key.isEmpty || trackId.isEmpty) return;
+    await _storeSubtitleMemory(
+      SubtitleMemory.embedded(
         videoPath: key,
-        subtitlePath: subtitlePath,
+        trackId: trackId,
+        language: language,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       ),
     );
+  }
+
+  /// 刷新某条记忆的「最近使用」时间（打开视频命中记忆时调用）
+  ///
+  /// 淘汰按最近使用来的：只在"手动改选"时更新时间的话，常看的片子会被
+  /// 后来选过字幕的其它片子挤出上限，明明一直在看却丢了记忆。
+  Future<void> touchSubtitleMemory(SubtitleMemory memory) => _storeSubtitleMemory(
+        memory.touch(DateTime.now().millisecondsSinceEpoch),
+      );
+
+  /// 写入一条记忆并落盘（同一视频覆盖旧记录）
+  Future<void> _storeSubtitleMemory(SubtitleMemory entry) async {
+    _subtitleMemory = SubtitleMemory.upsert(_subtitleMemory, entry);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
         _kSubtitleMemory,
-        [for (final entry in _subtitleMemory) entry.encode()],
+        [for (final memory in _subtitleMemory) memory.encode()],
       );
     } catch (_) {}
   }

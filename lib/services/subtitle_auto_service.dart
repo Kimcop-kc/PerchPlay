@@ -17,11 +17,17 @@ class SubtitleAutoService {
   SubtitleAutoService._();
   static final instance = SubtitleAutoService._();
 
-  /// 这次打开这个视频该不该自动挂字幕、挂哪条
+  /// 这次打开这个视频该怎么处理字幕
   ///
-  /// 找不到任何同名字幕 / 记忆里是「关掉字幕」时返回不挂的结论，
-  /// 调用方只管照着 `path` 做，不需要自己再判断。
-  Future<SubtitlePick> resolve(String videoPath) async {
+  /// [embeddedTrackIds] 是播放器已经探测到的内嵌字幕轨 id：用来核对记忆里存的
+  /// 轨道还在不在，以及判断「这个片子自带字幕、别自动挂外挂」。
+  ///
+  /// 结论可能是「恢复记忆」「不挂」「挂某个外挂文件」「选某条内嵌轨」，
+  /// 调用方只管照 `pick` 做，不需要自己再判断。
+  Future<SubtitlePick> resolve(
+    String videoPath, {
+    List<String> embeddedTrackIds = const <String>[],
+  }) async {
     final candidates = await findCandidates(videoPath);
     final remembered = AppSettingsService.instance.subtitleMemoryFor(videoPath);
     final pick = Subtitles.pick(
@@ -30,19 +36,23 @@ class SubtitleAutoService {
       // 记忆里的文件可能已经被用户删了：这里查真实文件系统，
       // 文件不在就忽略记忆、回落到自动挑选（需求里的「删了就忽略记忆」）。
       exists: (path) => File(path).existsSync(),
+      embeddedTrackIds: embeddedTrackIds,
     );
 
-    // 记忆确实生效时顺手刷新「最近使用」时间。
+    // 记忆确实生效时顺手刷新「最近使用」时间（三种记忆都算）。
     // 淘汰是按最近使用来的，如果只在「手动改选」时更新时间，常看的片子会被
     // 后来选过字幕的其它片子挤出 300 条上限，明明一直在看却丢了记忆。
-    if (remembered != null &&
-        (pick.kind == SubtitlePickKind.rememberedFile ||
-            pick.kind == SubtitlePickKind.rememberedOff)) {
-      await AppSettingsService.instance
-          .rememberSubtitle(videoPath, remembered.subtitlePath);
+    if (remembered != null && _memoryApplied(pick.kind)) {
+      await AppSettingsService.instance.touchSubtitleMemory(remembered);
     }
     return pick;
   }
+
+  /// 这次结论是不是「记忆生效了」（含"关掉字幕"这种否定式记忆）
+  bool _memoryApplied(SubtitlePickKind kind) =>
+      kind == SubtitlePickKind.rememberedFile ||
+      kind == SubtitlePickKind.rememberedOff ||
+      kind == SubtitlePickKind.rememberedEmbedded;
 
   /// 视频同目录下的同名字幕候选（已排好序）
   Future<List<SubtitleCandidate>> findCandidates(String videoPath) async {
@@ -62,7 +72,16 @@ class SubtitleAutoService {
     }
   }
 
-  /// 记住某个视频上次选的字幕；[subtitlePath] 为 null 表示用户关掉了字幕
+  /// 记住某个视频上次选的外挂字幕；[subtitlePath] 为 null 表示用户关掉了字幕
   Future<void> remember(String videoPath, String? subtitlePath) =>
       AppSettingsService.instance.rememberSubtitle(videoPath, subtitlePath);
+
+  /// 记住某个视频上次选的内嵌字幕轨
+  Future<void> rememberEmbedded(
+    String videoPath,
+    String trackId, {
+    String? language,
+  }) =>
+      AppSettingsService.instance
+          .rememberEmbeddedSubtitle(videoPath, trackId, language: language);
 }
