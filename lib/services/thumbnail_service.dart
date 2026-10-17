@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 /// 视频缩略图生成 + 存放位置
@@ -22,6 +23,29 @@ class ThumbnailService {
       return thumbnailPath;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 缩略图路径是否还能直接用（有路径，且文件真的还在）
+  ///
+  /// 系统清缓存 / 用户清数据后数据库里的路径还在、文件没了，
+  /// 这时既不能直接 Image.file（会渲染成一片空白），也不该再解码生成 ——
+  /// 由调用方决定重新生成。
+  static bool isUsable(String path) =>
+      path.isNotEmpty && File(path).existsSync();
+
+  /// 删除某个视频的缩略图文件（视频被移出影库后它就没用了）
+  ///
+  /// 只删 `thumbnails/` 目录里的文件：路径来自数据库，理论上都由 [generate]
+  /// 产出，但库可能被迁移/手改过，删错文件的代价太大，先按目录挡住。
+  Future<void> deleteThumbnail(String path) async {
+    if (path.isEmpty) return;
+    try {
+      if (p.basename(File(path).parent.path) != _folderName) return;
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // 缩略图清理失败不该影响"移除视频"本身
     }
   }
 

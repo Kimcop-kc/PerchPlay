@@ -196,10 +196,44 @@ class DatabaseService {
   }
 
   /// 删除单条视频记录（不删除磁盘文件）
-  Future<void> deleteVideo(String id) async {
+  Future<void> deleteVideo(String id) => deleteVideos([id]);
+
+  /// 批量删除视频记录（不删除磁盘文件），顺带清掉播放历史与刮削缓存
+  ///
+  /// 刮削缓存是跟着「这个文件」走的（海报/元数据只对它有意义）：
+  /// 影库记录都没了还留着，不只是占空间，同路径再次入库时会被当成
+  /// "已经刮削过"，界面继续用旧的错配结果。
+  Future<void> deleteVideos(List<String> ids,
+      {List<String> videoPaths = const []}) async {
+    if (ids.isEmpty) return;
     final db = await database;
-    await db.delete('videos', where: 'id = ?', whereArgs: [id]);
-    await db.delete('playback_history', where: 'videoId = ?', whereArgs: [id]);
+    final batch = db.batch();
+    for (final id in ids) {
+      batch.delete('videos', where: 'id = ?', whereArgs: [id]);
+      batch.delete('playback_history', where: 'videoId = ?', whereArgs: [id]);
+    }
+    for (final path in videoPaths) {
+      if (path.isEmpty) continue;
+      batch.delete('scrape_cache',
+          where: 'video_path = ?', whereArgs: [path]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// 只更新缩略图路径
+  ///
+  /// 后台补缩略图是「一批一次」地写：不能用 [upsertScannedVideos]，那个要先把
+  /// 整表读出来合并（为了保住播放进度/收藏），几百个视频时每批都全表读一遍，
+  /// 比生成缩略图本身还慢。
+  Future<void> updateThumbnailPaths(Map<String, String> idToPath) async {
+    if (idToPath.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final entry in idToPath.entries) {
+      batch.update('videos', {'thumbnailPath': entry.value},
+          where: 'id = ?', whereArgs: [entry.key]);
+    }
+    await batch.commit(noResult: true);
   }
 
   /// 保存播放进度（同时刷新 lastPlayed，供历史页排序）

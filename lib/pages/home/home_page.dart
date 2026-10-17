@@ -126,6 +126,15 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       // 刚授予「所有文件访问」→ 立刻重扫
       await ref.read(libraryProvider.notifier).scan();
     }
+    // 文件在别的 App / 文件管理器里被删掉后，回前台必须把它从影库里摘掉，
+    // 否则首页永远显示一张点不开的卡片。
+    // 只做 existsSync 的轻量检查（不重扫）；剔除数为 0 时内部不改 state，
+    // 界面不会重建。
+    // 必须在「有读取权限」时才做：没权限时 existsSync 对共享存储一律返回
+    // false，那样会把整个影库误判成已删除。
+    if (ref.read(permissionProvider).hasVideoPermission) {
+      await ref.read(libraryProvider.notifier).pruneMissingFiles();
+    }
   }
 
   /// 启动时：检查权限 → 仅当影库为空（首次）才自动扫描，否则只加载缓存
@@ -154,15 +163,21 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     if (current == null || current.isEmpty) {
       await ref.read(libraryProvider.notifier).scan();
     } else {
+      // 冷启动也当成"回到首页"：先花几毫秒把文件已经不在磁盘上的条目剔掉
+      // （在手机里删了视频、冷启动又只读缓存时，这张卡片会一直挂着）。
+      await ref.read(libraryProvider.notifier).pruneMissingFiles();
       // 不重扫，但刮削必须补齐。
       // 刮削原来只在 scan() 之后触发，而影库非空时冷启动不扫描 ——
       // 结果就是「刚升级 App」或「刚填好 TMDB Key」的用户，现有视频
       // 永远不会被刮削，必须手动点一次刷新才出海报，看起来像"识别不了"。
       // scrapeBatch 内部会跳过已有结果的；scrapeForVideo 也会先查本地缓存，
       // 所以这里不会产生多余的网络请求。
+      // 路径要重新取一次：上面剔除了已消失的视频
+      final alive =
+          ref.read(libraryProvider).valueOrNull ?? const <VideoModel>[];
       ref
           .read(scrapeProvider.notifier)
-          .scrapeBatch([for (final v in current) v.path]);
+          .scrapeBatch([for (final v in alive) v.path]);
     }
   }
 

@@ -280,9 +280,25 @@ class AppSettingsService {
   ) {
     final existingVidIds = videos.map((v) => v.id).toSet();
     final auto = <Playlist>[];
+
+    // 自动列表按类型排：电影 → 剧集 → 其它（兜底分组 / 个人来源这类杂项）。
+    // 这里用「按优先级分桶再拼接」而不是 List.sort：Dart 的 sort 不稳定，
+    // 直接按优先级排序会打乱同类型内 groupAll 的原始相对顺序。
+    final ordered = <SourceGroup>[
+      for (final g in groups)
+        if (g.kindPriority == 0) g,
+      for (final g in groups)
+        if (g.kindPriority == 1) g,
+      for (final g in groups)
+        if (g.kindPriority == 2) g,
+    ];
+
+    // 从 -1000 起递增：负数编号保证自动列表整体排在手动列表
+    // （sortOrder 默认 0）**之前**，两者不会交错；分组数远小于 1000，
+    // 不会溢出到非负数去占手动列表的位置。
     var order = -1000;
 
-    for (final g in groups) {
+    for (final g in ordered) {
       final kind = g.isSeries
           ? 'series'
           : g.isMovie

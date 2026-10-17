@@ -52,6 +52,13 @@ class SourceGroup {
     this.isFallback = false,
     this.isMovie = false,
   });
+
+  /// 自动列表的排序优先级：电影(0) → 剧集(1) → 其它/杂项(2)
+  ///
+  /// 用「优先级数字」而不是在调用处直接写排序条件，是为了让
+  /// `applyAutoOverrides` 能按优先级分桶拼接 —— Dart 的 `List.sort` 不稳定，
+  /// 直接按优先级排序会把同类型内 `groupAll` 的原始顺序打乱。
+  int get kindPriority => isMovie ? 0 : (isSeries ? 1 : 2);
 }
 
 /// 按**文件夹路径**判断视频来源，决定用哪种分组策略。
