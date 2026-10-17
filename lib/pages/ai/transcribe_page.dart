@@ -1,19 +1,24 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../../core/theme/glass_theme.dart';
 import '../../services/ai/ai_model.dart';
 import '../../services/ai/ai_model_catalog.dart';
 import '../../services/ai/model_downloader.dart';
+import '../../services/ai/punct_service.dart';
 import '../../services/ai/speech_service.dart';
+import '../../services/ai/tts_service.dart';
 
 /// 语音转写页面。
 ///
-/// 流程：选模型 → 选 WAV 文件 → 加载模型 → 转写 → 展示结果。
-/// 支持"先录一段再转写"或"从已有 WAV 文件转写"。
+/// 流程：选模型 → 选 WAV 文件 → 加载模型 → 转写 → 标点恢复 → 展示结果。
+/// 结果页支持 TTS 朗读。
 class TranscribePage extends StatefulWidget {
   const TranscribePage({super.key});
 
@@ -25,6 +30,8 @@ enum _Step { selectModel, selectAudio, transcribing, done }
 
 class _TranscribePageState extends State<TranscribePage> {
   final _speech = SpeechService();
+  final _punct = PunctService();
+  final _tts = TtsService();
   final _downloader = ModelDownloader();
 
   _Step _step = _Step.selectModel;
@@ -35,11 +42,17 @@ class _TranscribePageState extends State<TranscribePage> {
   /// 用户选中的 WAV 文件路径
   String? _wavPath;
 
-  /// 转写结果
+  /// 转写结果（原始）
+  String? _rawResult;
+
+  /// 标点后结果
   String? _result;
 
   /// 错误信息
   String? _error;
+
+  /// TTS 是否正在合成
+  bool _ttsBusy = false;
 
   /// 已下载的模型 id → AiModel（仅 ASR 类）
   List<AiModel> _availableModels = [];
@@ -83,6 +96,8 @@ class _TranscribePageState extends State<TranscribePage> {
   @override
   void dispose() {
     _speech.dispose();
+    _punct.dispose();
+    _tts.dispose();
     _downloader.dispose();
     super.dispose();
   }
@@ -184,19 +199,36 @@ class _TranscribePageState extends State<TranscribePage> {
     if (wav == null) return;
 
     try {
+      // 1. ASR 转写
       final text = await _speech.transcribeFile(wav);
       if (!mounted) return;
-      final display = (text == null || text.isEmpty)
-          ? '(未识别到语音内容)'
-          : text;
+
+      final raw = (text == null || text.isEmpty) ? '(未识别到语音内容)' : text;
+      String display = raw;
+
+      // 2. 标点恢复（如果标点模型已下载）
+      if (raw != '(未识别到语音内容)') {
+        final pDir = await _resolvePunctModelDir();
+        if (pDir != null) {
+          _punct.loadModel(pDir);
+          if (_punct.isLoaded) {
+            display = _punct.restore(raw);
+          }
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
         _step = _Step.done;
+        _rawResult = raw;
         _result = display;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _step = _Step.done;
+        _rawResult = null;
+        _result = null;
         _error = '转写失败: $e';
       });
     }
@@ -208,6 +240,7 @@ class _TranscribePageState extends State<TranscribePage> {
     setState(() {
       _step = _Step.selectModel;
       _wavPath = null;
+      _rawResult = null;
       _result = null;
       _error = null;
     });
@@ -238,6 +271,85 @@ class _TranscribePageState extends State<TranscribePage> {
           backgroundColor: GlassTheme.accentPink,
         ),
       );
+    }
+  }
+
+  /// 查找标点模型目录。
+  Future<String?> _resolvePunctModelDir() async {
+    final dir = await ModelDownloader.modelsDir();
+    final d = Directory('${dir.path}${Platform.pathSeparator}punct-ct-transformer');
+    if (!await d.exists()) return null;
+    final hasOnnx = await d.list().any((e) =>
+        e is File && e.path.toLowerCase().endsWith('.onnx'));
+    return hasOnnx ? d.path : null;
+  }
+
+  /// 查找 TTS 模型目录（按优先级：中文 > 英文 > 粤语）。
+  Future<String?> _resolveTtsModelDir() async {
+    final dir = await ModelDownloader.modelsDir();
+    for (final id in ['vits-zh', 'vits-en', 'vits-yue']) {
+      final d = Directory('${dir.path}${Platform.pathSeparator}$id');
+      if (!await d.exists()) continue;
+      final hasOnnx = await d.list().any((e) =>
+          e is File && e.path.toLowerCase().endsWith('.onnx'));
+      if (hasOnnx) return d.path;
+    }
+    return null;
+  }
+
+  /// TTS 朗读当前转写结果。
+  Future<void> _speakResult() async {
+    final text = _result;
+    if (text == null || text.isEmpty) return;
+    if (_ttsBusy) return;
+
+    final ttsDir = await _resolveTtsModelDir();
+    if (ttsDir == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先下载 TTS 模型（VITS-中文/英文/粤语）'),
+          backgroundColor: Color(0xFFFF9500),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _ttsBusy = true);
+    try {
+      _tts.loadModel(ttsDir);
+      final audio = _tts.synthesize(text, speed: 1.0);
+      if (audio == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('TTS 合成失败'),
+            backgroundColor: GlassTheme.accentPink,
+          ),
+        );
+        return;
+      }
+
+      // 写临时 WAV 文件
+      final tmpDir = await getTemporaryDirectory();
+      final wavFile = File(
+          '${tmpDir.path}${Platform.pathSeparator}tts_${DateTime.now().millisecondsSinceEpoch}.wav');
+      sherpa.writeWave(
+        filename: wavFile.path,
+        samples: audio.samples,
+        sampleRate: audio.sampleRate,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('朗读已生成: ${wavFile.path}'),
+          backgroundColor: GlassTheme.accentTeal,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _ttsBusy = false);
     }
   }
 
@@ -649,16 +761,19 @@ class _TranscribePageState extends State<TranscribePage> {
               child: _outlineButton('重新选择文件', _pickWav),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: _outlineButton('分享结果', () {
-                // TODO: 分享功能
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('分享功能将在后续版本上线'),
-                  ),
-                );
-              }),
-            ),
+            if (!hasError)
+              Expanded(
+                child: _ttsBusy
+                    ? const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: GlassTheme.accentPurple),
+                        ),
+                      )
+                    : _outlineButton('朗读结果', _speakResult),
+              ),
           ],
         ),
       ],
