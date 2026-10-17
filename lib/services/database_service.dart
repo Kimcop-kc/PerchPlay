@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/video_model.dart';
 import '../models/playlist_model.dart';
+import 'playlist_prune_service.dart';
 
 class DatabaseService {
   DatabaseService._();
@@ -356,6 +357,25 @@ class DatabaseService {
   Future<void> deletePlaylist(String id) async {
     final db = await database;
     await db.delete('playlists', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// 把所有播放列表里指向这些视频的 id 剔掉并落库（自动列表 + 手动列表）
+  ///
+  /// 视频从影库移除后这些 id 永远播不了：手动列表不会重建，残留下来就是一条
+  /// 点不开的黑条目。**列表本身保留**（剔空就变空列表），不能顺手删列表。
+  /// 返回被改动的列表数。
+  Future<int> stripVideoIdsFromPlaylists(Set<String> removedVideoIds) async {
+    if (removedVideoIds.isEmpty) return 0;
+    final playlists = await getAllPlaylists();
+    var changed = 0;
+    for (final playlist in playlists) {
+      // 没变化返回 null → 不写库（列表多的时候别每次都全量重写）
+      final updated = PlaylistPruneService.strip(playlist, removedVideoIds);
+      if (updated == null) continue;
+      await savePlaylist(updated);
+      changed++;
+    }
+    return changed;
   }
 
   // ---------- 清理 ----------

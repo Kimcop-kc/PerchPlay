@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/playlist_model.dart';
 import '../models/video_model.dart';
+import 'library_hidden_service.dart';
 import 'media_grouping_service.dart';
 import 'video_source_service.dart';
 
@@ -85,6 +86,17 @@ class AppSettingsService {
   Set<String> get hiddenAutoPlaylists => _hiddenAutoPlaylists;
   bool isAutoPlaylistHidden(String id) => _hiddenAutoPlaylists.contains(id);
 
+  /// 被「仅从影库移除（保留文件）」移出去的视频路径
+  ///
+  /// 为什么必须记下来：只删数据库记录的话，下次全盘扫描会把磁盘上还在的
+  /// 文件重新写回影库（见 [LibraryHiddenService]）。键/归一化规则都在那个
+  /// 纯逻辑类里，这里只负责读写。
+  Set<String> _hiddenVideoPaths = <String>{};
+  Set<String> get hiddenVideoPaths => _hiddenVideoPaths;
+
+  /// 隐藏了多少个视频（设置页「已隐藏的视频（N 个）」用）
+  int get hiddenVideoCount => _hiddenVideoPaths.length;
+
   /// 用户在「自动列表」里手动加进来 / 手动移出去的视频
   ///
   /// 自动列表每次扫描都会按文件名重建；如果不管用户的增删，手动加进去的会被
@@ -155,6 +167,9 @@ class AppSettingsService {
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
+      _hiddenVideoPaths = LibraryHiddenService.normalizeAll(
+          prefs.getStringList(LibraryHiddenService.prefsKey) ??
+              const <String>[]);
       _autoAdded =
           (prefs.getStringList(_kAutoAdded) ?? const <String>[]).toSet();
       _autoRemoved =
@@ -239,6 +254,30 @@ class AppSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
           _kHiddenAutoPlaylists, _hiddenAutoPlaylists.toList());
+    } catch (_) {}
+  }
+
+  /// 记住「这个文件的路径被用户从影库移除了」（保留磁盘文件）
+  Future<void> hideVideoPath(String path) async {
+    final normalized = LibraryHiddenService.normalizePath(path);
+    if (normalized.isEmpty) return;
+    _hiddenVideoPaths.add(normalized);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+          LibraryHiddenService.prefsKey, _hiddenVideoPaths.toList());
+    } catch (_) {}
+  }
+
+  /// 清空隐藏名单（设置页「全部恢复」）
+  ///
+  /// 清空后下次扫描会把这些文件重新写回影库；不提供这个出口的话，
+  /// 用户误点一次「仅从影库移除」就永远找不回来了。
+  Future<void> restoreHiddenVideos() async {
+    _hiddenVideoPaths = <String>{};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(LibraryHiddenService.prefsKey);
     } catch (_) {}
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
+import '../../providers/library_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_settings_provider.dart';
 import '../../providers/scrape_provider.dart';
@@ -70,6 +72,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   children: [
                     _sectionHeader('播放'),
                     _buildPlaybackSettings(),
+                    const SizedBox(height: 24),
+                    _sectionHeader('影库'),
+                    _buildLibrarySettings(),
                     const SizedBox(height: 24),
                     _sectionHeader('界面'),
                     _buildUISettings(),
@@ -194,6 +199,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 影库维护：隐藏名单的恢复入口
+  ///
+  /// 「仅从影库移除（保留文件）」会把路径记进隐藏名单（否则下次扫描又写回来），
+  /// 没有这个入口，用户误点一次就永远找不回来了 —— 这是可逆性的唯一出口。
+  Widget _buildLibrarySettings() {
+    final hiddenCount = _settings.hiddenVideoCount;
+    return GlassCard(
+      radius: GlassTheme.radiusMd,
+      tint: GlassTheme.tintPink,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          _settingRow(
+            Icons.visibility_off_rounded,
+            '已隐藏的视频（$hiddenCount 个）',
+            trailing: hiddenCount == 0
+                ? const Text('无',
+                    style: TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 13))
+                : GlassButton.outlined(
+                    label: '全部恢复',
+                    height: 32,
+                    foregroundColor: GlassTheme.accentTeal,
+                    onTap: _restoreHiddenVideos,
+                  ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '「仅从影库移除（保留文件）」的视频记在这里。'
+              '恢复后会立即重扫，把它们放回影库。',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restoreHiddenVideos() async {
+    final count = _settings.hiddenVideoCount;
+    await _settings.restoreHiddenVideos();
+    if (!mounted) return;
+    setState(() {});
+    // 立刻重扫：用户点「全部恢复」就是想看到它们回来，不该再等下次冷启动。
+    // 不 await —— 扫描要遍历目录，设置页不能被它卡住。
+    unawaited(ref.read(libraryProvider.notifier).scan());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已恢复 $count 个视频，正在重新扫描影库'),
+        duration: const Duration(seconds: 3),
       ),
     );
   }

@@ -4,7 +4,9 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models/video_model.dart';
 import '../core/constants/app_constants.dart';
+import 'app_settings_service.dart';
 import 'database_service.dart';
+import 'library_hidden_service.dart';
 import 'native_bridge_service.dart';
 
 class VideoScannerService {
@@ -40,11 +42,40 @@ class VideoScannerService {
       await _db.removeVideosNotInPaths(existingPaths);
     }
     // 保存新扫描结果（保留既有播放进度/收藏/缩略图）
-    if (found.isNotEmpty) {
-      await _db.upsertScannedVideos(found);
+    // 必须先过一遍隐藏名单：写库之后才过滤的话，数据库里会重新长出记录，
+    // 下次冷启动读缓存又冒出来（"删了又回来"）。
+    final kept = await _dropHiddenVideos(found);
+    if (kept.isNotEmpty) {
+      await _db.upsertScannedVideos(kept);
     }
 
-    return found;
+    return kept;
+  }
+
+  /// 按隐藏名单过滤扫描结果，并清掉命中项可能残留的数据库记录
+  ///
+  /// 正常流程里「仅从影库移除」已经删过记录了，这里是兜底：万一当时删库
+  /// 失败（进程被杀 / 数据库忙），残留记录会让卡片一直挂在首页。
+  Future<List<VideoModel>> _dropHiddenVideos(List<VideoModel> found) async {
+    if (found.isEmpty) return found;
+    await AppSettingsService.instance.ensureLoaded();
+    final hidden = AppSettingsService.instance.hiddenVideoPaths;
+    if (hidden.isEmpty) return found;
+
+    final split = LibraryHiddenService.split(found, hidden);
+    if (split.dropped.isEmpty) return found;
+
+    try {
+      await _db.deleteVideos(
+        [for (final v in split.dropped) v.id],
+        videoPaths: [for (final v in split.dropped) v.path],
+      );
+    } catch (e) {
+      // 删不掉也不影响本次显示：至少界面上不会再出现
+      debugPrint('[Scanner] 清理隐藏视频的残留记录失败: $e');
+    }
+    debugPrint('[Scanner] 跳过 ${split.dropped.length} 个已隐藏的视频');
+    return split.kept;
   }
 
   /// 走系统媒体库索引扫描（首选，毫秒级）
@@ -99,10 +130,12 @@ class VideoScannerService {
     if (removeMissing) {
       await _db.removeVideosNotInPaths(existingPaths);
     }
-    if (found.isNotEmpty) {
-      await _db.upsertScannedVideos(found);
+    // 同上：隐藏名单必须在写库之前过滤
+    final kept = await _dropHiddenVideos(found);
+    if (kept.isNotEmpty) {
+      await _db.upsertScannedVideos(kept);
     }
-    return found;
+    return kept;
   }
 
   final _bridge = NativeBridgeService.instance;

@@ -45,17 +45,31 @@ class LibraryPruneService {
 
   /// 挑出「文件已经不存在」的视频
   ///
-  /// 网络来源一律跳过，不能误判成已删除。[exists] 可注入，单测用它替代
-  /// 真实文件系统（`File.existsSync` 在 CI 上没有意义的路径）。
+  /// 网络来源一律跳过，不能误判成已删除。[exists] / [dirExists] 可注入，
+  /// 单测用它们替代真实文件系统（`File.existsSync` 在 CI 上没有意义的路径）。
+  ///
+  /// 判断规则（比"整库都判为不存在就跳过"更准确）：
+  ///   - 文件还在 → 不算缺失；
+  ///   - 文件不在、但**父目录还能访问** → 认定文件确实被删了，可以剔除；
+  ///   - 连父目录都访问不到 → 多半是读权限被撤 / SD 卡没挂载 / 存储暂时
+  ///     不可用的异常情况，跳过这条，避免误删。
+  /// 这样「只有一个视频的影库」把文件删了也能正常剔除，而权限异常时
+  /// 依然不会把整库清空。
   static List<VideoModel> findMissing(
     List<VideoModel> videos, {
     bool Function(String path)? exists,
+    bool Function(String path)? dirExists,
   }) {
-    final check = exists ?? (String path) => File(path).existsSync();
+    final fileCheck = exists ?? (String path) => File(path).existsSync();
+    final dirCheck =
+        dirExists ?? (String path) => File(path).parent.existsSync();
     final missing = <VideoModel>[];
     for (final video in videos) {
       if (isRemotePath(video.path)) continue;
-      if (!check(video.path)) missing.add(video);
+      if (fileCheck(video.path)) continue;
+      // 文件没了但目录还在 = 真删了；目录都进不去 = 存储/权限异常，放过
+      if (!dirCheck(video.path)) continue;
+      missing.add(video);
     }
     return missing;
   }

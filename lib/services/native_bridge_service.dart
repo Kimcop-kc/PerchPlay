@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 /// 原生平台桥接服务
@@ -129,6 +132,30 @@ class NativeBridgeService {
           .toList();
     } catch (_) {
       return const [];
+    }
+  }
+
+  /// 告诉系统媒体库：这个路径的文件已经被删除了
+  ///
+  /// 为什么需要：直接 `File.delete()` 不会更新 MediaStore 索引，相册和其它
+  /// 播放器还能看到一条指向不存在文件的记录（点开就是黑屏/报错）。
+  /// 原生侧用 MediaScannerConnection 重新扫这个路径，文件不存在时系统会
+  /// 自己把索引记录收敛掉 —— 这是系统给的标准通道，不需要额外依赖/权限。
+  ///
+  /// 失败（非 Android、通道异常、ROM 不响应）时返回 false 并忽略：
+  /// 文件已经删掉了，这里只是"顺手通知"，不该让删除操作报错。
+  Future<bool> notifyMediaDeleted(String path) async {
+    if (kIsWeb) return false;
+    if (path.trim().isEmpty) return false;
+    if (!Platform.isAndroid) return false;
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'notifyMediaDeleted',
+        {'path': path},
+      );
+      return ok ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

@@ -2,6 +2,7 @@ package com.perchplay.player
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -171,6 +172,12 @@ class MainActivity : FlutterActivity() {
                     // ── 用 MediaStore 索引取全部视频（毫秒级，带时长/分辨率）──
                     "queryMediaStoreVideos" -> {
                         result.success(queryMediaStoreVideos())
+                    }
+
+                    // ── 文件被删除后让媒体库索引收敛（相册/其他播放器别再看到）──
+                    "notifyMediaDeleted" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        result.success(notifyMediaDeleted(path))
                     }
 
                     else -> result.notImplemented()
@@ -379,6 +386,48 @@ class MainActivity : FlutterActivity() {
             return emptyList()
         }
         return out
+    }
+
+    // ──────────────────────────────
+    // 媒体库索引收敛
+    // ──────────────────────────────
+
+    /**
+     * 通知系统媒体库「这个路径的文件已经不在了」。
+     *
+     * 直接在应用内删文件不会同步更新 MediaStore：相册和其它播放器还能看到
+     * 一条指向不存在文件的记录。MediaScannerConnection.scanFile 会让系统重新
+     * 扫这个路径，文件不存在时系统自己把索引记录删掉 —— 这正是删除文件后
+     * 应该走的通道（不需要额外依赖，也不需要媒体写入权限）。
+     *
+     * 再补发一次旧的 ACTION_MEDIA_SCANNER_SCAN_FILE 广播：个别老 ROM 的媒体
+     * 库只响应广播。Android 10+ 对该广播已废弃且可能抛异常，这里整段吞掉，
+     * 主通道（scanFile）不受影响。
+     */
+    @Suppress("DEPRECATION")
+    private fun notifyMediaDeleted(path: String): Boolean {
+        if (path.isEmpty()) return false
+        return try {
+            MediaScannerConnection.scanFile(
+                applicationContext,
+                arrayOf(path),
+                null
+            ) { _, _ -> }
+            try {
+                sendBroadcast(
+                    Intent(
+                        Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
+                        Uri.fromFile(java.io.File(path))
+                    )
+                )
+            } catch (_: Exception) {
+                // 新系统上该广播已不可用，忽略：scanFile 已经通知过了
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "notify media deleted failed", e)
+            false
+        }
     }
 
     // ──────────────────────────────

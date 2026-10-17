@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/playlist_model.dart';
 import '../models/scrape_result.dart';
@@ -134,6 +135,23 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     );
     await _db.savePlaylist(updated);
     state = AsyncData(await _db.getAllPlaylists());
+  }
+
+  /// 视频被删除 / 移出影库后，把这些 id 从所有播放列表里剔掉并落库
+  ///
+  /// 自动列表和手动列表都要清：手动列表不会重建，残留的 id 就是永远播不了的
+  /// 黑条目；自动列表虽然下次扫描会重建，但在那之前列表页同样点不开。
+  /// **列表本身保留**（剔空就变空），不能因为没视频了把列表删掉。
+  Future<void> removeVideoIds(Set<String> removedVideoIds) async {
+    if (removedVideoIds.isEmpty) return;
+    try {
+      await _db.stripVideoIdsFromPlaylists(removedVideoIds);
+    } catch (e) {
+      // 清理失败不该让「删除视频」整体失败（列表下次删除/扫描时还会再清）
+      debugPrint('[Playlist] 清理失效视频 id 失败: $e');
+    } finally {
+      state = AsyncData(await _db.getAllPlaylists());
+    }
   }
 
   Future<void> deletePlaylist(String playlistId) async {

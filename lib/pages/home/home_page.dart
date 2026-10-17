@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,6 +179,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       ref
           .read(scrapeProvider.notifier)
           .scrapeBatch([for (final v in alive) v.path]);
+
+      // 缩略图也要补：这个分支不重扫，而补缩略图原来只挂在 scan() 里，
+      // 结果从老版本升级上来、库里本来没有缩略图的视频，必须手动点一次刷新
+      // 才出图。同样不 await：后台补，首帧不等它。
+      unawaited(ref.read(libraryProvider.notifier).backfillThumbnails());
     }
   }
 
@@ -567,15 +573,30 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               },
             ),
             const SizedBox(height: 10),
+            // 两个动作必须分开：「移除」不碰文件（可恢复），「删除文件」是
+            // 破坏性的。以前只有一个"从影库移除"（只删数据库），下次扫描
+            // 又把磁盘上的文件写回来，用户删了个寂寞。
             GlassButton.outlined(
-              icon: Icons.delete_outline_rounded,
-              label: '从影库移除',
+              icon: Icons.visibility_off_rounded,
+              label: '仅从影库移除（保留文件）',
+              width: double.infinity,
+              height: 46,
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: () {
+                Navigator.pop(ctx);
+                _removeFromLibrary(video);
+              },
+            ),
+            const SizedBox(height: 10),
+            GlassButton.outlined(
+              icon: Icons.delete_forever_rounded,
+              label: '删除文件',
               width: double.infinity,
               height: 46,
               foregroundColor: GlassTheme.accentPink,
               onTap: () {
                 Navigator.pop(ctx);
-                _confirmDeleteVideo(video);
+                _confirmDeleteFile(video);
               },
             ),
         ],
@@ -814,12 +835,13 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               ),
             ),
 
-            // 右上角删除按钮
+            // 右上角移除按钮：非破坏性的「仅从影库移除」（删文件必须走长按
+            // 菜单里的二次确认，不能用一个一次性小按钮就删掉用户的数据）
             Positioned(
               top: 6,
               right: 6,
               child: GestureDetector(
-                onTap: () => _confirmDeleteVideo(video),
+                onTap: () => _removeFromLibrary(video),
                 child: Container(
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
@@ -827,7 +849,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     color: Colors.black.withOpacity(0.4),
                   ),
                   child: const Icon(
-                    Icons.delete_outline_rounded,
+                    Icons.visibility_off_rounded,
                     size: 16,
                     color: Colors.white,
                   ),
@@ -913,16 +935,32 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  /// 确认删除影库记录（不删磁盘文件）
-  Future<void> _confirmDeleteVideo(VideoModel video) async {
+  /// 仅从影库移除（保留磁盘文件）
+  ///
+  /// 不弹确认框：这是非破坏性操作，文件还在，设置页也有「全部恢复」。
+  /// 但必须走隐藏名单（见 LibraryHiddenService），否则下次扫描又会写回来。
+  Future<void> _removeFromLibrary(VideoModel video) async {
+    await ref.read(libraryProvider.notifier).hideVideoFromLibrary(video.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已从影库移除「${video.name}」（文件保留，设置里可恢复）'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// 删除磁盘文件（破坏性，无法恢复）→ 必须二次确认
+  Future<void> _confirmDeleteFile(VideoModel video) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFFF2F2F7),
-        title: const Text('移除视频',
+        title: const Text('删除文件',
             style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
         content: Text(
-          '从影库移除「${video.name}」？\n（不会删除手机里的文件）',
+          '「${video.name}」的文件会从手机上真正删除，无法恢复。\n\n'
+          '只想让它从影库消失、文件保留的话，请用「仅从影库移除」。',
           style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
         ),
         actions: [
@@ -933,15 +971,24 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('移除',
+            child: const Text('删除文件',
                 style: TextStyle(color: GlassTheme.accentPink)),
           ),
         ],
       ),
     );
-    if (ok == true) {
-      await ref.read(libraryProvider.notifier).deleteVideo(video.id);
-    }
+    if (ok != true) return;
+
+    final error = await ref
+        .read(libraryProvider.notifier)
+        .deleteVideoWithFile(video.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? '已删除「${video.name}」'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget _buildEmptyLibrary(BuildContext context) {
