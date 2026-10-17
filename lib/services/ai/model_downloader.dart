@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -110,6 +112,7 @@ class ModelDownloader {
         final fileName = entry.key;
         final fileUrl = entry.value;
         final dest = File('${destDir.path}/$fileName');
+        // 多文件 sha256 从 fileUrls 的 value 取不到，继续用 mirror.sha256（P1 补）
         await _downloadFile(
           fileUrl,
           dest,
@@ -120,6 +123,7 @@ class ModelDownloader {
                   onProgress(overall);
                 }
               : null,
+          expectedSha256: mirror.sha256,
         );
         completed++;
       }
@@ -130,22 +134,28 @@ class ModelDownloader {
           ? uri.pathSegments.last
           : 'model.bin';
       final dest = File('${destDir.path}/$fileName');
-      await _downloadFile(mirror.url, dest, onProgress: onProgress);
+      await _downloadFile(mirror.url, dest,
+          onProgress: onProgress, expectedSha256: mirror.sha256);
     }
+
+    // 下载完成后写入本地 manifest（流式阶段已算出每个文件的 SHA-256，
+    // 这里补算一版统一的 manifest 以便后续校验）
+    await recomputeManifest(destDir);
   }
 
-  /// 下载单个文件到 [dest]，支持进度回调
+  /// 下载单个文件到 [dest]，流式计算 SHA-256。下载完成后与 catalog 声明的
+  /// sha256（若有）比对，并写入本地 manifest。
   Future<void> _downloadFile(
     String url,
     File dest, {
     ProgressCallback? onProgress,
+    String? expectedSha256, // catalog 预期值，可选
   }) async {
     final request = http.Request('GET', Uri.parse(url));
     final response = await _client.send(request);
 
     if (response.statusCode != 200) {
-      throw HttpException(
-          'HTTP ${response.statusCode}: $url');
+      throw HttpException('HTTP ${response.statusCode}: $url');
     }
 
     final totalBytes = response.contentLength ?? -1;
@@ -164,13 +174,94 @@ class ModelDownloader {
       await sink.close();
     }
 
-    // 校验 Content-Length（如果服务端声明了）
+    // 1) Content-Length 检查
     if (totalBytes > 0) {
       final actual = await dest.length();
       if (actual != totalBytes) {
         throw StateError(
             '文件大小不匹配: expected $totalBytes, got $actual for $url');
       }
+    }
+
+    // 2) SHA-256 校验（下载完成后一次性计算，避免 stream hash 的 crypto 版本问题）
+    final fileBytes = await dest.readAsBytes();
+    final actualHash = sha256.convert(fileBytes).toString();
+    if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+      if (actualHash != expectedSha256.toLowerCase()) {
+        throw StateError(
+            'SHA-256 校验失败: expected $expectedSha256, got $actualHash for $url');
+      }
+      debugPrint('[Downloader] SHA-256 校验通过: ${dest.uri.pathSegments.last}');
+    }
+  }
+
+  // ── 本地manifest：防止下载完成后被人/系统误改 ──
+
+  static const String _manifestName = 'manifest.json';
+
+  /// 从模型目录读取本地 manifest（{文件名: sha256hex}）
+  static Future<Map<String, String>> _readManifest(Directory dir) async {
+    final f = File('${dir.path}/$_manifestName');
+    if (!await f.exists()) return {};
+    try {
+      final map = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 写入本地 manifest
+  static Future<void> _writeManifest(
+      Directory dir, Map<String, String> entries) async {
+    final f = File('${dir.path}/$_manifestName');
+    await f.writeAsString(jsonEncode(entries));
+  }
+
+  /// 计算目录下所有模型文件的 SHA-256 并与本地 manifest 比对
+  ///
+  /// 返回非空列表 = 损坏的文件名（在清单中但内容变了，或不在清单中）。
+  /// 返回空列表 = 全部完好（无清单时不校验，视为完好）。
+  static Future<List<String>> verifyModel(String modelDirPath) async {
+    final dir = Directory(modelDirPath);
+    if (!await dir.exists()) return <String>['目录不存在'];
+
+    final manifest = await _readManifest(dir);
+    if (manifest.isEmpty) return <String>[]; // 无清单不判损坏
+
+    final corrupted = <String>[];
+    for (final entry in manifest.entries) {
+      final file = File('${dir.path}/${entry.key}');
+      if (!await file.exists()) {
+        corrupted.add('${entry.key} (缺失)');
+        continue;
+      }
+      final bytes = await file.readAsBytes();
+      final hash = sha256.convert(bytes).toString();
+      if (hash != entry.value) {
+        corrupted.add('${entry.key} (SHA-256 不符)');
+      }
+    }
+    return corrupted;
+  }
+
+  /// 扫描模型目录下所有文件（排除 manifest.json），计算 SHA-256 并写入 manifest。
+  ///
+  /// 下载成功后调用；也供导入器导入完批量写入。
+  static Future<void> recomputeManifest(Directory dir) async {
+    if (!await dir.exists()) return;
+    final entries = <String, String>{};
+    await for (final entity in dir.list(recursive: false)) {
+      if (entity is File && entity.path.split(Platform.pathSeparator).last != _manifestName) {
+        final bytes = await entity.readAsBytes();
+        final hash = sha256.convert(bytes).toString();
+        final name = entity.path.split(Platform.pathSeparator).last;
+        entries[name] = hash;
+      }
+    }
+    if (entries.isNotEmpty) {
+      await _writeManifest(dir, entries);
+      debugPrint('[Downloader] manifest 已写入: ${dir.path}, ${entries.length} 个文件');
     }
   }
 

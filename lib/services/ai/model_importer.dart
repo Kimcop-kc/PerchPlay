@@ -71,6 +71,9 @@ class ModelImporter {
       );
     }
 
+    // 写入本地校验清单，后续每次刷新都会复验 SHA-256
+    await ModelDownloader.recomputeManifest(destDir);
+
     debugPrint('[ModelImporter] 成功导入 $copied 个文件到 $modelId');
     return copied;
   }

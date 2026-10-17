@@ -93,6 +93,27 @@ class _TranscribePageState extends State<TranscribePage> {
     final dir = await ModelDownloader.modelsDir();
     final modelDir = '${dir.path}${Platform.pathSeparator}${model.id}';
 
+    // 先校验本地 MANIFEST（如果有），损坏就直接清理避免 SpeechService 崩溃
+    final corrupted = await ModelDownloader.verifyModel(modelDir);
+    if (corrupted.isNotEmpty) {
+      debugPrint('[TranscribePage] 校验失败: $modelDir → $corrupted');
+      try {
+        final broken = Directory(modelDir);
+        if (await broken.exists()) {
+          await broken.delete(recursive: true);
+        }
+        await _scanModels();
+      } catch (_) {}
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('模型已损坏（$corrupted），已自动删除。请重新下载'),
+          backgroundColor: GlassTheme.accentPink,
+        ),
+      );
+      return;
+    }
+
     // SpeechService.loadModel 自动扫描目录找 .onnx + tokens.txt
     _speech.loadModel(modelDir);
     if (!_speech.isLoaded) {

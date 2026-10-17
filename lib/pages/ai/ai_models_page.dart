@@ -69,6 +69,19 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
             continue;
           }
 
+          // SHA-256 校验（有 manifest 才验，兼容旧版本无清单的模型）
+          final corrupted =
+              await ModelDownloader.verifyModel(entry.path);
+          if (corrupted.isNotEmpty) {
+            debugPrint(
+                '[ModelPage] SHA-256 校验失败，自动删除: $id → $corrupted');
+            toDelete.add(id);
+            try {
+              await entry.delete(recursive: true);
+            } catch (_) {}
+            continue;
+          }
+
           ids.add(id);
         }
       }
