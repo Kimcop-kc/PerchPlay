@@ -119,8 +119,9 @@ class AiModelCatalog {
           sha256: null,
         ),
         ModelMirror(
-          source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/snakers4/silero-vad',
+          source: DownloadSource.githubRelease,
+          url: 'https://github.com/k2-fsa/sherpa-onnx/releases/'
+              'download/asr-models/silero_vad.onnx',
           sha256: null,
         ),
       ],
@@ -143,7 +144,7 @@ class AiModelCatalog {
       license: 'Apache-2.0',
       // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
-      // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
+      // TODO(发布前): 补 sha256；URL 已确认为 HF 直链可用（2025-07）
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.modelscope,
@@ -152,8 +153,28 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/k2-fsa/sherpa-onnx-streaming-zipformer-bilingual-zh-en',
+          url: 'https://huggingface.co/csukuangfj/'
+              'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+              'resolve/main/encoder-epoch-99-avg-1.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'encoder-epoch-99-avg-1.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                'resolve/main/encoder-epoch-99-avg-1.int8.onnx',
+            'decoder-epoch-99-avg-1.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                'resolve/main/decoder-epoch-99-avg-1.int8.onnx',
+            'joiner-epoch-99-avg-1.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                'resolve/main/joiner-epoch-99-avg-1.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                'resolve/main/tokens.txt',
+          },
         ),
       ],
       notes: '80MB 的低延迟流式方案，中英混说也跟得住，低端机优先选它',
@@ -230,7 +251,7 @@ class AiModelCatalog {
       license: 'Apache-2.0',
       // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 3.0,
-      // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
+      // TODO(发布前): 补 sha256；URL 已确认为 HF 直链可用（2025-07）
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.modelscope,
@@ -239,8 +260,24 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/funasr/paraformer-zh-streaming',
+          url: 'https://huggingface.co/csukuangfj/'
+              'sherpa-onnx-streaming-paraformer-zh/'
+              'resolve/main/encoder.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'encoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-zh/'
+                'resolve/main/encoder.int8.onnx',
+            'decoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-zh/'
+                'resolve/main/decoder.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-streaming-paraformer-zh/'
+                'resolve/main/tokens.txt',
+          },
         ),
       ],
       notes: '中文流式老牌方案，延迟低；标点要另配，确定纯中文时再选它',
@@ -259,7 +296,7 @@ class AiModelCatalog {
       license: 'MIT',
       // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
-      // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
+      // TODO(发布前): 补 sha256；URL 已确认为 HF 直链可用（2025-07）
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.modelscope,
@@ -268,8 +305,24 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/openai/whisper-base',
+          url: 'https://huggingface.co/csukuangfj/'
+              'sherpa-onnx-whisper-base/'
+              'resolve/main/base-encoder.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'base-encoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-base/'
+                'resolve/main/base-encoder.int8.onnx',
+            'base-decoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-base/'
+                'resolve/main/base-decoder.int8.onnx',
+            'base-tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-base/'
+                'resolve/main/base-tokens.txt',
+          },
         ),
       ],
       notes: '99 语种覆盖面，中文一般但冷门语种只有它，150MB 适合先跑通流程',
@@ -288,7 +341,7 @@ class AiModelCatalog {
       license: 'MIT',
       // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 4.0,
-      // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
+      // TODO(发布前): 补 sha256；URL 已确认为 HF 直链可用（2025-07）
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.modelscope,
@@ -297,8 +350,24 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/openai/whisper-small',
+          url: 'https://huggingface.co/csukuangfj/'
+              'sherpa-onnx-whisper-small/'
+              'resolve/main/small-encoder.int8.onnx',
           sha256: null,
+          fileUrls: <String, String>{
+            'small-encoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-small/'
+                'resolve/main/small-encoder.int8.onnx',
+            'small-decoder.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-small/'
+                'resolve/main/small-decoder.int8.onnx',
+            'small-tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-whisper-small/'
+                'resolve/main/small-tokens.txt',
+          },
         ),
       ],
       notes: '中文准确率比 base 明显好，代价是慢一倍多，中端机勉强能接受',
@@ -327,7 +396,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/openai/whisper-large-v3-turbo',
+          url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-large-v3',
           sha256: null,
         ),
       ],
@@ -362,7 +431,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/Qwen/Qwen3-0.6B',
+          url: 'https://huggingface.co/Qwen/Qwen3-0.6B',
           sha256: null,
         ),
       ],
@@ -394,7 +463,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/Qwen/Qwen3-1.7B',
+          url: 'https://huggingface.co/Qwen/Qwen3-1.7B',
           sha256: null,
         ),
       ],
@@ -424,7 +493,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/Qwen/Qwen2.5-3B-Instruct',
+          url: 'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct',
           sha256: null,
         ),
       ],
@@ -452,7 +521,7 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/google/gemma-3-1b-it',
+          url: 'https://huggingface.co/google/gemma-3-1b-it',
           sha256: null,
         ),
       ],
@@ -483,7 +552,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/Helsinki-NLP/opus-mt-zh-en',
+          url: 'https://huggingface.co/Helsinki-NLP/opus-mt-zh-en',
           sha256: null,
         ),
       ],
@@ -514,7 +583,7 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/google/madlad400-3b-mt',
+          url: 'https://huggingface.co/google/madlad400-3b-mt',
           sha256: null,
         ),
       ],
@@ -549,7 +618,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/BAAI/bge-small-zh-v1.5',
+          url: 'https://huggingface.co/BAAI/bge-small-zh-v1.5',
           sha256: null,
         ),
       ],
@@ -591,7 +660,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/BAAI/bge-m3',
+          url: 'https://huggingface.co/BAAI/bge-m3',
           sha256: null,
         ),
       ],
@@ -622,7 +691,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/RapidAI/RapidOCR',
+          url: 'https://huggingface.co/bluecopa/rapidocr-onnx',
           sha256: null,
         ),
       ],
@@ -653,7 +722,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/PaddlePaddle/PaddleOCR',
+          url: 'https://huggingface.co/aoiandroid/paddleocr-ppocrv5-onnx',
           sha256: null,
         ),
       ],
@@ -686,7 +755,7 @@ class AiModelCatalog {
         ),
         ModelMirror(
           source: DownloadSource.huggingface,
-          url: '$_huggingfacePrefix/idealo/image-quality-assessment',
+          url: 'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-enc-dec-ctc-model',
           sha256: null,
         ),
       ],
