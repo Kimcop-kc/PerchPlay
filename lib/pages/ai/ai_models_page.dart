@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -41,15 +42,34 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   Future<void> _refreshStatus() async {
     final dir = await ModelDownloader.modelsDir();
     final ids = <String>{};
+    final toDelete = <String>[];
     if (await dir.exists()) {
       await for (final entry in dir.list(followLinks: false)) {
         if (entry is Directory) {
-          // 目录存在不放行，必须包含至少一个 .onnx 才认为已下载
-          final files = await entry.list().toList();
-          if (files.any((f) =>
-              f.path.toLowerCase().endsWith('.onnx') && f is File)) {
-            ids.add(entry.path.split(Platform.pathSeparator).last);
+          final raw =
+              await entry.list().toList();
+          final files = raw.whereType<File>().toList();
+          final hasOnnx = files.any(
+              (f) => f.path.toLowerCase().endsWith('.onnx'));
+          if (!hasOnnx) continue;
+
+          final id = entry.path.split(Platform.pathSeparator).last;
+
+          // 完整性检查：必须有 tokens.txt 或 vocab.txt，否则自动删除
+          final hasTokens = files.any((f) {
+            final name = f.path.split(Platform.pathSeparator).last;
+            return name == 'tokens.txt' || name == 'vocab.txt';
+          });
+          if (!hasTokens) {
+            toDelete.add(id);
+            try {
+              await entry.delete(recursive: true);
+              debugPrint('[ModelPage] 自动删除损坏模型（缺 tokens）: $id');
+            } catch (_) {}
+            continue;
           }
+
+          ids.add(id);
         }
       }
     }
@@ -60,6 +80,18 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         ..addAll(ids);
       _checking = false;
     });
+
+    // 静默通知用户有模型被自动清理了
+    if (toDelete.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${toDelete.length} 个模型已损坏，已自动清除\n${toDelete.take(2).join('、')}${toDelete.length > 2 ? ' 等' : ''}'),
+          backgroundColor: GlassTheme.accentPink,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   Future<void> _startDownload(AiModel model) async {
