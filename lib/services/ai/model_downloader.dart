@@ -112,7 +112,9 @@ class ModelDownloader {
         final fileName = entry.key;
         final fileUrl = entry.value;
         final dest = File('${destDir.path}/$fileName');
-        // 多文件 sha256 从 fileUrls 的 value 取不到，继续用 mirror.sha256（P1 补）
+        // 每文件独立的 sha256：优先用 mirror.fileSha256s[fileName]，
+        // 回退到 mirror.sha256（单文件兼容），再回退到 null（跳过校验）
+        final expected = mirror.sha256ForFile(fileName);
         await _downloadFile(
           fileUrl,
           dest,
@@ -123,12 +125,12 @@ class ModelDownloader {
                   onProgress(overall);
                 }
               : null,
-          expectedSha256: mirror.sha256,
+          expectedSha256: expected,
         );
         completed++;
       }
     } else {
-      // 单文件模式：URL 里有文件名就提取，否则用 fallback
+      // 单文件模式
       final uri = Uri.parse(mirror.url);
       final fileName = uri.pathSegments.isNotEmpty
           ? uri.pathSegments.last
@@ -138,18 +140,19 @@ class ModelDownloader {
           onProgress: onProgress, expectedSha256: mirror.sha256);
     }
 
-    // 下载完成后写入本地 manifest（流式阶段已算出每个文件的 SHA-256，
-    // 这里补算一版统一的 manifest 以便后续校验）
+    // 下载完成后写入本地 manifest
     await recomputeManifest(destDir);
   }
 
-  /// 下载单个文件到 [dest]，流式计算 SHA-256。下载完成后与 catalog 声明的
-  /// sha256（若有）比对，并写入本地 manifest。
+  /// 下载单个文件到 [dest]，边下边攒字节，下载完立即 SHA-256 校验。
+  ///
+  /// 校验失败当场删文件并抛异常（外层镜像循环切下一个源重试），
+  /// 不会让损坏文件留在磁盘上。
   Future<void> _downloadFile(
     String url,
     File dest, {
     ProgressCallback? onProgress,
-    String? expectedSha256, // catalog 预期值，可选
+    String? expectedSha256,
   }) async {
     final request = http.Request('GET', Uri.parse(url));
     final response = await _client.send(request);
@@ -161,10 +164,12 @@ class ModelDownloader {
     final totalBytes = response.contentLength ?? -1;
     var receivedBytes = 0;
     final sink = dest.openWrite();
+    final bytesBuilder = BytesBuilder(copy: false);
 
     try {
       await for (final chunk in response.stream) {
         sink.add(chunk);
+        bytesBuilder.add(chunk);
         receivedBytes += chunk.length;
         if (totalBytes > 0 && onProgress != null) {
           onProgress(receivedBytes / totalBytes);
@@ -178,16 +183,17 @@ class ModelDownloader {
     if (totalBytes > 0) {
       final actual = await dest.length();
       if (actual != totalBytes) {
+        await dest.delete();
         throw StateError(
             '文件大小不匹配: expected $totalBytes, got $actual for $url');
       }
     }
 
-    // 2) SHA-256 校验（下载完成后一次性计算，避免 stream hash 的 crypto 版本问题）
-    final fileBytes = await dest.readAsBytes();
-    final actualHash = sha256.convert(fileBytes).toString();
+    // 2) SHA-256 校验（用已攒的字节，不二次读盘）
+    final actualHash = sha256.convert(bytesBuilder.takeBytes()).toString();
     if (expectedSha256 != null && expectedSha256.isNotEmpty) {
       if (actualHash != expectedSha256.toLowerCase()) {
+        await dest.delete(); // 当场删，不留垃圾
         throw StateError(
             'SHA-256 校验失败: expected $expectedSha256, got $actualHash for $url');
       }

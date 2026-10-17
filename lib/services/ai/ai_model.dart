@@ -154,7 +154,7 @@ class ModelMirror {
   final String url;
 
   /// 文件 sha256（小写十六进制），仅对单文件条目有效；
-  /// 多文件条目各自的校验值在 [fileUrls] 里按文件名分别指定
+  /// 多文件条目各自的校验值在 [fileSha256s] 里按文件名分别指定
   final String? sha256;
 
   /// 多文件模型的**直接下载链接**（文件名 → 完整 URL）
@@ -163,12 +163,32 @@ class ModelMirror {
   /// 空 = 单文件模式（回退到 [url]）。
   final Map<String, String>? fileUrls;
 
+  /// 多文件模型的**逐文件 sha256**（文件名 → 小写十六进制）
+  ///
+  /// 非空时下载器每完成一个文件立即校验，失败则放弃该镜像、切下一个镜像重试，
+  /// 不浪费用户流量。key 必须和 [fileUrls] 的 key 一致。
+  /// 空 = 不校验（旧条目兼容）。
+  final Map<String, String>? fileSha256s;
+
   const ModelMirror({
     required this.source,
     required this.url,
     this.sha256,
     this.fileUrls,
+    this.fileSha256s,
   });
+
+  /// 获取某个文件名的预期 sha256（先查 fileSha256s，再回退到 mirror 级别 sha256）
+  String? sha256ForFile(String fileName) {
+    if (fileSha256s != null && fileSha256s!.containsKey(fileName)) {
+      return fileSha256s![fileName]!.toLowerCase();
+    }
+    // 单文件模式 mirror.sha256 即该文件的校验值
+    if (fileUrls == null || fileUrls!.isEmpty) {
+      return sha256?.toLowerCase();
+    }
+    return null;
+  }
 
   /// 是否包含可下载的文件（单文件或 fileUrls 都不为空）
   bool get hasDownloadableContent =>
@@ -183,10 +203,16 @@ class ModelMirror {
 
   /// 校验值是否存在（所有文件都需要 sha256 才算校验完整）
   ///
-  /// P0: sha256 全部未补，始终回 false；发布前需逐模型补全
+  /// 补全 sha256 后下载时会当场校验，坏文件不落盘，避免浪费流量。
   bool get hasChecksum {
     if (sha256?.isNotEmpty == true) return true;
-    // 多文件模型的校验值在独立的 fileSha256s 表里（P1 补）
+    if (fileSha256s != null && fileSha256s!.isNotEmpty) {
+      // 多文件模式：每种文件都要有校验值
+      if (fileUrls != null) {
+        return fileUrls!.keys.every((k) => fileSha256s!.containsKey(k));
+      }
+      return true;
+    }
     return false;
   }
 
