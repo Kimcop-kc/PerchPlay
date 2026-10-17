@@ -276,6 +276,16 @@ class AiModelSelector {
         return '语义搜索';
       case AiCapability.frameScore:
         return '选帧评分';
+      case AiCapability.tts:
+        return '语音合成';
+      case AiCapability.punctuation:
+        return '标点恢复';
+      case AiCapability.keywordSpotting:
+        return '关键词';
+      case AiCapability.speakerDiarization:
+        return '说话人分离';
+      case AiCapability.speechEnhancement:
+        return '降噪增强';
     }
   }
 

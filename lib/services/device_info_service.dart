@@ -1,11 +1,11 @@
-import 'dart:io' show Platform;
+import 'dart:io';
 
 /// 设备品牌枚举
 enum DeviceBrand {
-  xiaomi, // 小米 / Redmi / POCO
-  huawei, // 华为 / 荣耀
-  oppo, // OPPO / realme / 一加
-  vivo, // vivo / iQOO
+  xiaomi,
+  huawei,
+  oppo,
+  vivo,
   samsung,
   apple,
   ipad,
@@ -14,11 +14,11 @@ enum DeviceBrand {
 
 /// iPad 具体型号
 enum IPadModel {
-  ipadPro2022, // iPad Pro 12.9" / 11" (M2)
-  ipadPro2021, // iPad Pro (M1)
-  ipadPro2020, // iPad Pro (A12Z)
+  ipadPro2022,
+  ipadPro2021,
+  ipadPro2020,
   ipadAir,
-  ipad, // 普通 iPad
+  ipad,
   ipadMini,
   notIPad,
 }
@@ -54,7 +54,7 @@ class DeviceCapabilities {
   });
 }
 
-/// 设备信息服务 —— 检测品牌、型号、能力
+/// 设备信息服务 —— 检测品牌、型号、能力、RAM
 class DeviceInfoService {
   DeviceInfoService._();
   static final instance = DeviceInfoService._();
@@ -68,6 +68,9 @@ class DeviceInfoService {
   DeviceCapabilities _capabilities = const DeviceCapabilities();
   DeviceCapabilities get capabilities => _capabilities;
 
+  double _ramGB = 0;
+  double get ramGB => _ramGB;
+
   bool _initialized = false;
   bool get initialized => _initialized;
 
@@ -75,8 +78,8 @@ class DeviceInfoService {
   Future<void> init({String? deviceModel, String? systemName}) async {
     if (_initialized) return;
 
-    if (Platform.isIOS || (systemName != null && systemName.contains('iOS'))) {
-      // ──────── Apple ────────
+    if (Platform.isIOS ||
+        (systemName != null && systemName.contains('iOS'))) {
       final model = deviceModel ?? 'iPad';
       if (model.contains('iPad')) {
         _brand = DeviceBrand.ipad;
@@ -86,7 +89,6 @@ class DeviceInfoService {
       }
       _capabilities = _appleCapabilities(model);
     } else {
-      // ──────── Android ────────
       final model = (deviceModel ?? '').toLowerCase();
       final manufacturer = model;
 
@@ -119,47 +121,44 @@ class DeviceInfoService {
       _capabilities = _androidCapabilities(_brand, model);
     }
 
+    // 读取 RAM（Android 读 /proc/meminfo）
+    _ramGB = await _readTotalRamGB();
+
     _initialized = true;
+  }
+
+  /// 模型 RAM 门槛是否超出本机总 RAM
+  bool isTooHeavy(double minRamGB) {
+    if (_ramGB <= 0) return false;
+    return _ramGB < minRamGB;
   }
 
   // ──────────── iPad Model Detection ────────────
 
   IPadModel _detectIPadModel(String model) {
     final m = model.toLowerCase();
-    // iPad Pro 2022 12.9" (M2)
     if (m.contains('ipad14,5') || m.contains('ipad14,6')) {
       return IPadModel.ipadPro2022;
     }
-    // iPad Pro 2022 11" (M2)
     if (m.contains('ipad14,3') || m.contains('ipad14,4')) {
       return IPadModel.ipadPro2022;
     }
-    // iPad Pro 2021 (M1)
     if (m.contains('ipad13') || m.contains('pro') && m.contains('2021')) {
       return IPadModel.ipadPro2021;
     }
-    // iPad Pro 2020
     if (m.contains('ipad8,') || m.contains('pro') && m.contains('2020')) {
       return IPadModel.ipadPro2020;
     }
-    // iPad Air
     if (m.contains('air')) return IPadModel.ipadAir;
-    // iPad mini
     if (m.contains('mini')) return IPadModel.ipadMini;
-    // 普通 iPad
     return IPadModel.ipad;
   }
 
-  // ──────────── Apple Capabilities ────────────
-
   DeviceCapabilities _appleCapabilities(String model) {
     final m = model.toLowerCase();
-
-    // iPad Pro 2022 (M2)
     final isPro2022 =
         m.contains('ipad14,5') || m.contains('ipad14,6') ||
         m.contains('ipad14,3') || m.contains('ipad14,4');
-    // iPad Pro 2021+ (M1/M2)
     final isPro = m.contains('pro');
     final hasLidar = m.contains('ipad14,5') ||
         m.contains('ipad14,6') ||
@@ -171,44 +170,40 @@ class DeviceInfoService {
         m.contains('ipad8,12');
 
     return DeviceCapabilities(
-      hasNotch: !isPro, // iPad Pro 无 notch
+      hasNotch: !isPro,
       hasPunchHole: false,
       isGestureNavigation: true,
-      supportHDR: isPro, // XDR display on Pro
-      has120Hz: isPro, // ProMotion
+      supportHDR: isPro,
+      has120Hz: isPro,
       supportPiP: true,
-      supportStageManager: true, // M1+
+      supportStageManager: true,
       hasLidar: hasLidar,
-      isM1OrAbove: isPro, // apple silicon
+      isM1OrAbove: isPro,
       cpuCores: isPro2022 ? 10 : 8,
       maxScreenWidth: m.contains('12.9') ? 1024 : 834,
       maxScreenHeight: m.contains('12.9') ? 1366 : 1194,
     );
   }
 
-  // ──────────── Android Brand Capabilities ────────────
-
   DeviceCapabilities _androidCapabilities(DeviceBrand brand, String model) {
-    // 小米旗舰通常有这些
     final isXiaomi = brand == DeviceBrand.xiaomi;
     final isHuawei = brand == DeviceBrand.huawei;
-    final isOppoVivo = brand == DeviceBrand.oppo || brand == DeviceBrand.vivo;
-
-    // 大部分 2020+ 中国旗舰有 120Hz
+    final isOppoVivo =
+        brand == DeviceBrand.oppo || brand == DeviceBrand.vivo;
     final has120Hz = isXiaomi || isOppoVivo;
 
     return DeviceCapabilities(
       hasNotch: false,
-      hasPunchHole: true, // 中国品牌几乎全是挖孔
+      hasPunchHole: true,
       isGestureNavigation: true,
       supportHDR: isXiaomi || isHuawei || isOppoVivo,
       has120Hz: has120Hz,
-      supportPiP: isXiaomi, // MIUI 支持 PiP 但需要授权
+      supportPiP: isXiaomi,
       supportStageManager: false,
       hasLidar: false,
       isM1OrAbove: false,
       cpuCores: 8,
-      maxScreenWidth: 412, // typical Chinese phone
+      maxScreenWidth: 412,
       maxScreenHeight: 915,
     );
   }
@@ -232,6 +227,29 @@ class DeviceInfoService {
       _capabilities.supportStageManager;
   bool get has120Hz => _capabilities.has120Hz;
   bool get hasLidar => _capabilities.hasLidar;
+
+  // ── RAM ──
+
+  Future<double> _readTotalRamGB() async {
+    if (Platform.isAndroid) {
+      try {
+        final lines = await File('/proc/meminfo').readAsLines();
+        for (final line in lines) {
+          if (line.startsWith('MemTotal:')) {
+            final parts = line.split(RegExp(r'\s+'));
+            if (parts.length >= 2) {
+              final kb = int.tryParse(parts[1]);
+              if (kb != null) {
+                return double.parse(
+                    (kb / (1024 * 1024)).toStringAsFixed(1));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return 0;
+  }
 }
 
 /// DeviceBrand 扩展属性
@@ -260,5 +278,8 @@ extension DeviceBrandExtension on DeviceBrand {
   bool get isXiaomi => this == DeviceBrand.xiaomi;
   bool get isHuawei => this == DeviceBrand.huawei;
   bool get isChineseBrand =>
-      isXiaomi || isHuawei || this == DeviceBrand.oppo || this == DeviceBrand.vivo;
+      isXiaomi ||
+      isHuawei ||
+      this == DeviceBrand.oppo ||
+      this == DeviceBrand.vivo;
 }

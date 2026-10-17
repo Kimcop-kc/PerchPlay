@@ -39,6 +39,21 @@ enum AiCapability {
   /// 所以 UI / 服务层必须在 `byCapability(frameScore)` 为空时照常工作，
   /// 不能把「没有模型」当成「功能不可用」。
   frameScore,
+
+  /// 语音合成（TTS）：文本 → 自然语音波形输出
+  tts,
+
+  /// 标点恢复：给无标点的识别文本自动加标点
+  punctuation,
+
+  /// 关键词唤醒 / 关键词识别（KWS）：从音频流中检测预定义关键词
+  keywordSpotting,
+
+  /// 说话人分离 / 日志化：一段多人对话中「谁在什么时候说了什么」
+  speakerDiarization,
+
+  /// 语音增强 / 降噪：去除背景噪音，提升语音信噪比
+  speechEnhancement,
 }
 
 /// 模型档位
@@ -111,6 +126,21 @@ enum ModelKind {
   ///
   /// 和 ocr 分开：ocr 输出文字，视觉打分输出一个分数，不是同一类活。
   vision,
+
+  /// 语音合成（TTS）
+  tts,
+
+  /// 标点恢复（独立的标点模型，不耦合在 ASR 里）
+  punctuation,
+
+  /// 关键词识别（KWS）
+  keywordSpotting,
+
+  /// 说话人分离（diarization）
+  speakerDiarization,
+
+  /// 语音增强 / 降噪
+  speechEnhancement,
 }
 
 /// 一个下载镜像

@@ -8,10 +8,12 @@ import '../../services/ai/ai_model.dart';
 import '../../services/ai/ai_model_catalog.dart';
 import '../../services/ai/model_downloader.dart';
 import '../../services/ai/model_importer.dart';
+import '../../services/device_info_service.dart';
 
 /// AI 模型管理页面。
 ///
-/// 列出全部 18 个预设模型 + 用户自行导入的模型。
+/// 列出全部预设模型 + 用户自行导入的模型。
+/// 卡片可展开查看评分详情与设备推荐。
 /// 支持下载 / 导入 / 删除。
 class AiModelsPage extends ConsumerStatefulWidget {
   const AiModelsPage({super.key});
@@ -26,6 +28,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   final Map<String, double> _progress = {};
   final Map<String, String> _errors = {};
   final Set<String> _downloaded = {};
+  final Set<String> _expanded = {};
   bool _checking = true;
   String? _importingModelId;
 
@@ -362,54 +365,179 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     final isDownloading = _progress.containsKey(model.id);
     final p = _progress[model.id] ?? 0;
     final error = _errors[model.id];
+    final expanded = _expanded.contains(model.id);
+    final tooHeavy = DeviceInfoService.instance.isTooHeavy(model.minRamGB);
+    final ramGB = DeviceInfoService.instance.ramGB;
+    final ramLabel = ramGB > 0 ? '本机 ${ramGB.toStringAsFixed(1)} GB' : '本机 RAM 未知';
 
-    return _modelCard(
-      title: model.displayName,
-      subtitle: '约 ${model.sizeLabel} · ${model.license}',
-      modelId: model.id,
-      isReady: isReady,
-      isDownloading: isDownloading,
-      progress: p,
-      error: error,
-      tags: [
-        _capLabel(model),
-        _tierLabel(model.tier),
-        model.notes,
-      ],
-      onDownload: () => _startDownload(model),
-      onDelete: () => _deleteModel(model.id),
+    return Card(
+      color: Colors.white.withOpacity(0.6),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(GlassTheme.radiusMd)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+        onTap: () {
+          setState(() {
+            expanded ? _expanded.remove(model.id) : _expanded.add(model.id);
+          });
+        },
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── 顶行：名称 + 操作按钮 + 展开箭头 ──
+                Row(
+                  children: [
+                    // 能力图标
+                    _capIcon(model),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(model.displayName,
+                                    style: const TextStyle(
+                                        color: GlassTheme.textPrimary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                              if (isReady) ...[
+                                const SizedBox(width: 6),
+                                _badge('已下载', GlassTheme.accentTeal),
+                              ],
+                              if (tooHeavy) ...[
+                                const SizedBox(width: 6),
+                                _badge('内存不足', GlassTheme.accentPink),
+                              ],
+                              if (!tooHeavy && !isReady) ...[
+                                const SizedBox(width: 6),
+                                _badge(_recommendLabel(model, ramGB),
+                                    GlassTheme.accentPurple),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Text(model.sizeLabel,
+                                  style: const TextStyle(
+                                      color: GlassTheme.textTertiary,
+                                      fontSize: 12)),
+                              const SizedBox(width: 8),
+                              Text(model.license,
+                                  style: const TextStyle(
+                                      color: GlassTheme.textTertiary,
+                                      fontSize: 12)),
+                              const SizedBox(width: 8),
+                              _langChip(model),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildActionButton(
+                      modelId: model.id,
+                      isReady: isReady,
+                      isDownloading: isDownloading,
+                      progress: p,
+                      error: error,
+                      onDownload: () => _startDownload(model),
+                      onDelete: () => _deleteModel(model.id),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.keyboard_arrow_down,
+                          size: 20, color: GlassTheme.textTertiary),
+                    ),
+                  ],
+                ),
+
+                // ── 展开面板：评分 + 设备推荐 + 备注 ──
+                if (expanded) ...[
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0x1A000000)),
+                  const SizedBox(height: 12),
+
+                  // 评分行
+                  Row(
+                    children: [
+                      _metricColumn('速度', model.speedRating, Icons.speed),
+                      const SizedBox(width: 24),
+                      _metricColumn(
+                          '质量', model.qualityRating, Icons.auto_awesome),
+                      const SizedBox(width: 24),
+                      _metricColumn(
+                          '体积', _sizeToStars(model.sizeMB), Icons.storage),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 设备推荐
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (tooHeavy
+                              ? GlassTheme.accentPink
+                              : GlassTheme.accentTeal)
+                          .withOpacity(0.08),
+                      borderRadius:
+                          BorderRadius.circular(GlassTheme.radiusSm),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          tooHeavy ? Icons.warning_amber : Icons.check_circle,
+                          size: 16,
+                          color: tooHeavy
+                              ? GlassTheme.accentPink
+                              : GlassTheme.accentTeal,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            tooHeavy
+                                ? '需要 ≥${model.minRamGB.toStringAsFixed(0)} GB RAM，$ramLabel，不推荐'
+                                : '$ramLabel，可以流畅运行',
+                            style: TextStyle(
+                              color: tooHeavy
+                                  ? GlassTheme.accentPink
+                                  : GlassTheme.accentTeal,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // 备注
+                  Text(model.notes,
+                      style: const TextStyle(
+                          color: GlassTheme.textSecondary,
+                          fontSize: 12,
+                          height: 1.5)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildUserModelCard(String modelId) {
-    return _modelCard(
-      title: modelId,
-      subtitle: '用户导入',
-      modelId: modelId,
-      isReady: true,
-      isDownloading: false,
-      progress: 0,
-      error: null,
-      tags: const ['自定义', '', ''],
-      onDownload: null,
-      onDelete: () => _deleteModel(modelId),
-    );
-  }
-
-  // ── 通用模型卡片 ──
-
-  Widget _modelCard({
-    required String title,
-    required String subtitle,
-    required String modelId,
-    required bool isReady,
-    required bool isDownloading,
-    required double progress,
-    String? error,
-    List<String> tags = const [],
-    VoidCallback? onDownload,
-    VoidCallback? onDelete,
-  }) {
     return Card(
       color: Colors.white.withOpacity(0.6),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -417,63 +545,166 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
           borderRadius: BorderRadius.circular(GlassTheme.radiusMd)),
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: const TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      Text(subtitle,
-                          style: const TextStyle(
-                              color: GlassTheme.textTertiary,
-                              fontSize: 12)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _buildActionButton(
-                  modelId: modelId,
-                  isReady: isReady,
-                  isDownloading: isDownloading,
-                  progress: progress,
-                  error: error,
-                  onDownload: onDownload,
-                  onDelete: onDelete,
-                ),
-              ],
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                  color: GlassTheme.accentPurple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.folder_outlined,
+                  size: 18, color: GlassTheme.accentPurple),
             ),
-            if (tags.any((t) => t.isNotEmpty)) ...[
-              const SizedBox(height: 8),
-              Row(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _tag(tags[0], GlassTheme.accentPurple),
-                  if (tags.length > 1 && tags[1].isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    _tag(tags[1], const Color(0xFF34C759)),
-                  ],
-                  if (tags.length > 2 && tags[2].isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    _tag(tags[2], const Color(0xFFFF9500)),
-                  ],
+                  Text(modelId,
+                      style: const TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600)),
+                  const Text('用户导入',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 12)),
                 ],
               ),
-            ],
+            ),
+            _smallButton('删除',
+                color: GlassTheme.textTertiary,
+                onTap: () => _deleteModel(modelId)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActionButton({
+  // ── 展开面板元素 ──
+
+  Widget _metricColumn(String label, int score, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 13, color: GlassTheme.textTertiary),
+            const SizedBox(width: 4),
+            Text(label,
+                style: const TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 11)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        _starRow(score),
+      ],
+    );
+  }
+
+  Widget _starRow(int score) {
+    return Row(
+      children: List.generate(5, (i) {
+        final filled = i < score;
+        return Icon(
+          filled ? Icons.star : Icons.star_border,
+          size: 14,
+          color: filled ? const Color(0xFFFFB600) : const Color(0xFFDDDDDD),
+        );
+      }),
+    );
+  }
+
+  int _sizeToStars(int sizeMB) {
+    if (sizeMB <= 20) return 5;
+    if (sizeMB <= 100) return 4;
+    if (sizeMB <= 300) return 3;
+    if (sizeMB <= 800) return 2;
+    return 1;
+  }
+
+  String _recommendLabel(AiModel model, double ramGB) {
+    if (ramGB <= 0) return '';
+    if (model.minRamGB <= 2 && ramGB >= 6) return '推荐';
+    if (model.tier == ModelTier.balanced && ramGB >= 6) return '推荐';
+    if (model.tier == ModelTier.light && ramGB >= 4) return '适用';
+    return '';
+  }
+
+  // ── 卡片头部元素 ──
+
+  Widget _capIcon(AiModel model) {
+    IconData icon;
+    switch (model.kind) {
+      case ModelKind.asr:
+        icon = Icons.mic;
+        break;
+      case ModelKind.vad:
+        icon = Icons.graphic_eq;
+        break;
+      case ModelKind.llm:
+        icon = Icons.psychology;
+        break;
+      case ModelKind.nmt:
+        icon = Icons.translate;
+        break;
+      case ModelKind.ocr:
+        icon = Icons.text_fields;
+        break;
+      case ModelKind.embedding:
+        icon = Icons.search;
+        break;
+      case ModelKind.vision:
+        icon = Icons.image;
+        break;
+      case ModelKind.tts:
+        icon = Icons.volume_up;
+        break;
+      case ModelKind.punctuation:
+        icon = Icons.format_quote;
+        break;
+      case ModelKind.keywordSpotting:
+        icon = Icons.hearing;
+        break;
+      case ModelKind.speakerDiarization:
+        icon = Icons.group_work;
+        break;
+      case ModelKind.speechEnhancement:
+        icon = Icons.noise_control_off;
+        break;
+    }
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+          color: GlassTheme.accentPurple.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10)),
+      child: Icon(icon, size: 18, color: GlassTheme.accentPurple),
+    );
+  }
+
+  Widget _langChip(AiModel model) {
+    if (model.languages.isEmpty) return const SizedBox.shrink();
+    final labels = model.languages.take(3).map((l) => l.toUpperCase()).join('/');
+    return Text(labels,
+        style: const TextStyle(
+            color: GlassTheme.textTertiary,
+            fontSize: 10,
+            fontFamily: 'monospace'));
+  }
+
+  Widget _badge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(4)),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+    );
+  }
+    Widget _buildActionButton({
     required String modelId,
     required bool isReady,
     required bool isDownloading,
@@ -541,49 +772,5 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 fontWeight: FontWeight.w600)),
       ),
     );
-  }
-
-  Widget _tag(String text, Color color) {
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(text,
-          style: TextStyle(
-              color: color, fontSize: 10, fontWeight: FontWeight.w500)),
-    );
-  }
-
-  // ── 内联标签 ──
-
-  static String _capLabel(AiModel model) {
-    if (model.capabilities.isEmpty) return '';
-    const names = <AiCapability, String>{
-      AiCapability.vad: 'VAD',
-      AiCapability.asr: '语音识别',
-      AiCapability.asrStreaming: '流式识别',
-      AiCapability.translate: '翻译',
-      AiCapability.classify: '分类',
-      AiCapability.ocr: 'OCR',
-      AiCapability.embed: '语义搜索',
-      AiCapability.frameScore: '选帧',
-    };
-    return names[model.capabilities.first] ?? '';
-  }
-
-  static String _tierLabel(ModelTier tier) {
-    switch (tier) {
-      case ModelTier.light:
-        return '轻量';
-      case ModelTier.balanced:
-        return '均衡';
-      case ModelTier.highQuality:
-        return '高质量';
-      case ModelTier.multilingual:
-        return '多语言';
-    }
   }
 }
