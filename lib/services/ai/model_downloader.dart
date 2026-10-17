@@ -21,6 +21,9 @@ class ModelDownloader {
 
   ModelDownloader({http.Client? client}) : _client = client ?? http.Client();
 
+  /// 释放底层 HTTP 客户端（页面销毁时调用，避免悬挂连接）
+  void dispose() => _client.close();
+
   /// 获取模型存放根目录（初始化为 app 的持久目录下的 ai_models/）
   static Future<Directory> modelsDir({String? overridePath}) async {
     if (overridePath != null) {

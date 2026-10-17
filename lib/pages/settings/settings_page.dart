@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/responsive/breakpoints.dart';
@@ -86,6 +87,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       _buildChineseRomOptimization(context, device),
                     if (device.isIPad)
                       _buildIPadFeatures(context),
+                    const SizedBox(height: 24),
+                    _sectionHeader('AI 模型'),
+                    _buildAiModelsEntry(context),
                     const SizedBox(height: 24),
                     _sectionHeader('关于'),
                     _buildAbout(),
@@ -583,6 +587,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAiModelsEntry(BuildContext context) {
+    return GlassCard(
+      radius: GlassTheme.radiusMd,
+      tint: GlassTheme.tintWhite,
+      padding: const EdgeInsets.all(0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+        child: ListTile(
+          leading: const Icon(Icons.memory,
+              color: GlassTheme.accentPurple, size: 22),
+          title: const Text('AI 模型管理',
+              style: TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500)),
+          subtitle: const Text('下载、切换、删除语音识别与翻译模型',
+              style: TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right,
+              color: GlassTheme.textTertiary, size: 20),
+          onTap: () {
+            GoRouter.of(context).pushNamed('aiModels');
+          },
+        ),
       ),
     );
   }

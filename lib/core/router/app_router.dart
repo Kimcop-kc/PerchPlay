@@ -9,6 +9,7 @@ import '../../pages/settings/settings_page.dart';
 import '../../pages/history/history_page.dart';
 import '../../pages/cast/cast_page.dart';
 import '../../pages/nas/nas_browser_page.dart';
+import '../../pages/ai/ai_models_page.dart';
 
 class AppRouter {
   AppRouter._();
@@ -106,6 +107,13 @@ class AppRouter {
             startIndex: (extra?['startIndex'] as int?) ?? 0,
           );
         },
+      ),
+      // 独立页面 - AI 模型管理
+      GoRoute(
+        path: '/ai-models',
+        name: 'aiModels',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AiModelsPage(),
       ),
     ],
   );
