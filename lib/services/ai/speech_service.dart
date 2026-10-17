@@ -92,8 +92,14 @@ class SpeechService {
       return null;
     }
 
+    // 判定是否有 paraformer 类文件名 → streaming Paraformer 也是 Transducer
+    // （encoder + decoder，joiner optional）
+    final _isParaformer =
+        onnx.keys.any((k) => k.contains('paraformer')) ||
+        modelDir.toLowerCase().contains('paraformer');
+
     if (hasEncoder && hasDecoder && hasJoiner) {
-      // Transducer
+      // Transducer（Zipformer 等三文件）
       final enc = _findPath((k) => k.contains('encoder'))!;
       final dec = _findPath((k) => k.contains('decoder'))!;
       final jnr = _findPath((k) => k.contains('joiner'))!;
@@ -102,6 +108,22 @@ class SpeechService {
         encoder: enc,
         decoder: dec,
         joiner: jnr,
+      );
+      modelConfig = sherpa.OfflineModelConfig(
+        transducer: cfg,
+        tokens: tokensPath,
+        debug: false,
+        numThreads: 1,
+      );
+    } else if (hasEncoder && hasDecoder && _isParaformer) {
+      // Paraformer streaming: encoder + decoder, no joiner
+      final enc = _findPath((k) => k.contains('encoder'))!;
+      final dec = _findPath((k) => k.contains('decoder'))!;
+      debugPrint('[SpeechService] 检测到 Paraformer 流式架构');
+      final cfg = sherpa.OfflineTransducerModelConfig(
+        encoder: enc,
+        decoder: dec,
+        joiner: '', // Paraformer streaming 不需要 joiner
       );
       modelConfig = sherpa.OfflineModelConfig(
         transducer: cfg,

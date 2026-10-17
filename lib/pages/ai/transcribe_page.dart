@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/glass_theme.dart';
@@ -96,10 +96,19 @@ class _TranscribePageState extends State<TranscribePage> {
     // SpeechService.loadModel 自动扫描目录找 .onnx + tokens.txt
     _speech.loadModel(modelDir);
     if (!_speech.isLoaded) {
+      // 模型损坏 → 自动删除目录以免下次再次崩溃
+      debugPrint('[TranscribePage] 模型加载失败，自动删除: $modelDir');
+      try {
+        final broken = Directory(modelDir);
+        if (await broken.exists()) {
+          await broken.delete(recursive: true);
+        }
+        await _scanModels();
+      } catch (_) {}
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('模型加载失败，请检查文件是否完整'),
+          content: Text('模型已损坏，已自动删除。请重新下载'),
           backgroundColor: GlassTheme.accentPink,
         ),
       );
