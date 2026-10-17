@@ -29,6 +29,7 @@ AiModel _testModel({
   int speedRating = 3,
   int qualityRating = 3,
   double minRamGB = 1.0,
+  String notes = '仅测试用',
   List<ModelMirror>? mirrors,
 }) {
   return AiModel(
@@ -50,7 +51,7 @@ AiModel _testModel({
             url: 'https://example.invalid/$id',
           ),
         ],
-    notes: '仅测试用',
+    notes: notes,
   );
 }
 
@@ -278,11 +279,12 @@ void main() {
     });
 
     test('内存门槛边界：等于门槛可用，差一点就不可用', () {
+      // 2.0GB 恰好过 ocr 的显式默认（PaddleOCR，minRam 2.0）的门槛
       expect(
         registry
             .recommended(capability: AiCapability.ocr, deviceRamGB: 2.0)
             ?.id,
-        'rapidocr-onnx',
+        'paddleocr-ppocr-v4',
       );
       expect(
         registry.recommended(capability: AiCapability.ocr, deviceRamGB: 1.99),
@@ -537,6 +539,184 @@ void main() {
     });
   });
 
+  group('显式默认模型', () {
+    test('没指定档位时按显式默认选，且 8 个能力的默认值都钉住', () {
+      // OCR 是这条机制存在的理由：PaddleOCR（15MB）体积比 RapidOCR（20MB）小，
+      // 纯排序永远选不到它，但产品要它当「硬字幕转双语」的主选。
+      expect(
+        registry
+            .recommended(capability: AiCapability.ocr, deviceRamGB: 16)
+            ?.id,
+        'paddleocr-ppocr-v4',
+      );
+      expect(
+        registry.recommended(capability: AiCapability.vad, deviceRamGB: 16)?.id,
+        'silero-vad',
+      );
+      expect(
+        registry.recommended(capability: AiCapability.asr, deviceRamGB: 16)?.id,
+        'sensevoice-small',
+      );
+      expect(
+        registry
+            .recommended(capability: AiCapability.asrStreaming, deviceRamGB: 16)
+            ?.id,
+        'paraformer-zh-streaming',
+      );
+      expect(
+        registry
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'qwen3-1.7b',
+      );
+      expect(
+        registry
+            .recommended(capability: AiCapability.classify, deviceRamGB: 16)
+            ?.id,
+        'qwen3-0.6b',
+      );
+      expect(
+        registry
+            .recommended(capability: AiCapability.embed, deviceRamGB: 16)
+            ?.id,
+        'bge-small-zh-v1.5',
+      );
+      expect(
+        registry
+            .recommended(capability: AiCapability.frameScore, deviceRamGB: 16)
+            ?.id,
+        'nima-frame-quality',
+      );
+    });
+
+    test('指定 preferredTier 时显式默认不生效，按档位走', () {
+      // OCR 的真实清单里：指定 light 后不再看默认表，落回「同档同 kind 体积降序」，
+      // 于是选到 20MB 的 RapidOCR —— 和「不指定档位时选 PaddleOCR」并不矛盾：
+      // 前者是用户明确要轻量档的兜底排序，后者是产品默认意图。
+      final light = registry.recommended(
+        capability: AiCapability.ocr,
+        deviceRamGB: 16,
+        preferredTier: ModelTier.light,
+      );
+      expect(light?.id, 'rapidocr-onnx');
+      expect(light?.tier, ModelTier.light);
+
+      // 注入构造：证明默认表确实被跳过，而不是恰好结果相同
+      final injected = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'light-ocr',
+            capability: AiCapability.ocr,
+            tier: ModelTier.light,
+          ),
+          _testModel(
+            id: 'balanced-ocr',
+            capability: AiCapability.ocr,
+            tier: ModelTier.balanced,
+          ),
+        ],
+        defaultModelIds: const <AiCapability, String>{
+          AiCapability.ocr: 'light-ocr',
+        },
+      );
+      expect(
+        injected
+            .recommended(capability: AiCapability.ocr, deviceRamGB: 16)
+            ?.id,
+        'light-ocr',
+      );
+      expect(
+        injected
+            .recommended(
+              capability: AiCapability.ocr,
+              deviceRamGB: 16,
+              preferredTier: ModelTier.balanced,
+            )
+            ?.id,
+        'balanced-ocr',
+        reason: '用户明确挑了档位，默认表必须让位',
+      );
+    });
+
+    test('显式默认被内存门槛拦掉时回退到原有排序', () {
+      // 真实清单：translate 默认 qwen3-1.7B 要 6GB，4GB 机器装不下
+      // → 回退到 light 档（kind 表让 nmt 优先）→ Opus-MT
+      expect(
+        registry
+            .recommended(capability: AiCapability.translate, deviceRamGB: 4)
+            ?.id,
+        'opus-mt-zh-en',
+        reason: '默认模型装不下就必须让位，不能推荐到会闪退的模型',
+      );
+
+      // 注入场景更干净：默认模型 minRam 8，备选 minRam 1
+      final injected = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'big-default',
+            capability: AiCapability.ocr,
+            minRamGB: 8,
+            sizeMB: 10,
+          ),
+          _testModel(
+            id: 'small-alt',
+            capability: AiCapability.ocr,
+            minRamGB: 1,
+            sizeMB: 5,
+          ),
+        ],
+        defaultModelIds: const <AiCapability, String>{
+          AiCapability.ocr: 'big-default',
+        },
+      );
+      expect(
+        injected
+            .recommended(capability: AiCapability.ocr, deviceRamGB: 4)
+            ?.id,
+        'small-alt',
+      );
+      expect(
+        injected
+            .recommended(capability: AiCapability.ocr, deviceRamGB: 8)
+            ?.id,
+        'big-default',
+        reason: '内存够了默认模型照常生效',
+      );
+    });
+
+    test('显式默认配错（不存在 / 不支持该能力）时静默回退，不抛异常', () {
+      final missing = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(id: 'real-ocr', capability: AiCapability.ocr),
+        ],
+        defaultModelIds: const <AiCapability, String>{
+          AiCapability.ocr: 'does-not-exist',
+        },
+      );
+      expect(
+        missing.recommended(capability: AiCapability.ocr, deviceRamGB: 16)?.id,
+        'real-ocr',
+      );
+
+      // 指到不支持该能力的模型上时，不能因为「配了就信」而硬塞
+      final wrongCapability = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(id: 'vad-only', capability: AiCapability.vad),
+          _testModel(id: 'real-ocr', capability: AiCapability.ocr),
+        ],
+        defaultModelIds: const <AiCapability, String>{
+          AiCapability.ocr: 'vad-only',
+        },
+      );
+      expect(
+        wrongCapability
+            .recommended(capability: AiCapability.ocr, deviceRamGB: 16)
+            ?.id,
+        'real-ocr',
+      );
+    });
+  });
+
   group('mirrorsFor：默认魔搭、失败退 HF', () {
     test('默认来源是魔搭', () {
       expect(registry.defaultSource, DownloadSource.modelscope);
@@ -682,6 +862,18 @@ void main() {
       // 整张表 = 表头 + 每条一行
       expect(AiModelSelector.table(catalog).length, catalog.length + 1);
     });
+
+    test('notes 里出现竖线时表格仍是六列', () {
+      final weird = _testModel(
+        id: 'pipe-model',
+        capability: AiCapability.ocr,
+        notes: '含竖线 | 的说明 | 再一根',
+      );
+      final row = AiModelSelector.tableRow(weird);
+      final cells = row.split(' | ');
+      expect(cells.length, 6, reason: '竖线必须被替换掉，否则整行错位：$row');
+      expect(cells[5], '含竖线 / 的说明 / 再一根');
+    });
   });
 
   group('新能力：embed 与 frameScore', () {
@@ -728,7 +920,7 @@ void main() {
       );
     });
 
-    test('recommended(ocr) 不会串到别的能力', () {
+    test('recommended(ocr) 不会串到别的能力，且默认是 PaddleOCR', () {
       final pick = registry.recommended(
         capability: AiCapability.ocr,
         deviceRamGB: 16,
@@ -736,9 +928,8 @@ void main() {
       expect(pick, isNotNull);
       expect(pick!.kind, ModelKind.ocr);
       expect(pick.supports(AiCapability.ocr), isTrue);
-      // 现状：同 tier 同 kind 按体积降序 → 20MB 的 RapidOCR 排在 15MB 的 PaddleOCR 前。
-      // 若产品要求「硬字幕转双语默认 PaddleOCR」，需要显式默认值（见汇报里的疑虑）。
-      expect(pick.id, 'rapidocr-onnx');
+      expect(pick.id, 'paddleocr-ppocr-v4',
+          reason: '显式默认指定了「硬字幕转双语」主选，不能再被体积降序挤成 RapidOCR');
     });
 
     test('frameScore 没有模型时功能也必须照常（能力可空）', () {

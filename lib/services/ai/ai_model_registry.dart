@@ -107,8 +107,12 @@ class AiModelRegistry {
   /// 为某台设备推荐一个模型；没有可用候选时返回 null
   ///
   /// 规则（顺序即优先级）：
-  ///  1. **先过内存门槛** `minRamGB <= deviceRamGB`：装不下的一律不算候选。
-  ///     这一条压过所有偏好 —— 推荐了也跑不起来，等于没推荐。
+  ///  0. **显式默认优先**（仅当没指定 [preferredTier]）：[defaultModelIds] 里
+  ///     配了该能力、模型存在、支持该能力、且过了内存门槛 → 直接返回它。
+  ///     这是产品意图的直接表达，压过下面所有排序键。指定了 [preferredTier]
+  ///     时本条跳过（见该字段注释）。
+  ///  1. **内存门槛** `minRamGB <= deviceRamGB`：装不下的一律不算候选。
+  ///     这一条也压过显式默认（默认模型装不下时回落排序），推荐了跑不起来等于没推荐。
   ///  2. 给了 [preferredTier] 就优先它；该档位没有通过门槛的候选时，
   ///     退回默认顺序继续找（而不是直接返回 null：有能用的模型却告诉用户
   ///     「没有可用模型」是最糟的体验）。
@@ -125,6 +129,22 @@ class AiModelRegistry {
     required double deviceRamGB,
     ModelTier? preferredTier,
   }) {
+    // 0) 显式默认：产品说「就要这个」，就不要再用体积/评分去猜。
+    //    指定了 preferredTier 时跳过 —— 用户挑档位时，「多语言/高质量」必须能
+    //    落到 bge-m3 / madlad / whisper-large，不能被 light 的默认值截胡。
+    if (preferredTier == null) {
+      final defaultId = defaultModelIds[capability];
+      if (defaultId != null) {
+        final preset = byId(defaultId);
+        if (preset != null &&
+            preset.supports(capability) &&
+            preset.minRamGB <= deviceRamGB) {
+          return preset;
+        }
+        // 模型不在清单里 / 不支持该能力 / 装不下 → 当没配过，继续往下走
+      }
+    }
+
     final eligible = <AiModel>[
       for (final model in models)
         if (model.supports(capability) && model.minRamGB <= deviceRamGB) model,
@@ -317,15 +337,15 @@ class AiModelSelector {
   ///
   /// 为什么固定用 ` | ` 分隔：UI 层可以直接按这个分隔符切成六格（表格控件，
   /// 或纯文本等宽展示），不用为每个字段各写一遍格式化逻辑。
-  /// 注意：`notes` 里不要出现 ` | `，否则切列会错位 —— 现有清单已避开。
+  /// 每个字段都过一遍 [_cell]：notes 里出现竖线也不会多切列。
   static String tableRow(AiModel model) {
     return <String>[
-      model.displayName,
-      '约 ${model.sizeLabel}',
-      _languagesLabel(model),
-      stars(model.speedRating),
-      stars(model.qualityRating),
-      model.notes,
+      _cell(model.displayName),
+      _cell('约 ${model.sizeLabel}'),
+      _cell(_languagesLabel(model)),
+      _cell(stars(model.speedRating)),
+      _cell(stars(model.qualityRating)),
+      _cell(model.notes),
     ].join(' | ');
   }
 
@@ -336,6 +356,13 @@ class AiModelSelector {
       for (final model in models) tableRow(model),
     ];
   }
+
+  /// 表格单元格转义：竖线换成 `/`
+  ///
+  /// 为什么必须替换而不是「靠注释约定」：UI 按 ` | ` 切列，notes 里只要出现一根
+  /// 竖线就会多切一列、整行错位；而 notes 将来可能来自远端清单或用户导入，
+  /// 靠约定根本兜不住。换成 `/` 既保住六列，读起来意思也不变。
+  static String _cell(String raw) => raw.replaceAll('|', '/');
 
   /// 语言列表 → 展示文本
   ///
