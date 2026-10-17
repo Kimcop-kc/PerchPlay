@@ -10,14 +10,16 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import '../../core/theme/glass_theme.dart';
 import '../../services/ai/ai_model.dart';
 import '../../services/ai/ai_model_catalog.dart';
+import '../../services/ai/audio_transcoder.dart';
 import '../../services/ai/model_downloader.dart';
 import '../../services/ai/punct_service.dart';
 import '../../services/ai/speech_service.dart';
 import '../../services/ai/tts_service.dart';
+import '../../services/ai/vad_service.dart';
 
 /// 语音转写页面。
 ///
-/// 流程：选模型 → 选 WAV 文件 → 加载模型 → 转写 → 标点恢复 → 展示结果。
+/// 流程：选模型 → 选音频文件 → 转码（非 WAV 时）→ 加载模型 → 转写 → 标点恢复 → 展示结果。
 /// 结果页支持 TTS 朗读。
 class TranscribePage extends StatefulWidget {
   const TranscribePage({super.key});
@@ -32,6 +34,7 @@ class _TranscribePageState extends State<TranscribePage> {
   final _speech = SpeechService();
   final _punct = PunctService();
   final _tts = TtsService();
+  final _vad = VadService();
   final _downloader = ModelDownloader();
 
   _Step _step = _Step.selectModel;
@@ -53,6 +56,12 @@ class _TranscribePageState extends State<TranscribePage> {
 
   /// TTS 是否正在合成
   bool _ttsBusy = false;
+
+  /// 是否正在转码音频
+  bool _transcoding = false;
+
+  /// 转写中状态文字
+  String _transcribeStatus = '转写中…';
 
   /// 已下载的模型 id → AiModel（仅 ASR 类）
   List<AiModel> _availableModels = [];
@@ -98,6 +107,7 @@ class _TranscribePageState extends State<TranscribePage> {
     _speech.dispose();
     _punct.dispose();
     _tts.dispose();
+    _vad.dispose();
     _downloader.dispose();
     super.dispose();
   }
@@ -158,7 +168,7 @@ class _TranscribePageState extends State<TranscribePage> {
     });
   }
 
-  // ── 步骤 2：选 WAV 文件 ──
+  // ── 步骤 2：选音频文件 ──
 
   Future<void> _pickWav() async {
     final result = await FilePicker.platform.pickFiles(
@@ -170,18 +180,37 @@ class _TranscribePageState extends State<TranscribePage> {
     final path = result.files.single.path;
     if (path == null) return;
 
-    // TODO(P2): 非 WAV 文件需要用 ffmpeg 转码。当前硬限制 WAV。
+    // 非 WAV 文件 → FFmpeg 转码为 16kHz 单声道 WAV
     if (!path.toLowerCase().endsWith('.wav')) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('暂不支持非 WAV 格式（需要 FFmpeg 转码，P2 待做）'),
-          backgroundColor: Color(0xFFFF9500),
-        ),
-      );
+      setState(() => _transcoding = true);
+      try {
+        final wavPath = await AudioTranscoder.transcodeToWav(path);
+        if (!mounted) return;
+        if (wavPath == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('音频转码失败，请确认文件格式有效'),
+              backgroundColor: GlassTheme.accentPink,
+            ),
+          );
+          return;
+        }
+        // 转码成功 → 用转码后的 WAV 路径
+        setState(() {
+          _transcoding = false;
+          _wavPath = wavPath;
+          _result = null;
+          _error = null;
+          _step = _Step.transcribing;
+        });
+        await _runTranscribe();
+      } finally {
+        if (mounted) setState(() => _transcoding = false);
+      }
       return;
     }
 
+    // 本来就是 WAV — 直接转写
     setState(() {
       _wavPath = path;
       _result = null;
@@ -199,30 +228,54 @@ class _TranscribePageState extends State<TranscribePage> {
     if (wav == null) return;
 
     try {
-      // 1. ASR 转写
-      final text = await _speech.transcribeFile(wav);
-      if (!mounted) return;
+      // 检查 VAD 模型是否可用
+      final vadDir = await _resolveVadModelDir();
+      final bool useVad = vadDir != null;
 
-      final raw = (text == null || text.isEmpty) ? '(未识别到语音内容)' : text;
-      String display = raw;
+      if (useVad) {
+        // ── VAD 预处理 + 逐段 ASR ──
+        _updateStatus('VAD 切分…');
+        _vad.loadModel(vadDir!);
+        final segments = _vad.detectFromFile(wav);
 
-      // 2. 标点恢复（如果标点模型已下载）
-      if (raw != '(未识别到语音内容)') {
-        final pDir = await _resolvePunctModelDir();
-        if (pDir != null) {
-          _punct.loadModel(pDir);
-          if (_punct.isLoaded) {
-            display = _punct.restore(raw);
+        if (segments.isEmpty) {
+          // VAD 没检测到任何语音 → 回退全文推理
+          _updateStatus('转写中…');
+          final text = await _speech.transcribeFile(wav);
+          if (!mounted) return;
+          final raw =
+              (text == null || text.isEmpty) ? '(未识别到语音内容)' : text;
+          await _finishTranscribe(raw);
+        } else {
+          // 逐段转写
+          final buffer = StringBuffer();
+          for (int i = 0; i < segments.length; i++) {
+            _updateStatus('转写中 (${i + 1}/${segments.length})…');
+            final seg = segments[i];
+            final segText = await _speech.transcribe(
+              samples: seg.samples,
+              sampleRate: 16000, // VAD 固定 16kHz
+            );
+            final startStr = _formatMs(seg.startMs);
+            final endStr = _formatMs(seg.endMs);
+            if (segText != null && segText.isNotEmpty) {
+              buffer.writeln('[$startStr-$endStr] $segText');
+            }
           }
+          final combined = buffer.toString().trim();
+          if (!mounted) return;
+          final raw = combined.isEmpty ? '(未识别到语音内容)' : combined;
+          await _finishTranscribe(raw);
         }
+      } else {
+        // ── 无 VAD：全文 ASR ──
+        _updateStatus('转写中…');
+        final text = await _speech.transcribeFile(wav);
+        if (!mounted) return;
+        final raw =
+            (text == null || text.isEmpty) ? '(未识别到语音内容)' : text;
+        await _finishTranscribe(raw);
       }
-
-      if (!mounted) return;
-      setState(() {
-        _step = _Step.done;
-        _rawResult = raw;
-        _result = display;
-      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -232,6 +285,35 @@ class _TranscribePageState extends State<TranscribePage> {
         _error = '转写失败: $e';
       });
     }
+  }
+
+  /// 设置转写中状态提示文字。
+  void _updateStatus(String s) {
+    _transcribeStatus = s;
+    if (mounted) setState(() {});
+  }
+
+  /// 完成转写：原始文本 → 标点恢复 → 展示结果。
+  Future<void> _finishTranscribe(String raw) async {
+    _updateStatus('标点恢复…');
+    String display = raw;
+
+    if (raw != '(未识别到语音内容)') {
+      final pDir = await _resolvePunctModelDir();
+      if (pDir != null) {
+        _punct.loadModel(pDir);
+        if (_punct.isLoaded) {
+          display = _punct.restore(raw);
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _step = _Step.done;
+      _rawResult = raw;
+      _result = display;
+    });
   }
 
   // ── 重来 ──
@@ -282,6 +364,24 @@ class _TranscribePageState extends State<TranscribePage> {
     final hasOnnx = await d.list().any((e) =>
         e is File && e.path.toLowerCase().endsWith('.onnx'));
     return hasOnnx ? d.path : null;
+  }
+
+  /// 查找 VAD 模型目录（Silero VAD）。
+  Future<String?> _resolveVadModelDir() async {
+    final dir = await ModelDownloader.modelsDir();
+    final d = Directory('${dir.path}${Platform.pathSeparator}silero-vad');
+    if (!await d.exists()) return null;
+    final hasOnnx = await d.list().any((e) =>
+        e is File && e.path.toLowerCase().endsWith('.onnx'));
+    return hasOnnx ? d.path : null;
+  }
+
+  /// 毫秒 → MM:SS 格式化。
+  static String _formatMs(int ms) {
+    final totalSec = (ms / 1000).floor();
+    final min = totalSec ~/ 60;
+    final sec = totalSec % 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
   /// 查找 TTS 模型目录（按优先级：中文 > 英文 > 粤语）。
@@ -616,6 +716,24 @@ class _TranscribePageState extends State<TranscribePage> {
       (m) => m.id == _modelId,
       orElse: () => AiModelCatalog.all.first,
     );
+    // 转码中时禁用按钮
+    if (_transcoding) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+                strokeWidth: 2, color: GlassTheme.accentPurple),
+            SizedBox(height: 16),
+            Text('正在转码…',
+                style: TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -628,7 +746,7 @@ class _TranscribePageState extends State<TranscribePage> {
               style: const TextStyle(
                   color: GlassTheme.textSecondary, fontSize: 14)),
           const SizedBox(height: 8),
-          const Text('请选择要转写的 WAV 音频文件',
+          const Text('请选择要转写的音频文件',
               style: TextStyle(
                   color: GlassTheme.textTertiary, fontSize: 13)),
           const SizedBox(height: 24),
@@ -658,9 +776,9 @@ class _TranscribePageState extends State<TranscribePage> {
             ),
           ),
           const SizedBox(height: 12),
-          Text('支持 WAV 格式 · MP3/M4A 等格式将在后续版本支持',
+          const Text('支持 WAV / MP3 / M4A / AAC / OGG / FLAC',
               style: TextStyle(
-                  color: GlassTheme.textTertiary.withOpacity(0.6),
+                  color: GlassTheme.textTertiary,
                   fontSize: 11)),
         ],
       ),
@@ -681,8 +799,8 @@ class _TranscribePageState extends State<TranscribePage> {
                 strokeWidth: 3, color: GlassTheme.accentPurple),
           ),
           const SizedBox(height: 20),
-          const Text('正在转写…',
-              style: TextStyle(
+          Text(_transcribeStatus,
+              style: const TextStyle(
                   color: GlassTheme.textPrimary,
                   fontSize: 16,
                   fontWeight: FontWeight.w600)),
