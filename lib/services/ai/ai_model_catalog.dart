@@ -7,7 +7,11 @@
 ///
 /// ⚠️ 现状（发布前必须处理）：
 ///  - 所有 `url` 都是占位域名，**真实 URL 待填**；
-///  - 所有 `sha256` 都是 null（每个条目上方有 TODO 注释）。
+///  - 所有 `sha256` 都是 null（每个条目上方有 TODO 注释）；
+///  - 所有 `minRamGB` 都是**估算值**：按模型体积的经验比例推算
+///    （权重 + 量化误差 + 运行时开销），**不是真机实测**。
+///    接上原生推理后必须拿低配/高配各一台设备重新校准 —— 估高了会误伤能跑的机器，
+///    估低了会放进必然闪退的机器。
 ///
 /// 为什么占位用 `.invalid` 而不是 example.com：`.invalid` 是 RFC 2606 保留、
 /// 永远解析不到的域名。万一将来有人把占位值接进下载流程，也只会立刻失败，
@@ -70,6 +74,9 @@ const List<String> _madladLanguages = <String>[
 ///
 /// 顺序即 `byCapability` 的返回顺序：同类模型把「默认该优先考虑」的排前面，
 /// UI 不排序直接展示时也是合理的。
+///
+/// `kind` 是「哪种模型」而不是「能干什么」：翻译能力下 nmt 和 llm 都在，
+/// 排序时轻量档要让位给专用 NMT（详见 `AiModelRegistry` 的 kind 优先表）。
 class AiModelCatalog {
   AiModelCatalog._();
 
@@ -79,11 +86,13 @@ class AiModelCatalog {
       id: 'silero-vad',
       displayName: 'Silero VAD 语音活动检测',
       capabilities: <AiCapability>{AiCapability.vad},
+      kind: ModelKind.vad,
       tier: ModelTier.light,
       sizeMB: 2,
       // 与语言无关：它只判断「这段音频里有没有人声」，不关心说的是什么
       languages: <String>[],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 1.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -107,10 +116,12 @@ class AiModelCatalog {
         AiCapability.asrStreaming,
         AiCapability.asr,
       },
+      kind: ModelKind.asr,
       tier: ModelTier.light,
       sizeMB: 80,
       languages: <String>['zh', 'en'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -134,10 +145,12 @@ class AiModelCatalog {
         AiCapability.asr,
         AiCapability.asrStreaming,
       },
+      kind: ModelKind.asr,
       tier: ModelTier.balanced,
       sizeMB: 230,
       languages: <String>['zh', 'en', 'ja', 'ko', 'yue'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 3.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -161,10 +174,12 @@ class AiModelCatalog {
         AiCapability.asrStreaming,
         AiCapability.asr,
       },
+      kind: ModelKind.asr,
       tier: ModelTier.balanced,
       sizeMB: 220,
       languages: <String>['zh'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 3.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -185,10 +200,12 @@ class AiModelCatalog {
       id: 'whisper-base',
       displayName: 'Whisper Base 99 语种',
       capabilities: <AiCapability>{AiCapability.asr},
+      kind: ModelKind.asr,
       tier: ModelTier.multilingual,
       sizeMB: 150,
       languages: _whisperLanguages,
       license: 'MIT',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -209,10 +226,12 @@ class AiModelCatalog {
       id: 'whisper-small',
       displayName: 'Whisper Small 99 语种',
       capabilities: <AiCapability>{AiCapability.asr},
+      kind: ModelKind.asr,
       tier: ModelTier.multilingual,
       sizeMB: 500,
       languages: _whisperLanguages,
       license: 'MIT',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 4.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -233,10 +252,12 @@ class AiModelCatalog {
       id: 'whisper-large-v3-turbo',
       displayName: 'Whisper Large v3 Turbo',
       capabilities: <AiCapability>{AiCapability.asr},
+      kind: ModelKind.asr,
       tier: ModelTier.highQuality,
       sizeMB: 1600,
       languages: _whisperLanguages,
       license: 'MIT',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 8.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -258,14 +279,17 @@ class AiModelCatalog {
     AiModel(
       id: 'qwen3-0.6b',
       displayName: 'Qwen3 0.6B',
-      capabilities: <AiCapability>{
-        AiCapability.classify,
-        AiCapability.translate,
-      },
+      // 故意不声明 translate：0.6B 的翻译质量还到不了能用的程度。
+      // 硬塞进翻译档位只会让「轻量翻译」选到 400MB、却不如 100MB 的 Opus-MT ——
+      // 既费流量又更慢，还会把用户对「轻量档够用」的预期骗掉。
+      // 它该做的是自己擅长的文本分类。
+      capabilities: <AiCapability>{AiCapability.classify},
+      kind: ModelKind.llm,
       tier: ModelTier.light,
       sizeMB: 400,
       languages: <String>['zh', 'en', 'ja', 'ko'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 3.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -280,7 +304,7 @@ class AiModelCatalog {
           sha256: null,
         ),
       ],
-      notes: '极小通用 LLM，做文本分类和短句翻译够用，速度优先时的兜底',
+      notes: '极小通用 LLM，专做文本分类；0.6B 做翻译还没到能用的程度，别拿它翻',
     ),
     AiModel(
       id: 'qwen3-1.7b',
@@ -289,10 +313,12 @@ class AiModelCatalog {
         AiCapability.translate,
         AiCapability.classify,
       },
+      kind: ModelKind.llm,
       tier: ModelTier.balanced,
       sizeMB: 1100,
       languages: <String>['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 6.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -313,10 +339,12 @@ class AiModelCatalog {
       id: 'qwen2.5-3b-instruct',
       displayName: 'Qwen2.5 3B Instruct',
       capabilities: <AiCapability>{AiCapability.translate},
+      kind: ModelKind.llm,
       tier: ModelTier.highQuality,
       sizeMB: 2000,
       languages: <String>['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 8.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -337,12 +365,14 @@ class AiModelCatalog {
       id: 'gemma-3-1b',
       displayName: 'Gemma 3 1B',
       capabilities: <AiCapability>{AiCapability.translate},
+      kind: ModelKind.llm,
       tier: ModelTier.light,
       sizeMB: 550,
       languages: <String>['en', 'zh', 'ja', 'ko', 'fr', 'de', 'es', 'ru'],
       // 许可证不是标准开源：允许用户自己下载，但**本项目不打包分发**
       // （Gemma Terms 对再分发/使用场景有额外限制，跟着安装包发出去风险太大）。
       license: 'Gemma Terms',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 4.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       // 只有 HF 一条：Google 官方发布在 HF，魔搭上没有官方镜像，
@@ -362,10 +392,12 @@ class AiModelCatalog {
       id: 'opus-mt-zh-en',
       displayName: 'Opus-MT 中英翻译',
       capabilities: <AiCapability>{AiCapability.translate},
+      kind: ModelKind.nmt,
       tier: ModelTier.light,
       sizeMB: 100,
       languages: <String>['zh', 'en'],
       license: 'CC-BY-4.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[
@@ -388,10 +420,16 @@ class AiModelCatalog {
       id: 'madlad-400-3b',
       displayName: 'MADLAD-400 3B 多语翻译',
       capabilities: <AiCapability>{AiCapability.translate},
-      tier: ModelTier.highQuality,
+      kind: ModelKind.nmt,
+      // 档位是 multilingual 而不是 highQuality：它的价值是 400+ 语种覆盖
+      // （用户要找小语种时才需要），不是「中文翻译质量更高」。
+      // 放在 highQuality 会抢走「高质量翻译」的默认位 —— 中文场景下
+      // qwen2.5-3b-instruct 更合适；真要小语种的人会主动挑「多语言」档。
+      tier: ModelTier.multilingual,
       sizeMB: 2000,
       languages: _madladLanguages,
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 8.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       // 只有 HF 一条（同样是「没有该源时保持原顺序」的第二种情况）。
@@ -411,10 +449,12 @@ class AiModelCatalog {
       id: 'rapidocr-onnx',
       displayName: 'RapidOCR 硬字幕识别',
       capabilities: <AiCapability>{AiCapability.ocr},
+      kind: ModelKind.ocr,
       tier: ModelTier.light,
       sizeMB: 20,
       languages: <String>['zh', 'en'],
       license: 'Apache-2.0',
+      // 估算值，待真机校准（按模型体积经验推算，非实测）
       minRamGB: 2.0,
       // TODO(发布前): 补真实 sha256 与可下载直链；骨架阶段 sha256 一律留 null
       mirrors: <ModelMirror>[

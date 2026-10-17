@@ -53,6 +53,32 @@ enum DownloadSource {
   huggingface,
 }
 
+/// 模型类别：跟 [AiCapability] 不是一回事
+///
+/// 能力回答「这个模型能干什么」，类别回答「它是哪种模型」。同一个能力可以由
+/// 不同类别实现，而类别直接决定「同档位里该优先选谁」：
+///  - 翻译：轻量档要优先专用 NMT（参数全花在翻译上，更快更省电），
+///    更高档位才轮到 LLM（译文更自然、能控制格式）；
+///  - 分类：只有 LLM 干得了，NMT 不掺和。
+/// 所以排序需要这个维度 —— 光靠 tier + 体积排不出来，100MB 的 NMT 会比
+/// 400MB 的小 LLM 翻得更好。具体优先级表见 `AiModelRegistry.recommended`。
+enum ModelKind {
+  /// 语音活动检测
+  vad,
+
+  /// 语音识别（含流式）
+  asr,
+
+  /// 通用大语言模型（分类 / 翻译都靠它）
+  llm,
+
+  /// 专用神经机器翻译模型（只做翻译：单语种对或大规模多语覆盖）
+  nmt,
+
+  /// 光学字符识别
+  ocr,
+}
+
 /// 一个下载镜像
 class ModelMirror {
   /// 来源站点
@@ -97,6 +123,12 @@ class AiModel {
   /// 支持的能力；一个模型可以有多个（如 SenseVoice 既做整段也做流式）
   final Set<AiCapability> capabilities;
 
+  /// 模型类别：同档位内排序时决定优先级（见 [ModelKind] 与
+  /// `AiModelRegistry.recommended`）。和能力是两个维度：SenseVoice 和 Whisper
+  /// 都做 ASR，但前者是 asr、后者也是 asr；opus-mt 和 qwen 都做翻译，
+  /// 却是 nmt / llm 两种类别 —— 只靠能力分不开。
+  final ModelKind kind;
+
   /// 人工标定的档位
   final ModelTier tier;
 
@@ -121,6 +153,10 @@ class AiModel {
   ///
   /// 低于这个值不推荐：模型权重 + 运行时 KV cache 会一起把低内存设备撑爆，
   /// 到时候表现为闪退而不是「慢」，用户根本不知道发生了什么。
+  ///
+  /// ⚠️ **清单里的数值全是估算**：按模型体积的经验比例推算（权重 + 量化误差 +
+  /// 运行时开销），不是在本项目真机上实测得到的。接上原生推理后必须拿低配/高配
+  /// 各一台设备重新校准，否则要么误伤能跑的机器，要么放进会闪退的机器。
   final double minRamGB;
 
   /// 下载镜像，**按优先级排序**
@@ -133,6 +169,7 @@ class AiModel {
     required this.id,
     required this.displayName,
     required this.capabilities,
+    required this.kind,
     required this.tier,
     required this.sizeMB,
     required this.languages,
@@ -150,5 +187,6 @@ class AiModel {
       sizeMB >= 1024 ? '${(sizeMB / 1024).toStringAsFixed(1)} GB' : '$sizeMB MB';
 
   @override
-  String toString() => 'AiModel($id, ${tier.name}, ${sizeMB}MB)';
+  String toString() =>
+      'AiModel($id, ${kind.name}/${tier.name}, ${sizeMB}MB)';
 }

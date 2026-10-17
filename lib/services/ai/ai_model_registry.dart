@@ -77,8 +77,13 @@ class AiModelRegistry {
   ///     退回默认顺序继续找（而不是直接返回 null：有能用的模型却告诉用户
   ///     「没有可用模型」是最糟的体验）。
   ///  3. 默认顺序：balanced → light → multilingual → highQuality（见 [_tierFallback]）。
-  ///  4. 同一档位内按体积**从大到小**：体积大的通常质量更好，而且此时内存门槛
-  ///     已经过了，选大的不会把设备撑爆。体积相同再按 id 排，保证结果可复现。
+  ///  4. 同一档位内的排序（[capability] 感知，见 [_compareInTier]）：
+  ///     a) **类别优先**：按 [_kindPreference] 里该能力的类别顺序（翻译是 nmt → llm）；
+  ///     b) 体积从大到小：同类别里体积大的通常质量更好，且门槛已过、不会撑爆设备；
+  ///     c) id：只作最后确定性兜底，**不承载产品语义**。
+  ///
+  /// 为什么体积不能排在类别前面：100MB 的专用 NMT 翻译质量就比 400MB 的
+  /// 通用小 LLM 好，纯按体积排会把「轻量翻译」错选成 LLM。
   AiModel? recommended({
     required AiCapability capability,
     required double deviceRamGB,
@@ -105,21 +110,58 @@ class AiModelRegistry {
           if (model.tier == tier) model,
       ];
       if (inTier.isEmpty) continue;
-      inTier.sort(_bySizeDesc);
+      inTier.sort((a, b) => _compareInTier(capability, a, b));
       return inTier.first;
     }
     // 理论上到不了：tier 枚举已全覆盖，且 eligible 非空
     return null;
   }
 
-  /// 同档位内：体积大的优先，体积相同按 id 兜底
+  /// 每个能力「优先选哪类模型」—— 列表索引越小越优先
   ///
-  /// 为什么要 id 兜底：清单里确实有两条同体积的高质量翻译模型
-  /// （qwen2.5-3b-instruct / madlad-400-3b），不兜底时结果取决于清单顺序，
-  /// 以后调个顺序就会悄悄改变推荐结果，测试也会变得时灵时不灵。
-  static int _bySizeDesc(AiModel a, AiModel b) {
+  /// 为什么需要这张表：同档位里体积说明不了质量。翻译这种能力，
+  /// 100MB 的专用 NMT 比 400MB 的通用小 LLM 更快也更准（参数全花在翻译上）。
+  ///  - translate：nmt > llm。纯翻译用 NMT 更快更省电；LLM 的优势是译文更自然、
+  ///    能控制格式（双语对照之类），那属于更高档位才需要权衡的事 ——
+  ///    现清单里 balanced 及以上没有 nmt 候选，所以这条实际只影响 light 档。
+  ///  - classify：只有 llm 干得了，NMT 不做分类。
+  ///  - asr / asrStreaming / ocr / vad：各归各类，没有跨类比较的必要，
+  ///    表里只放一类，等于「同类内按体积比」。
+  ///
+  /// 不在表里的类别：排在该能力所有已列类别之后（见 [_kindRank]）。
+  static const Map<AiCapability, List<ModelKind>> _kindPreference =
+      <AiCapability, List<ModelKind>>{
+    AiCapability.translate: <ModelKind>[ModelKind.nmt, ModelKind.llm],
+    AiCapability.classify: <ModelKind>[ModelKind.llm],
+    AiCapability.asr: <ModelKind>[ModelKind.asr],
+    AiCapability.asrStreaming: <ModelKind>[ModelKind.asr],
+    AiCapability.ocr: <ModelKind>[ModelKind.ocr],
+    AiCapability.vad: <ModelKind>[ModelKind.vad],
+  };
+
+  /// 某类别在该能力下的优先级（越小越优先；不在表里 = 最后）
+  static int _kindRank(AiCapability capability, ModelKind kind) {
+    final order = _kindPreference[capability] ?? const <ModelKind>[];
+    final index = order.indexOf(kind);
+    return index < 0 ? order.length : index;
+  }
+
+  /// 同档位内的排序：类别 → 体积从大到小 → id 兜底
+  ///
+  /// 三级键各自的作用：
+  ///  - 类别：见 [_kindPreference]，是真正的产品决策；
+  ///  - 体积：同类别内当质量代理（门槛已过，选大的不会撑爆设备）；
+  ///  - id：**只**用来让结果确定。清单顺序将来会调整，不兜底的话
+  ///    「同类别同体积」的推荐结果会随清单顺序漂移，测试也会时灵时不灵 ——
+  ///    但 id 的大小没有任何业务含义，别拿它当产品偏好读。
+  static int _compareInTier(AiCapability capability, AiModel a, AiModel b) {
+    final byKind =
+        _kindRank(capability, a.kind).compareTo(_kindRank(capability, b.kind));
+    if (byKind != 0) return byKind;
     final bySize = b.sizeMB.compareTo(a.sizeMB);
-    return bySize != 0 ? bySize : a.id.compareTo(b.id);
+    if (bySize != 0) return bySize;
+    // 仅作确定性兜底：不承载产品语义
+    return a.id.compareTo(b.id);
   }
 
   /// 按优先级返回某个模型的镜像列表

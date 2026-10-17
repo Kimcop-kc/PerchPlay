@@ -7,7 +7,9 @@
 //  - 内存门槛压过所有偏好（装不下的模型不能被推荐）
 //  - 默认 tier 顺序：balanced → light → multilingual → highQuality
 //  - preferredTier 优先；该档没有候选时退回默认顺序而不是返回 null
+//  - 同档位内的排序键：kind 优先表 → 体积从大到小 → id（仅确定性兜底）
 //  - 镜像顺序：指定来源排第一；模型没有该来源时保持原顺序，且不污染清单
+//  - 方案 C 的四条目标行为（translate 各档位分别落到谁）
 import 'package:flutter_test/flutter_test.dart';
 import 'package:perchplay/services/ai/ai_model.dart';
 import 'package:perchplay/services/ai/ai_model_catalog.dart';
@@ -16,10 +18,12 @@ import 'package:perchplay/services/ai/ai_model_registry.dart';
 /// 造一个测试用模型
 ///
 /// 为什么需要它：真实清单里每个能力都至少有一个模型，想验证
-/// 「没有候选 → null」「HF 原顺序被提到前面」这类边界，只能自己造数据。
+/// 「没有候选 → null」「nmt 与 llm 的排序」「id 兜底」这类规则，
+/// 只能自己造数据 —— 否则测试就只是在依赖清单里恰好存在某两个条目。
 AiModel _testModel({
   required String id,
   required AiCapability capability,
+  ModelKind kind = ModelKind.llm,
   ModelTier tier = ModelTier.light,
   int sizeMB = 10,
   double minRamGB = 1.0,
@@ -29,6 +33,7 @@ AiModel _testModel({
     id: id,
     displayName: '测试模型 $id',
     capabilities: <AiCapability>{capability},
+    kind: kind,
     tier: tier,
     sizeMB: sizeMB,
     languages: const <String>[],
@@ -83,77 +88,94 @@ void main() {
       }
     });
 
-    test('需求点名的模型都在，体积/许可证/档位与约定一致', () {
-      const expected = <String, ({int sizeMB, String license, ModelTier tier})>{
+    test('需求点名的模型都在，体积/许可证/档位/类别与约定一致', () {
+      const expected = <
+          String,
+          ({int sizeMB, String license, ModelTier tier, ModelKind kind})>{
         'silero-vad': (
           sizeMB: 2,
           license: 'Apache-2.0',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.vad,
         ),
         'zipformer-zh-en-streaming': (
           sizeMB: 80,
           license: 'Apache-2.0',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.asr,
         ),
         'sensevoice-small': (
           sizeMB: 230,
           license: 'Apache-2.0',
-          tier: ModelTier.balanced
+          tier: ModelTier.balanced,
+          kind: ModelKind.asr,
         ),
         'paraformer-zh-streaming': (
           sizeMB: 220,
           license: 'Apache-2.0',
-          tier: ModelTier.balanced
+          tier: ModelTier.balanced,
+          kind: ModelKind.asr,
         ),
         'whisper-base': (
           sizeMB: 150,
           license: 'MIT',
-          tier: ModelTier.multilingual
+          tier: ModelTier.multilingual,
+          kind: ModelKind.asr,
         ),
         'whisper-small': (
           sizeMB: 500,
           license: 'MIT',
-          tier: ModelTier.multilingual
+          tier: ModelTier.multilingual,
+          kind: ModelKind.asr,
         ),
         'whisper-large-v3-turbo': (
           sizeMB: 1600,
           license: 'MIT',
-          tier: ModelTier.highQuality
+          tier: ModelTier.highQuality,
+          kind: ModelKind.asr,
         ),
         'qwen3-0.6b': (
           sizeMB: 400,
           license: 'Apache-2.0',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.llm,
         ),
         'qwen3-1.7b': (
           sizeMB: 1100,
           license: 'Apache-2.0',
-          tier: ModelTier.balanced
+          tier: ModelTier.balanced,
+          kind: ModelKind.llm,
         ),
         'qwen2.5-3b-instruct': (
           sizeMB: 2000,
           license: 'Apache-2.0',
-          tier: ModelTier.highQuality
+          tier: ModelTier.highQuality,
+          kind: ModelKind.llm,
         ),
         'gemma-3-1b': (
           sizeMB: 550,
           license: 'Gemma Terms',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.llm,
         ),
         'opus-mt-zh-en': (
           sizeMB: 100,
           license: 'CC-BY-4.0',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.nmt,
         ),
+        // 方案 C：MADLAD 归「多语言」而不是「高质量」—— 它的价值是 400+ 语种覆盖
         'madlad-400-3b': (
           sizeMB: 2000,
           license: 'Apache-2.0',
-          tier: ModelTier.highQuality
+          tier: ModelTier.multilingual,
+          kind: ModelKind.nmt,
         ),
         'rapidocr-onnx': (
           sizeMB: 20,
           license: 'Apache-2.0',
-          tier: ModelTier.light
+          tier: ModelTier.light,
+          kind: ModelKind.ocr,
         ),
       };
 
@@ -166,6 +188,8 @@ void main() {
             reason: '${entry.key} 的许可证与约定不一致');
         expect(model.tier, entry.value.tier,
             reason: '${entry.key} 的档位与约定不一致');
+        expect(model.kind, entry.value.kind,
+            reason: '${entry.key} 的类别与约定不一致');
       }
       expect(catalog.length, greaterThanOrEqualTo(14),
           reason: '约定里点名的 14 个模型都要有');
@@ -195,6 +219,28 @@ void main() {
       expect(registry.byCapability(AiCapability.asr), isNotEmpty,
           reason: '清单是共享数据，查询结果必须是新列表');
     });
+
+    test('qwen3-0.6b 不再提供 translate（0.6B 的翻译质量不达标）', () {
+      expect(
+        registry.byCapability(AiCapability.translate).map((m) => m.id),
+        isNot(contains('qwen3-0.6b')),
+        reason: '把它塞进翻译候选，会让「轻量翻译」选到 400MB 却不如 100MB 的 Opus-MT',
+      );
+      final small = registry.byId('qwen3-0.6b')!;
+      expect(small.capabilities, <AiCapability>{AiCapability.classify});
+      expect(small.supports(AiCapability.translate), isFalse);
+      // 它该做的事（分类）仍然能选到它
+      expect(
+        registry
+            .recommended(
+              capability: AiCapability.classify,
+              deviceRamGB: 8,
+              preferredTier: ModelTier.light,
+            )
+            ?.id,
+        'qwen3-0.6b',
+      );
+    });
   });
 
   group('recommended', () {
@@ -208,6 +254,8 @@ void main() {
           reason: '推荐结果必须过内存门槛');
       expect(pick.sizeMB, lessThan(2000),
           reason: '2GB 权重 + 运行时开销，4GB 设备装不下还能用');
+      expect(pick.id, 'opus-mt-zh-en',
+          reason: '4GB 下 balanced 全被门槛拦掉，light 里优先专用 NMT');
 
       final highQuality = registry.recommended(
         capability: AiCapability.translate,
@@ -243,8 +291,58 @@ void main() {
       expect(pick!.tier, ModelTier.balanced,
           reason: '已有 light 档（80MB）可选，但 balanced 应优先');
       expect(pick.id, 'sensevoice-small',
-          reason: '同档位内体积大的优先：230MB > 220MB');
+          reason: '同为 asr 类别，体积大的优先：230MB > 220MB');
       expect(pick.minRamGB, lessThanOrEqualTo(8));
+    });
+
+    test('方案 C：translate 各 preferredTier 落到指定模型', () {
+      // 内存足够，本条只验证选型，不验证门槛
+      const deviceRamGB = 32.0;
+
+      expect(
+        registry
+            .recommended(
+              capability: AiCapability.translate,
+              deviceRamGB: deviceRamGB,
+              preferredTier: ModelTier.light,
+            )
+            ?.id,
+        'opus-mt-zh-en',
+        reason: '轻量翻译选专用 NMT（100MB），不是 550MB 的 Gemma',
+      );
+      expect(
+        registry
+            .recommended(
+              capability: AiCapability.translate,
+              deviceRamGB: deviceRamGB,
+              preferredTier: ModelTier.balanced,
+            )
+            ?.id,
+        'qwen3-1.7b',
+        reason: 'balanced 翻译只有 1.7B 这个 LLM',
+      );
+      expect(
+        registry
+            .recommended(
+              capability: AiCapability.translate,
+              deviceRamGB: deviceRamGB,
+              preferredTier: ModelTier.highQuality,
+            )
+            ?.id,
+        'qwen2.5-3b-instruct',
+        reason: 'MADLAD 已改归多语言档，高质量翻译由 3B LLM 承担',
+      );
+      expect(
+        registry
+            .recommended(
+              capability: AiCapability.translate,
+              deviceRamGB: deviceRamGB,
+              preferredTier: ModelTier.multilingual,
+            )
+            ?.id,
+        'madlad-400-3b',
+        reason: '多语言档就是给「要小语种」的人准备的',
+      );
     });
 
     test('指定 preferredTier 时优先生效', () {
@@ -270,8 +368,8 @@ void main() {
         deviceRamGB: 8,
         preferredTier: ModelTier.light,
       );
-      expect(light?.id, 'gemma-3-1b',
-          reason: 'light 档里 550MB 最大，且已过 4GB 门槛');
+      expect(light?.id, 'opus-mt-zh-en',
+          reason: 'light 档里 nmt 优先：100MB 的 Opus-MT 胜过 550MB 的 Gemma');
     });
 
     test('preferredTier 没有候选时退回默认顺序', () {
@@ -282,8 +380,8 @@ void main() {
         preferredTier: ModelTier.highQuality,
       );
       expect(pick, isNotNull);
-      expect(pick!.id, 'gemma-3-1b',
-          reason: '退到 light 档里体积最大的那个（550MB）');
+      expect(pick!.id, 'opus-mt-zh-en',
+          reason: '退到 light 档，且档内 nmt 优先');
       expect(pick.tier, ModelTier.light);
     });
 
@@ -305,21 +403,128 @@ void main() {
       );
     });
 
-    test('同档同体积时按 id 兜底，结果稳定可复现', () {
-      final first = registry.recommended(
-        capability: AiCapability.translate,
-        deviceRamGB: 16,
-        preferredTier: ModelTier.highQuality,
+    test('同档位内 nmt 胜过体积更大的 llm（translate）', () {
+      final synthetic = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'big-llm',
+            capability: AiCapability.translate,
+            kind: ModelKind.llm,
+            sizeMB: 900,
+          ),
+          _testModel(
+            id: 'small-nmt',
+            capability: AiCapability.translate,
+            kind: ModelKind.nmt,
+            sizeMB: 100,
+          ),
+        ],
       );
-      final second = registry.recommended(
-        capability: AiCapability.translate,
-        deviceRamGB: 16,
-        preferredTier: ModelTier.highQuality,
+      expect(
+        synthetic
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'small-nmt',
+        reason: 'kind 键在体积键之前：不能因为 LLM 更大就选它',
       );
-      expect(first?.tier, ModelTier.highQuality);
-      expect(first?.sizeMB, 2000);
-      expect(first?.id, second?.id,
-          reason: '两条 2000MB 的高质量翻译模型，顺序必须由 id 决定而不是清单顺序');
+    });
+
+    test('同档位内 classify 只认 llm（且不看体积）', () {
+      final synthetic = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'big-nmt',
+            capability: AiCapability.classify,
+            kind: ModelKind.nmt,
+            sizeMB: 900,
+          ),
+          _testModel(
+            id: 'small-llm',
+            capability: AiCapability.classify,
+            kind: ModelKind.llm,
+            sizeMB: 100,
+          ),
+        ],
+      );
+      expect(
+        synthetic
+            .recommended(capability: AiCapability.classify, deviceRamGB: 16)
+            ?.id,
+        'small-llm',
+        reason: 'NMT 不做分类，llm 在 kind 表里排第一',
+      );
+    });
+
+    test('id 兜底只在 tier/kind/体积全部平手时才生效', () {
+      // ① 体积不同 → 体积大的赢，id 再小也不该翻身
+      final bySize = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'aaa-small',
+            capability: AiCapability.translate,
+            sizeMB: 100,
+          ),
+          _testModel(
+            id: 'zzz-big',
+            capability: AiCapability.translate,
+            sizeMB: 900,
+          ),
+        ],
+      );
+      expect(
+        bySize
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'zzz-big',
+        reason: '体积键在 id 之前',
+      );
+
+      // ② kind 不同 → kind 表赢，id 和体积都不参与
+      final byKind = AiModelRegistry(
+        models: <AiModel>[
+          _testModel(
+            id: 'aaa-llm',
+            capability: AiCapability.translate,
+            kind: ModelKind.llm,
+            sizeMB: 900,
+          ),
+          _testModel(
+            id: 'zzz-nmt',
+            capability: AiCapability.translate,
+            kind: ModelKind.nmt,
+            sizeMB: 100,
+          ),
+        ],
+      );
+      expect(
+        byKind
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'zzz-nmt',
+        reason: 'kind 键在 id 之前',
+      );
+
+      // ③ 全平手 → 只剩 id，必须是升序，且与清单顺序无关
+      AiModel tie(String id) => _testModel(
+            id: id,
+            capability: AiCapability.translate,
+            sizeMB: 500,
+          );
+      final forward = AiModelRegistry(models: <AiModel>[tie('aaa'), tie('zzz')]);
+      final backward = AiModelRegistry(models: <AiModel>[tie('zzz'), tie('aaa')]);
+      expect(
+        forward
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'aaa',
+      );
+      expect(
+        backward
+            .recommended(capability: AiCapability.translate, deviceRamGB: 16)
+            ?.id,
+        'aaa',
+        reason: '全部平手时只剩确定性兜底，结果不能受清单顺序影响',
+      );
     });
   });
 
