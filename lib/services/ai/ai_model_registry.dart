@@ -23,9 +23,45 @@ class AiModelRegistry {
   /// 而不用在调用点上到处传参。
   final DownloadSource defaultSource;
 
+  /// 每个能力**显式指定**的默认模型 id
+  ///
+  /// 为什么要这一层：[recommended] 的排序键（tier → kind → 体积 → id）只能表达
+  /// 「同档位里谁更该优先」，表达不了「产品就是想要这个」。典型例子是硬字幕转双语
+  /// 要 PaddleOCR（中文更准），但它只有 15MB，体积降序永远排在 20MB 的 RapidOCR
+  /// 后面 —— 让体积去猜，猜出来就是错的。
+  ///
+  /// 语义（判断顺序见 [recommended]）：
+  ///  1. 指定了 `preferredTier` → **本条不生效**。用户明确挑档位时就该按档位走，
+  ///     否则「多语言 / 高质量」永远选不到 bge-m3 / madlad / whisper-large；
+  ///  2. 没指定 `preferredTier`、该能力配了默认、模型存在于清单、支持该能力、
+  ///     且通过内存门槛 → 直接返回它；
+  ///  3. 否则回落到原有排序（tier → kind → 体积 → id）。
+  ///
+  /// 配了但模型不存在 / 装不下时**不报错**：清单增删是常态，静默回落到排序逻辑。
+  /// 做成字段是为了可注入：单测能隔离，产品定制也能直接给一张自己的表。
+  final Map<AiCapability, String> defaultModelIds;
+
+  /// 清单配套的默认模型表（与 [AiModelCatalog] 同步维护）
+  ///
+  /// 为什么集中成一个常量：这些 id 是「产品选择」，和「选择算法」是两件事。
+  /// 产品改默认时只动这张表，不用碰排序规则；排序规则继续当兜底猜测。
+  /// 没有列出的能力 = 不指定默认，纯走排序。
+  static const Map<AiCapability, String> catalogDefaultModelIds =
+      <AiCapability, String>{
+    AiCapability.ocr: 'paddleocr-ppocr-v4',
+    AiCapability.asr: 'sensevoice-small',
+    AiCapability.asrStreaming: 'paraformer-zh-streaming',
+    AiCapability.translate: 'qwen3-1.7b',
+    AiCapability.classify: 'qwen3-0.6b',
+    AiCapability.embed: 'bge-small-zh-v1.5',
+    AiCapability.frameScore: 'nima-frame-quality',
+    AiCapability.vad: 'silero-vad',
+  };
+
   AiModelRegistry({
     List<AiModel>? models,
     this.defaultSource = DownloadSource.modelscope,
+    this.defaultModelIds = catalogDefaultModelIds,
   }) : models = List<AiModel>.unmodifiable(models ?? AiModelCatalog.all);
 
   /// 全项目共用的一份
@@ -127,6 +163,10 @@ class AiModelRegistry {
   ///  - classify：只有 llm 干得了，NMT 不做分类。
   ///  - asr / asrStreaming / ocr / vad：各归各类，没有跨类比较的必要，
   ///    表里只放一类，等于「同类内按体积比」。
+  ///  - embed：只有 embedding 类能做检索向量，生成式 llm 不能当向量用。
+  ///  - frameScore：只有 vision 类能做画面打分；而**默认连模型都不需要**
+  ///    （纯算法抽帧已够用，见 `AiCapability.frameScore` 的说明），
+  ///    这张表只在「用户装了可选模型」时才决定选谁。
   ///
   /// 不在表里的类别：排在该能力所有已列类别之后（见 [_kindRank]）。
   static const Map<AiCapability, List<ModelKind>> _kindPreference =
@@ -137,6 +177,8 @@ class AiModelRegistry {
     AiCapability.asrStreaming: <ModelKind>[ModelKind.asr],
     AiCapability.ocr: <ModelKind>[ModelKind.ocr],
     AiCapability.vad: <ModelKind>[ModelKind.vad],
+    AiCapability.embed: <ModelKind>[ModelKind.embedding],
+    AiCapability.frameScore: <ModelKind>[ModelKind.vision],
   };
 
   /// 某类别在该能力下的优先级（越小越优先；不在表里 = 最后）
@@ -210,6 +252,10 @@ class AiModelSelector {
         return '文本分类';
       case AiCapability.ocr:
         return '字幕识别';
+      case AiCapability.embed:
+        return '语义搜索';
+      case AiCapability.frameScore:
+        return '选帧评分';
     }
   }
 
@@ -250,6 +296,45 @@ class AiModelSelector {
   /// 带适用场景说明的长描述（推荐卡片里用）
   static String describeWithNotes(AiModel model) {
     return '${describe(model)}（${tierLabel(model.tier)}）\n${model.notes}';
+  }
+
+  /// 把 1~5 分变成「★★★★☆」
+  ///
+  /// 为什么要夹紧边界：评分是数据（将来可能从远端清单来），越界值不该把 UI
+  /// 撑出 6 颗星或负数字符。0 分显示 1 颗星、9 分显示 5 颗星，
+  /// 都比「显示空白」或「崩溃」好排查。
+  static String stars(int rating) {
+    final clamped = rating < 1 ? 1 : (rating > 5 ? 5 : rating);
+    const full = '★★★★★';
+    const empty = '☆☆☆☆☆';
+    return '${full.substring(0, clamped)}${empty.substring(0, 5 - clamped)}';
+  }
+
+  /// 选择界面表格的表头（六列，用 ` | ` 分隔）
+  static const String tableHeader = '模型 | 体积 | 语言 | 速度 | 质量 | 定位';
+
+  /// 把模型渲染成表格的一行：模型 | 体积 | 语言 | 速度 | 质量 | 定位
+  ///
+  /// 为什么固定用 ` | ` 分隔：UI 层可以直接按这个分隔符切成六格（表格控件，
+  /// 或纯文本等宽展示），不用为每个字段各写一遍格式化逻辑。
+  /// 注意：`notes` 里不要出现 ` | `，否则切列会错位 —— 现有清单已避开。
+  static String tableRow(AiModel model) {
+    return <String>[
+      model.displayName,
+      '约 ${model.sizeLabel}',
+      _languagesLabel(model),
+      stars(model.speedRating),
+      stars(model.qualityRating),
+      model.notes,
+    ].join(' | ');
+  }
+
+  /// 整张表：表头 + 每行，UI 直接丢给列表渲染
+  static List<String> table(List<AiModel> models) {
+    return <String>[
+      tableHeader,
+      for (final model in models) tableRow(model),
+    ];
   }
 
   /// 语言列表 → 展示文本

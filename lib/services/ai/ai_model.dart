@@ -22,6 +22,23 @@ enum AiCapability {
 
   /// 光学字符识别：这里主要用于识别画面里的硬字幕
   ocr,
+
+  /// 语义搜索用的文本向量化（embedding）
+  ///
+  /// 用户要的是「用一句话搜到库里那部片」：把片名/简介/字幕切片的向量化结果
+  /// 存进本地索引，查询时算相似度。模型只负责「把文本变成向量」，
+  /// 检索本身是纯算法（余弦相似度），所以这个能力是「有没有模型都能用」的
+  /// 分界线：没有模型时只能退化成关键词匹配。
+  embed,
+
+  /// 智能抽帧的选帧评分（判断这一帧适合不适合当封面/缩略图）
+  ///
+  /// ⚠️ **这个能力默认不需要任何模型**：纯算法（亮度方差 + 拉普拉斯锐度 /
+  /// 梯度能量）就能筛掉黑帧、纯色帧、严重模糊帧，已经够「智能抽帧」用了。
+  /// `nima-frame-quality` 只是**可选增强**（学会「构图好不好看」这种主观判断）。
+  /// 所以 UI / 服务层必须在 `byCapability(frameScore)` 为空时照常工作，
+  /// 不能把「没有模型」当成「功能不可用」。
+  frameScore,
 }
 
 /// 模型档位
@@ -77,6 +94,17 @@ enum ModelKind {
 
   /// 光学字符识别
   ocr,
+
+  /// 文本向量化模型（embedding / 检索用，不生成文字）
+  ///
+  /// 为什么不归到 llm：它不产生任何文本，只输出固定维度向量，
+  /// 两者的体积、延迟、失败模式都不一样，混在一起会让排序和 UI 都说不清。
+  embedding,
+
+  /// 视觉打分模型（对画面质量/美观度打分，如 NIMA）
+  ///
+  /// 和 ocr 分开：ocr 输出文字，视觉打分输出一个分数，不是同一类活。
+  vision,
 }
 
 /// 一个下载镜像
@@ -136,6 +164,19 @@ class AiModel {
   /// 精确的字节数在真实下载时由服务端 Content-Length 决定。
   final int sizeMB;
 
+  /// 速度评分 1~5（5 = 最快）
+  ///
+  /// 为什么单独打分而不从体积推算：小模型不一定快（有些小模型用 CPU 不友好的
+  /// 结构），大模型也不一定慢（量化 + 专用算子可以很快）。这个分数是给用户
+  /// 在「选择界面」上直接看的，必须是人工/实测标定的，不能是公式算出来的。
+  final int speedRating;
+
+  /// 质量评分 1~5（5 = 质量最好）
+  ///
+  /// 和体积也不是线性关系：100MB 的专用翻译模型能打赢 400MB 的通用小 LLM。
+  /// UI 用它和 [speedRating] 一起构成「速度 / 质量」两列，用户自己权衡。
+  final int qualityRating;
+
   /// 支持的语言（ISO 639-1 代码之类的短码），如 `['zh','en','ja','ko','yue']`
   ///
   /// 空列表 = 与语言无关（如 VAD）；只列**常用语种**，不是完整能力边界
@@ -172,6 +213,8 @@ class AiModel {
     required this.kind,
     required this.tier,
     required this.sizeMB,
+    required this.speedRating,
+    required this.qualityRating,
     required this.languages,
     required this.license,
     required this.minRamGB,

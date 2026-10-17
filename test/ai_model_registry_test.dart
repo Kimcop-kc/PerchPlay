@@ -26,6 +26,8 @@ AiModel _testModel({
   ModelKind kind = ModelKind.llm,
   ModelTier tier = ModelTier.light,
   int sizeMB = 10,
+  int speedRating = 3,
+  int qualityRating = 3,
   double minRamGB = 1.0,
   List<ModelMirror>? mirrors,
 }) {
@@ -36,6 +38,8 @@ AiModel _testModel({
     kind: kind,
     tier: tier,
     sizeMB: sizeMB,
+    speedRating: speedRating,
+    qualityRating: qualityRating,
     languages: const <String>[],
     license: 'MIT',
     minRamGB: minRamGB,
@@ -74,6 +78,10 @@ void main() {
         expect(model.displayName, isNotEmpty, reason: '$why 要有中文展示名');
         expect(model.notes, isNotEmpty, reason: '$why 要有一句话说明');
         expect(model.license, isNotEmpty, reason: '$why 要标许可证（决定能否随包分发）');
+        expect(model.speedRating, inInclusiveRange(1, 5),
+            reason: '$why 的速度评分必须是 1~5');
+        expect(model.qualityRating, inInclusiveRange(1, 5),
+            reason: '$why 的质量评分必须是 1~5');
 
         for (final mirror in model.mirrors) {
           expect(mirror.url, startsWith('https://'),
@@ -191,8 +199,8 @@ void main() {
         expect(model.kind, entry.value.kind,
             reason: '${entry.key} 的类别与约定不一致');
       }
-      expect(catalog.length, greaterThanOrEqualTo(14),
-          reason: '约定里点名的 14 个模型都要有');
+      expect(catalog.length, greaterThanOrEqualTo(18),
+          reason: '14 个原有条目 + 4 个新模型（bge×2 / paddleocr / nima）');
     });
   });
 
@@ -209,8 +217,9 @@ void main() {
       // 单一能力的模型：越多越容易在 UI 里被误选，钉住
       expect(registry.byCapability(AiCapability.vad).map((m) => m.id),
           <String>['silero-vad']);
+      // ocr 本轮扩到两条（RapidOCR + PaddleOCR），见「新能力」组的数量断言
       expect(registry.byCapability(AiCapability.ocr).map((m) => m.id),
-          <String>['rapidocr-onnx']);
+          <String>['rapidocr-onnx', 'paddleocr-ppocr-v4']);
     });
 
     test('返回的是副本：调用方改了不会污染注册表', () {
@@ -596,6 +605,164 @@ void main() {
           DownloadSource.huggingface);
       expect(registry.mirrorsFor(model).first.source,
           DownloadSource.modelscope);
+    });
+  });
+
+  group('评分与表格渲染', () {
+    test('全清单都有 speedRating/qualityRating，且都在 1~5', () {
+      for (final model in catalog) {
+        expect(model.speedRating, inInclusiveRange(1, 5),
+            reason: '${model.id} 的速度评分越界');
+        expect(model.qualityRating, inInclusiveRange(1, 5),
+            reason: '${model.id} 的质量评分越界');
+      }
+    });
+
+    test('需求给定的评分表逐条落实（14 旧 + 4 新）', () {
+      const ratings = <String, ({int speed, int quality})>{
+        'silero-vad': (speed: 5, quality: 5),
+        'zipformer-zh-en-streaming': (speed: 5, quality: 3),
+        'sensevoice-small': (speed: 5, quality: 4),
+        'paraformer-zh-streaming': (speed: 5, quality: 5),
+        'whisper-base': (speed: 3, quality: 3),
+        'whisper-small': (speed: 2, quality: 4),
+        'whisper-large-v3-turbo': (speed: 2, quality: 5),
+        'qwen3-0.6b': (speed: 5, quality: 2),
+        'qwen3-1.7b': (speed: 3, quality: 4),
+        'qwen2.5-3b-instruct': (speed: 2, quality: 5),
+        'gemma-3-1b': (speed: 3, quality: 3),
+        'opus-mt-zh-en': (speed: 5, quality: 4),
+        'madlad-400-3b': (speed: 2, quality: 4),
+        'rapidocr-onnx': (speed: 4, quality: 4),
+        'bge-small-zh-v1.5': (speed: 5, quality: 4),
+        'bge-m3': (speed: 2, quality: 5),
+        'paddleocr-ppocr-v4': (speed: 4, quality: 5),
+        'nima-frame-quality': (speed: 5, quality: 3),
+      };
+      for (final entry in ratings.entries) {
+        final model = registry.byId(entry.key);
+        expect(model, isNotNull, reason: '清单里缺了 ${entry.key}');
+        expect(model!.speedRating, entry.value.speed,
+            reason: '${entry.key} 的速度分与约定不一致');
+        expect(model.qualityRating, entry.value.quality,
+            reason: '${entry.key} 的质量分与约定不一致');
+      }
+    });
+
+    test('stars 把 1~5 之外的分数夹紧到边界', () {
+      expect(AiModelSelector.stars(0), '★☆☆☆☆');
+      expect(AiModelSelector.stars(-3), '★☆☆☆☆');
+      expect(AiModelSelector.stars(1), '★☆☆☆☆');
+      expect(AiModelSelector.stars(3), '★★★☆☆');
+      expect(AiModelSelector.stars(5), '★★★★★');
+      expect(AiModelSelector.stars(6), '★★★★★');
+      expect(AiModelSelector.stars(99), '★★★★★');
+    });
+
+    test('表格行六列，顺序为 模型/体积/语言/速度/质量/定位', () {
+      final model = registry.byId('sensevoice-small')!;
+      final cells = AiModelSelector.tableRow(model).split(' | ');
+      expect(cells.length, 6, reason: '固定六列才能对齐：${AiModelSelector.tableRow(model)}');
+      expect(cells[0], contains('SenseVoice'));
+      expect(cells[1], contains('230 MB'));
+      expect(cells[2], contains('中文'));
+      expect(cells[3], AiModelSelector.stars(model.speedRating));
+      expect(cells[4], AiModelSelector.stars(model.qualityRating));
+      expect(cells[5], model.notes);
+
+      expect(
+        AiModelSelector.tableHeader.split(' | '),
+        <String>['模型', '体积', '语言', '速度', '质量', '定位'],
+      );
+
+      // 语言无关的模型（VAD）不能输出空列
+      final vadRow = AiModelSelector.tableRow(registry.byId('silero-vad')!);
+      expect(vadRow.split(' | ')[2], '语言无关');
+
+      // 整张表 = 表头 + 每条一行
+      expect(AiModelSelector.table(catalog).length, catalog.length + 1);
+    });
+  });
+
+  group('新能力：embed 与 frameScore', () {
+    test('byCapability 落到正确的条目上', () {
+      expect(
+        registry.byCapability(AiCapability.embed).map((m) => m.id).toList(),
+        <String>['bge-small-zh-v1.5', 'bge-m3'],
+      );
+      expect(
+        registry.byCapability(AiCapability.ocr).map((m) => m.id).toList(),
+        <String>['rapidocr-onnx', 'paddleocr-ppocr-v4'],
+      );
+      expect(
+        registry
+            .byCapability(AiCapability.frameScore)
+            .map((m) => m.id)
+            .toList(),
+        <String>['nima-frame-quality'],
+      );
+    });
+
+    test('recommended(embed) 在 16GB 旗舰上选出合理默认', () {
+      final pick = registry.recommended(
+        capability: AiCapability.embed,
+        deviceRamGB: 16,
+      );
+      expect(pick?.id, 'bge-small-zh-v1.5',
+          reason: '默认走 light：100MB 中文小模型够用且快');
+      expect(pick?.minRamGB, lessThanOrEqualTo(16));
+
+      final multilingual = registry.recommended(
+        capability: AiCapability.embed,
+        deviceRamGB: 16,
+        preferredTier: ModelTier.multilingual,
+      );
+      expect(multilingual?.id, 'bge-m3', reason: '多语种检索要 M3');
+
+      // 内存不够就不给 2.2GB 的多语模型
+      expect(
+        registry
+            .recommended(capability: AiCapability.embed, deviceRamGB: 4)
+            ?.id,
+        'bge-small-zh-v1.5',
+      );
+    });
+
+    test('recommended(ocr) 不会串到别的能力', () {
+      final pick = registry.recommended(
+        capability: AiCapability.ocr,
+        deviceRamGB: 16,
+      );
+      expect(pick, isNotNull);
+      expect(pick!.kind, ModelKind.ocr);
+      expect(pick.supports(AiCapability.ocr), isTrue);
+      // 现状：同 tier 同 kind 按体积降序 → 20MB 的 RapidOCR 排在 15MB 的 PaddleOCR 前。
+      // 若产品要求「硬字幕转双语默认 PaddleOCR」，需要显式默认值（见汇报里的疑虑）。
+      expect(pick.id, 'rapidocr-onnx');
+    });
+
+    test('frameScore 没有模型时功能也必须照常（能力可空）', () {
+      final withoutFrame = AiModelRegistry(
+        models: <AiModel>[
+          for (final model in catalog)
+            if (!model.supports(AiCapability.frameScore)) model,
+        ],
+      );
+      expect(withoutFrame.byCapability(AiCapability.frameScore), isEmpty);
+      expect(
+        withoutFrame.recommended(
+          capability: AiCapability.frameScore,
+          deviceRamGB: 16,
+        ),
+        isNull,
+        reason: '没有模型是正常状态（纯算法抽帧就够用），不能当错误',
+      );
+      // 其它能力不受影响
+      expect(withoutFrame.byCapability(AiCapability.embed), isNotEmpty);
+      expect(
+        withoutFrame.recommended(capability: AiCapability.ocr, deviceRamGB: 16),
+        isNotNull,
+      );
     });
   });
 
