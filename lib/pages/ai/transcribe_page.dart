@@ -449,7 +449,7 @@ class _TranscribePageState extends State<TranscribePage> {
                       ],
                     ),
                   ),
-                  if (isReady && downloading)
+                  if (downloading)
                     SizedBox(
                       width: 60,
                       height: 28,
@@ -468,7 +468,7 @@ class _TranscribePageState extends State<TranscribePage> {
                         ],
                       ),
                     )
-                  else if (!isReady && !downloading)
+                  else if (!isReady)
                     GestureDetector(
                       onTap: () => _downloadModel(model),
                       child: Container(
