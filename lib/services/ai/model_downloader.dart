@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
@@ -160,6 +161,11 @@ class ModelDownloader {
       final dest = File('${destDir.path}/$fileName');
       await _downloadFile(mirror.url, dest,
           onProgress: onProgress, expectedSha256: mirror.sha256);
+
+      // GitHub Release .tar.bz2 → 自动解压到目标目录
+      if (fileName.endsWith('.tar.bz2') || fileName.endsWith('.tar.gz') || fileName.endsWith('.zip')) {
+        await _decompressArchive(dest, destDir);
+      }
     }
 
     // 下载完成后写入本地 manifest
@@ -713,6 +719,48 @@ class ModelDownloader {
       debugPrint(
           '[Downloader] manifest 已写入: ${dir.path}, ${entries.length} 个文件');
     }
+  }
+
+  /// 解压 .tar.bz2 / .tar.gz / .zip 归档到目标目录
+  ///
+  /// 解压成功后删除归档文件。
+  Future<void> _decompressArchive(File archive, Directory destDir) async {
+    debugPrint('[Downloader] 解压: ${archive.path} → ${destDir.path}');
+    final bytes = await archive.readAsBytes();
+    final name = archive.path.split(Platform.pathSeparator).last;
+
+    if (name.endsWith('.tar.bz2')) {
+      final tarBytes = BZip2Decoder().decodeBytes(bytes);
+      final tar = TarDecoder().decodeBytes(tarBytes);
+      for (final entry in tar) {
+        if (!entry.isFile) continue;
+        final dest = File('${destDir.path}/${entry.name}');
+        await dest.parent.create(recursive: true);
+        await dest.writeAsBytes(entry.content as List<int>);
+      }
+    } else if (name.endsWith('.tar.gz')) {
+      final tarBytes = GZipDecoder().decodeBytes(bytes);
+      final tar = TarDecoder().decodeBytes(tarBytes);
+      for (final entry in tar) {
+        if (!entry.isFile) continue;
+        final dest = File('${destDir.path}/${entry.name}');
+        await dest.parent.create(recursive: true);
+        await dest.writeAsBytes(entry.content as List<int>);
+      }
+    } else if (name.endsWith('.zip')) {
+      final zip = ZipDecoder().decodeBytes(bytes);
+      for (final entry in zip) {
+        if (entry.isFile) {
+          final dest = File('${destDir.path}/${entry.name}');
+          await dest.parent.create(recursive: true);
+          await dest.writeAsBytes(entry.content as List<int>);
+        }
+      }
+    }
+
+    // 解压后删除归档
+    await archive.delete();
+    debugPrint('[Downloader] 解压完成，已删归档: ${archive.path}');
   }
 
   /// 删除目录下的子文件 + .part / .dstate（保留目录本身）

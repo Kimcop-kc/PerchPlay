@@ -169,9 +169,34 @@ class SpeechService {
           debug: false,
           numThreads: 1,
         );
+      } else if (key.contains('omnilingual') ||
+          modelDir.toLowerCase().contains('omnilingual')) {
+        debugPrint('[SpeechService] 检测到 Omnilingual CTC 架构');
+        final cfg = sherpa.OfflineOmnilingualAsrCtcModelConfig(model: path);
+        modelConfig = sherpa.OfflineModelConfig(
+          omnilingual: cfg,
+          tokens: tokensPath,
+          debug: false,
+          numThreads: 1,
+        );
+      } else if (key.contains('sensevoice') ||
+          key.contains('int8') ||
+          modelDir.toLowerCase().contains('sensevoice')) {
+        debugPrint('[SpeechService] 检测到 SenseVoice 架构');
+        final cfg = sherpa.OfflineSenseVoiceModelConfig(
+          model: path,
+          language: '',
+          useInverseTextNormalization: false,
+        );
+        modelConfig = sherpa.OfflineModelConfig(
+          senseVoice: cfg,
+          tokens: tokensPath,
+          debug: false,
+          numThreads: 1,
+        );
       } else {
-        // fallback → SenseVoice (also covers "int8")
-        debugPrint('[SpeechService] 检测到 SenseVoice 架构 (fallback)');
+        // fallback → SenseVoice
+        debugPrint('[SpeechService] 无法判定架构，回退 SenseVoice');
         final cfg = sherpa.OfflineSenseVoiceModelConfig(
           model: path,
           language: '',

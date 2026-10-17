@@ -363,7 +363,7 @@ class AiModelCatalog {
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-decoder.int8.onnx',
-            'base-tokens.txt':
+            'tokens.txt':
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-tokens.txt',
@@ -406,7 +406,7 @@ class AiModelCatalog {
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-decoder.int8.onnx',
-            'small-tokens.txt':
+            'tokens.txt':
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-tokens.txt',
@@ -449,7 +449,7 @@ class AiModelCatalog {
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-large-v3/'
                 'resolve/main/large-v3-decoder.int8.onnx',
-            'large-v3-tokens.txt':
+            'tokens.txt':
                 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-large-v3/'
                 'resolve/main/large-v3-tokens.txt',
