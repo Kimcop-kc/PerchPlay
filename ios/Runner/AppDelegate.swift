@@ -190,15 +190,6 @@ import PencilKit
             case "getRomBrand":
                 result("iOS / iPadOS")
 
-            case "extractAudioSegment":
-                let path = (call.arguments as? [String: Any])?["path"] as? String ?? ""
-                let startMs = (call.arguments as? [String: Any])?["startMs"] as? Int ?? 0
-                let durationMs = (call.arguments as? [String: Any])?["durationMs"] as? Int ?? 5000
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let wav = self.extractAudioSegment(path: path, startMs: startMs, durationMs: durationMs)
-                    DispatchQueue.main.async { result(wav) }
-                }
-
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -265,107 +256,6 @@ import PencilKit
         return true // iPad Pro XDR display ✓
     }
 
-    // ──────────────────────────────
-    // 音频抽取（实时 AI 字幕）
-    // ──────────────────────────────
-
-    /// 从视频抽一段音频，重采样为 16kHz 单声道 PCM16 → WAV。
-    /// 使用 AVAssetReader + AVAssetReaderTrackOutput，独立于 media_kit 播放内核。
-    private func extractAudioSegment(path: String, startMs: Int, durationMs: Int) -> String? {
-        let url = URL(fileURLWithPath: path)
-        let asset = AVURLAsset(url: url)
-
-        guard let track = asset.tracks(withMediaType: .audio).first else { return nil }
-
-        let targetSampleRate = 16000.0
-        let startTime = CMTime(value: Int64(startMs), timescale: 1000)
-        let duration = CMTime(value: Int64(durationMs), timescale: 1000)
-
-        let reader: AVAssetReader
-        do {
-            reader = try AVAssetReader(asset: asset)
-        } catch {
-            return nil
-        }
-        reader.timeRange = CMTimeRange(start: startTime, duration: duration)
-
-        // 输出：线性 PCM，尽可能接近 16kHz 单声道
-        let outputSettings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: targetSampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-        ]
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
-        // 必须拷贝数据：否则 CMBlockBuffer 可能被 reader 复用，读到错乱/空数据
-        output.alwaysCopiesSampleData = true
-        if !reader.canAdd(output) { return nil }
-        reader.add(output)
-
-        guard reader.startReading() else { return nil }
-
-        var pcm = [Int16]()
-        while let sampleBuffer = output.copyNextSampleBuffer() {
-            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
-            var lengthAtOffset = 0
-            var totalLength = 0
-            var dataPointer: UnsafeMutablePointer<CChar>?
-            if CMBlockBufferGetDataPointer(
-                blockBuffer, atOffset: 0, lengthAtOffsetOut: &lengthAtOffset,
-                totalLengthOut: &totalLength, dataPointerOut: &dataPointer
-            ) == kCMBlockBufferNoErr, let ptr = dataPointer {
-                let byteCount = totalLength
-                let sampleCount = byteCount / 2
-                let raw = Data(bytes: ptr, count: byteCount)
-                raw.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
-                    let base = buf.bindMemory(to: Int16.self).baseAddress
-                    if let base = base {
-                        pcm.append(contentsOf: UnsafeBufferPointer(start: base, count: sampleCount))
-                    }
-                }
-            }
-        }
-
-        reader.cancelReading()
-
-        if pcm.isEmpty { return nil }
-
-        // 写 WAV
-        let dir = FileManager.default.temporaryDirectory
-        let file = dir.appendingPathComponent("live_sub_\(Int(Date().timeIntervalSince1970 * 1000)).wav")
-        writeWav(file: file.path, samples: pcm, sampleRate: Int(targetSampleRate))
-        return file.path
-    }
-
-    private func writeWav(file: String, samples: [Int16], sampleRate: Int) {
-        var header = Data()
-        func appendStr(_ s: String) { header.append(s.data(using: .ascii)!) }
-        func appendInt32(_ v: Int32) {
-            var little = v.littleEndian
-            withUnsafeBytes(of: &little) { header.append(contentsOf: $0) }
-        }
-        func appendInt16(_ v: Int16) {
-            var little = v.littleEndian
-            withUnsafeBytes(of: &little) { header.append(contentsOf: $0) }
-        }
-
-        let dataSize = samples.count * 2
-        appendStr("RIFF"); appendInt32(Int32(36 + dataSize)); appendStr("WAVE")
-        appendStr("fmt "); appendInt32(16); appendInt16(1); appendInt16(1)
-        appendInt32(Int32(sampleRate)); appendInt32(Int32(sampleRate * 2))
-        appendInt16(2); appendInt16(16)
-        appendStr("data"); appendInt32(Int32(dataSize))
-
-        var body = Data()
-        for s in samples {
-            var little = s.littleEndian
-            withUnsafeBytes(of: &little) { body.append(contentsOf: $0) }
-        }
-        header.append(body)
-        try? header.write(to: URL(fileURLWithPath: file))
-    }
 
     // ──────────────────────────────
     // 生命周期

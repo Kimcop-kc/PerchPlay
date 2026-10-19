@@ -2,9 +2,6 @@ package com.perchplay.player
 
 import android.content.Context
 import android.content.Intent
-import android.media.MediaCodec
-import android.media.MediaExtractor
-import android.media.MediaFormat
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -19,22 +16,10 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.vidflow/native"
     private val PIP_CHANNEL = "com.vidflow/pip"
-
-    /// 抽音频的串行线程池：单线程保证同一时刻只有一段在解码。
-    /// 实时字幕本来就是「上一段转写完才抽下一段」的串行语义，单线程足够，
-    /// 也避免频繁 seek 时创建大量短命 Thread。
-    private val extractExecutor: ExecutorService =
-        Executors.newSingleThreadExecutor { r ->
-            Thread(r, "subtitle-extractor").apply { isDaemon = true }
-        }
 
     override fun onPostResume() {
         super.onPostResume()
@@ -196,23 +181,6 @@ class MainActivity : FlutterActivity() {
                         result.success(notifyMediaDeleted(path))
                     }
 
-                    // ── 抽一段音频转成 16kHz 单声道 WAV（实时 AI 字幕）──
-                    "extractAudioSegment" -> {
-                        val path = call.argument<String>("path") ?: ""
-                        val startMs = call.argument<Int>("startMs") ?: 0
-                        val durationMs = call.argument<Int>("durationMs") ?: 5000
-                        // 串行线程池：复用一个后台线程，避免频繁 seek 时新建大量 Thread
-                        extractExecutor.execute {
-                            try {
-                                val wav = extractAudioSegment(path, startMs, durationMs)
-                                runOnUiThread { result.success(wav) }
-                            } catch (e: Exception) {
-                                Log.w("PerchPlay", "extractAudioSegment failed", e)
-                                runOnUiThread { result.success(null) }
-                            }
-                        }
-                    }
-
                     else -> result.notImplemented()
                 }
             }
@@ -275,222 +243,6 @@ class MainActivity : FlutterActivity() {
     }
 
     // ──────────────────────────────
-    // 音频抽取（实时 AI 字幕）
-    // ──────────────────────────────
-
-    /**
-     * 从视频文件抽取 [startMs]~[startMs+durationMs] 的音频段，重采样为
-     * 16kHz 单声道 16-bit PCM，写成临时 WAV 文件并返回路径。
-     *
-     * 与 libmpv（media_kit 播放内核）**完全解耦**：走 Android 系统
-     * MediaExtractor + MediaCodec，对同一个文件单独解码一段。这样实时字幕
-     * 不会影响正在播放的画面，暂停/seek 后也能立即抽当前位置的音频。
-     *
-     * 重采样用线性插值（16kHz → 目标采样率 16kHz 时源多为 44.1/48kHz，
-     * 简单降采样足够 ASR 用）；双声道取平均。
-     */
-    private fun extractAudioSegment(path: String, startMs: Int, durationMs: Int): String? {
-        val extractor = MediaExtractor()
-        try {
-            extractor.setDataSource(path)
-        } catch (e: Exception) {
-            return null
-        }
-
-        // 找第一个音轨
-        var trackIndex = -1
-        var format: MediaFormat? = null
-        for (i in 0 until extractor.trackCount) {
-            val f = extractor.getTrackFormat(i)
-            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-                trackIndex = i
-                format = f
-                break
-            }
-        }
-        if (trackIndex < 0 || format == null) return null
-
-        val sourceSampleRate =
-            if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE))
-                format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
-        val channelCount =
-            if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT))
-                format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
-
-        val mime = format.getString(MediaFormat.KEY_MIME)!!
-        val decoder = MediaCodec.createDecoderByType(mime)
-        decoder.configure(format, null, null, 0)
-        decoder.start()
-
-        extractor.selectTrack(trackIndex)
-        // seek 到关键帧（会落在 startMs 之前最近的一个同步点）
-        extractor.seekTo((startMs * 1000).toLong(), MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-
-        val targetSampleRate = 16000
-        val stopAtUs = (startMs + durationMs) * 1000L
-        val pcm = ArrayList<Float>()
-
-        // 解码器的**输出**参数要等 OUTPUT_FORMAT_CHANGED 才确定；
-        // 先用输入格式兜底，收到变化后更新。
-        var outSampleRate = sourceSampleRate
-        var outChannelCount = channelCount
-
-        // seek 到 PREVIOUS_SYNC 会落在 startMs 之前最近的关键帧，导致开头多出
-        // 一段 startMs 之前的音频。记录首个样本的真实 PTS，最终按比例裁掉这
-        // 段前缀，让字幕时间戳与「用户实际看的进度」对齐。
-        var firstSampleTimeUs = -1L
-
-        var inputDone = false
-        var outputDone = false
-
-        while (!outputDone) {
-            // 喂输入
-            if (!inputDone) {
-                val inIndex = decoder.dequeueInputBuffer(10000)
-                if (inIndex >= 0) {
-                    val buf = decoder.getInputBuffer(inIndex)!!
-                    val sampleSize = extractor.readSampleData(buf, 0)
-                    val sampleTime = extractor.sampleTime
-                    if (sampleSize < 0 || sampleTime < 0 || sampleTime >= stopAtUs) {
-                        decoder.queueInputBuffer(
-                            inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                        )
-                        inputDone = true
-                    } else {
-                        if (firstSampleTimeUs < 0) firstSampleTimeUs = sampleTime
-                        decoder.queueInputBuffer(inIndex, 0, sampleSize, sampleTime, 0)
-                        extractor.advance()
-                    }
-                }
-            }
-
-            // 取输出
-            val info = MediaCodec.BufferInfo()
-            val outIndex = decoder.dequeueOutputBuffer(info, 10000)
-            when {
-                outIndex >= 0 -> {
-                    if (info.size > 0) {
-                        val buf = decoder.getOutputBuffer(outIndex)!!
-                        buf.position(info.offset)
-                        buf.limit(info.offset + info.size)
-                        val bytes = ByteArray(info.size)
-                        buf.get(bytes)
-                        // 解码输出是 16-bit PCM（绝大多数情况；个别设备例外则忽略）
-                        val samples = pcm16ToFloat(bytes)
-                        // 降采样到 16kHz：按「帧」处理（每帧 outChannelCount 个样本）
-                        val step = outSampleRate.toDouble() / targetSampleRate
-                        val frameCount =
-                            if (outChannelCount > 0) samples.size / outChannelCount else 0
-                        var pos = 0.0
-                        while (pos < frameCount) {
-                            val i = pos.toInt() * outChannelCount
-                            var sum = 0f
-                            for (c in 0 until outChannelCount) {
-                                sum += samples[i + c]
-                            }
-                            pcm.add(sum / outChannelCount)
-                            pos += step
-                        }
-                    }
-                    decoder.releaseOutputBuffer(outIndex, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                        outputDone = true
-                    }
-                }
-                outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    val outFmt = decoder.outputFormat
-                    outSampleRate =
-                        if (outFmt.containsKey(MediaFormat.KEY_SAMPLE_RATE))
-                            outFmt.getInteger(MediaFormat.KEY_SAMPLE_RATE) else outSampleRate
-                    outChannelCount =
-                        if (outFmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT))
-                            outFmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else outChannelCount
-                }
-                outIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                    // 继续
-                }
-            }
-        }
-
-        decoder.stop()
-        decoder.release()
-        extractor.release()
-
-        // 裁掉 seek 回退关键帧多抽的前缀（firstSampleTimeUs < startMs*1000 时）
-        if (firstSampleTimeUs > 0 && firstSampleTimeUs < startMs * 1000L) {
-            val extraUs = startMs * 1000L - firstSampleTimeUs
-            val extraSamples = (extraUs / 1000000.0 * targetSampleRate).toInt()
-            if (extraSamples > 0 && extraSamples < pcm.size) {
-                // 只去掉 extraSamples 个采样点；仍保留全部可能的风险由时长兜底
-                val trimmed = ArrayList<Float>(pcm.subList(extraSamples, pcm.size))
-                return writeSubtitleWav(trimmed, targetSampleRate)
-            }
-        }
-
-        if (pcm.isEmpty()) return null
-
-        // 写 WAV 文件
-        return writeSubtitleWav(pcm, targetSampleRate)
-    }
-
-    /** 把 float 样本写成 16kHz 单声道 16-bit PCM WAV，返回文件路径 */
-    private fun writeSubtitleWav(samples: ArrayList<Float>, sampleRate: Int): String? {
-        if (samples.isEmpty()) return null
-        val file = File(cacheDir, "live_sub_${System.currentTimeMillis()}.wav")
-        writeWav(file, samples, sampleRate)
-        return file.absolutePath
-    }
-
-    /** 把 16-bit PCM 字节数组转成 float 数组（跨声道排列） */
-    private fun pcm16ToFloat(bytes: ByteArray): FloatArray {
-        val shortCount = bytes.size / 2
-        val out = FloatArray(shortCount)
-        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        for (i in 0 until shortCount) {
-            out[i] = buf.short.toFloat() / 32768f
-        }
-        return out
-    }
-
-    /** 把 float 样本写成 16kHz 单声道 16-bit PCM WAV */
-    private fun writeWav(file: File, samples: ArrayList<Float>, sampleRate: Int) {
-        val dataSize = samples.size * 2
-        val header = ByteArray(44)
-        fun putInt(arr: ByteArray, off: Int, value: Int) {
-            arr[off] = (value and 0xff).toByte()
-            arr[off + 1] = ((value shr 8) and 0xff).toByte()
-            arr[off + 2] = ((value shr 16) and 0xff).toByte()
-            arr[off + 3] = ((value shr 24) and 0xff).toByte()
-        }
-        fun putShort(arr: ByteArray, off: Int, value: Int) {
-            arr[off] = (value and 0xff).toByte()
-            arr[off + 1] = ((value shr 8) and 0xff).toByte()
-        }
-        "RIFF".toByteArray().copyInto(header, 0)
-        putInt(header, 4, 36 + dataSize)
-        "WAVE".toByteArray().copyInto(header, 8)
-        "fmt ".toByteArray().copyInto(header, 12)
-        putInt(header, 16, 16) // PCM chunk size
-        putShort(header, 20, 1) // audio format = PCM
-        putShort(header, 22, 1) // channels = 1
-        putInt(header, 24, sampleRate)
-        putInt(header, 28, sampleRate * 2) // byte rate
-        putShort(header, 32, 2) // block align
-        putShort(header, 34, 16) // bits per sample
-        "data".toByteArray().copyInto(header, 36)
-        putInt(header, 40, dataSize)
-
-        val data = ByteArray(dataSize)
-        val dbuf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
-        for (s in samples) {
-            val v = (s.coerceIn(-1f, 1f) * 32767f).toInt()
-            dbuf.putShort(v.toShort())
-        }
-        file.writeBytes(header)
-        file.appendBytes(data)
-    }
-
-    // ──────────────────────────────
     // SSDP 组播锁
     // ──────────────────────────────
 
@@ -521,7 +273,6 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        extractExecutor.shutdownNow()
         releaseMulticast()
         super.onDestroy()
     }

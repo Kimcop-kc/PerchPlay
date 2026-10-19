@@ -2,7 +2,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/playlist_model.dart';
 import '../models/video_model.dart';
-import 'key_encryption.dart';
 import 'library_hidden_service.dart';
 import 'media_grouping_service.dart';
 import 'subtitle_matcher.dart';
@@ -28,11 +27,6 @@ class AppSettingsService {
   static const _kTmdbApiKey = 'settings.tmdbApiKey';
   static const _kLibrarySort = 'settings.librarySort';
   static const _kLibraryFilter = 'settings.libraryFilter';
-  static const _kTranslateBackend = 'settings.translateBackend';
-  static const _kLlmApiKey = 'settings.llmApiKey';
-  static const _kLlmBaseUrl = 'settings.llmBaseUrl';
-  static const _kLlmModel = 'settings.llmModel';
-  static const _kTranslateTargetLang = 'settings.translateTargetLang';
 
   double _defaultSpeed = 1.0;
 
@@ -83,26 +77,6 @@ class AppSettingsService {
   /// 影库列表的筛选方式（LibraryFilter.id，默认全部）
   String _libraryFilter = 'all';
   String get libraryFilter => _libraryFilter;
-
-  /// 翻译后端：google（免费）/ llm（自配 Key）/ local（本地 Opus-MT）
-  String _translateBackend = 'google';
-  String get translateBackend => _translateBackend;
-
-  /// LLM 翻译 API Key（选「LLM 自配 Key」时生效，留空则无法调用）
-  String _llmApiKey = '';
-  String get llmApiKey => _llmApiKey;
-
-  /// LLM 翻译接口地址（OpenAI 兼容的 chat/completions 地址）
-  String _llmBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
-  String get llmBaseUrl => _llmBaseUrl;
-
-  /// LLM 模型名
-  String _llmModel = 'deepseek-chat';
-  String get llmModel => _llmModel;
-
-  /// 翻译目标语言
-  String _translateTargetLang = 'en';
-  String get translateTargetLang => _translateTargetLang;
 
   /// 每个视频「上次选了什么字幕」（外挂文件 / 内嵌轨 / 关掉，三态）
   ///
@@ -215,16 +189,6 @@ class AppSettingsService {
       _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
       _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
       _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
-      _translateBackend = prefs.getString(_kTranslateBackend) ?? 'google';
-      // 敏感信息：落盘的是 AES 密文，这里解密回明文；失败（老版本明文/数据损坏）则当空
-      _llmApiKey = KeyEncryption.decrypt(
-            prefs.getString(_kLlmApiKey) ?? '',
-          ) ??
-          '';
-      _llmBaseUrl = prefs.getString(_kLlmBaseUrl) ??
-          'https://api.deepseek.com/v1/chat/completions';
-      _llmModel = prefs.getString(_kLlmModel) ?? 'deepseek-chat';
-      _translateTargetLang = prefs.getString(_kTranslateTargetLang) ?? 'en';
       _subtitleMemory = _decodeSubtitleMemory(
           prefs.getStringList(_kSubtitleMemory) ?? const <String>[]);
     } catch (_) {
@@ -553,47 +517,6 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kTmdbApiKey, value);
-    } catch (_) {}
-  }
-
-  Future<void> setTranslateBackend(String value) async {
-    _translateBackend = value;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kTranslateBackend, value);
-    } catch (_) {}
-  }
-
-  Future<void> setLlmApiKey(String value) async {
-    _llmApiKey = value;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      // 敏感信息：AES 加密后再落盘，SharedPreferences 里不存明文
-      await prefs.setString(_kLlmApiKey, KeyEncryption.encrypt(value));
-    } catch (_) {}
-  }
-
-  Future<void> setLlmBaseUrl(String value) async {
-    _llmBaseUrl = value;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kLlmBaseUrl, value);
-    } catch (_) {}
-  }
-
-  Future<void> setLlmModel(String value) async {
-    _llmModel = value;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kLlmModel, value);
-    } catch (_) {}
-  }
-
-  Future<void> setTranslateTargetLang(String value) async {
-    _translateTargetLang = value;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kTranslateTargetLang, value);
     } catch (_) {}
   }
 }

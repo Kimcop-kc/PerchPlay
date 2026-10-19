@@ -5,7 +5,7 @@ import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'ai/frame_scorer.dart';
+import 'frame_scorer.dart';
 
 /// 视频缩略图生成 + 存放位置 + 智能选帧
 ///

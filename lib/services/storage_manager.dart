@@ -24,12 +24,6 @@ class StorageManager {
 
   // ── 缓存项 id 常量（供设置页 / 清理逻辑引用，避免硬编码字符串） ──
 
-  /// AI 本地模型。
-  static const String idAiModels = 'ai_models';
-
-  /// AI 全片离线字幕缓存。
-  static const String idAiSubtitles = 'ai_subtitles';
-
   /// 视频缩略图缓存。
   static const String idThumbnails = 'thumbnails';
 
@@ -52,15 +46,11 @@ class StorageManager {
     final support = await getApplicationSupportDirectory();
     final temp = await getTemporaryDirectory();
 
-    final aiModelsPath = '${docs.path}${Platform.pathSeparator}ai_models';
-    final aiSubtitlesPath = '${docs.path}${Platform.pathSeparator}ai_subtitles';
     final thumbnailsPath = '${support.path}${Platform.pathSeparator}thumbnails';
     final dbPath = await _databasePath();
 
     // 并发算大小，减少串行等待
     final sizes = await Future.wait(<Future<int>>[
-      _dirSize(Directory(aiModelsPath)),
-      _dirSize(Directory(aiSubtitlesPath)),
       _dirSize(Directory(thumbnailsPath)),
       _dirSize(Directory(temp.path)),
       _dbSize(dbPath),
@@ -68,26 +58,10 @@ class StorageManager {
 
     return <StorageItem>[
       StorageItem(
-        id: idAiModels,
-        label: 'AI 模型',
-        path: aiModelsPath,
-        sizeBytes: sizes[0],
-        canClear: true,
-        description: '本地语音识别模型文件，清理后需重新下载才能离线转写。',
-      ),
-      StorageItem(
-        id: idAiSubtitles,
-        label: 'AI 字幕缓存',
-        path: aiSubtitlesPath,
-        sizeBytes: sizes[1],
-        canClear: true,
-        description: '全片离线生成的字幕缓存（.srt），清理后下次可重新生成。',
-      ),
-      StorageItem(
         id: idThumbnails,
         label: '缩略图缓存',
         path: thumbnailsPath,
-        sizeBytes: sizes[2],
+        sizeBytes: sizes[0],
         canClear: true,
         description: '视频封面缩略图，清理后浏览影库时会自动重新生成。',
       ),
@@ -95,7 +69,7 @@ class StorageManager {
         id: idTemp,
         label: '临时文件',
         path: temp.path,
-        sizeBytes: sizes[3],
+        sizeBytes: sizes[1],
         canClear: true,
         description: '应用运行产生的临时文件，可安全清理。',
       ),
@@ -103,7 +77,7 @@ class StorageManager {
         id: idDatabase,
         label: '应用数据库',
         path: dbPath,
-        sizeBytes: sizes[4],
+        sizeBytes: sizes[2],
         canClear: false,
         description: '影库、播放列表与播放进度等数据，清理会导致数据丢失，不建议清理。',
       ),
@@ -208,12 +182,6 @@ class StorageManager {
   /// 根据 id 解析对应目录路径。
   Future<String> _pathFor(String id) async {
     switch (id) {
-      case idAiModels:
-        final docs = await getApplicationDocumentsDirectory();
-        return '${docs.path}${Platform.pathSeparator}ai_models';
-      case idAiSubtitles:
-        final docs = await getApplicationDocumentsDirectory();
-        return '${docs.path}${Platform.pathSeparator}ai_subtitles';
       case idThumbnails:
         final support = await getApplicationSupportDirectory();
         return '${support.path}${Platform.pathSeparator}thumbnails';

@@ -246,33 +246,6 @@ class NativeBridgeService {
     } catch (_) {}
   }
 
-  // ──────────── 音频抽取（实时 AI 字幕） ────────────
-
-  /// 从视频文件里抽出 [startMs]~[startMs+durationMs] 一段音频，
-  /// 转成 16kHz 单声道 PCM16，返回临时 WAV 文件路径。
-  ///
-  /// 为什么做成「只抽一段」而不是「抽整条」：
-  /// 实时字幕是随播放推进,一段一段抽的（前 5~8 秒没字幕，之后越追越完整）。
-  /// 一次只抽一小段，内存和延迟都可控，也能在暂停/seek 后即时停止。
-  ///
-  /// 返回 null 表示该平台/该文件不支持抽取（iOS 尚未实现，见原生层注释）。
-  Future<String?> extractAudioSegment({
-    required String videoPath,
-    required int startMs,
-    required int durationMs,
-  }) async {
-    if (kIsWeb) return null;
-    try {
-      return await _channel.invokeMethod<String>('extractAudioSegment', {
-        'path': videoPath,
-        'startMs': startMs,
-        'durationMs': durationMs,
-      });
-    } catch (_) {
-      return null;
-    }
-  }
-
   // ──────────── 画中画 ────────────
 
   Future<bool> enterPiP() async {

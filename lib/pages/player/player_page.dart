@@ -19,9 +19,6 @@ import '../../models/subtitle_model.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/cast_provider.dart';
-import '../../providers/live_subtitle_provider.dart';
-import '../../services/ai/batch_subtitle_service.dart';
-import '../../services/ai/translate_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/media_namer_service.dart';
 import '../../services/subtitle_service.dart';
@@ -73,8 +70,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 系统是否支持画中画（不支持则不显示该按钮）
   bool? _pipSupported;
 
-  /// 全片生成时的目标语言，null 表示不翻译（纯中文）
-  String? _fullSubtitleLang;
   late VideoController _videoController;
   late AnimationController _controlsAnim;
 
@@ -97,34 +92,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _startAutoHideTimer();
       _checkPipSupport();
     });
-    _bindLiveSubtitleSync();
-  }
-
-  /// 把播放器「播放/暂停」状态单向同步给实时字幕引擎。
-  ///
-  /// 只订阅低频的 isPlaying 布尔值（翻转才触发），不订阅高频 position。
-  /// seek 由 [_onSeekCommit] 显式通知，避免每 200ms 触发无意义的 listener。
-  void _bindLiveSubtitleSync() {
-    ref.listen<bool>(playerProvider.select((p) => p.isPlaying), (prev, next) {
-      final notifier = ref.read(liveSubtitleProvider.notifier);
-      if (next) {
-        notifier.resume();
-      } else if (prev == true) {
-        notifier.pause();
-      }
-    });
-
-    // 低频（节流 3s）同步播放位置给字幕引擎做「追赶」判断
-    int lastSyncMs = -1;
-    ref.listen<int>(playerProvider.select((p) => p.position.inMilliseconds), (
-      prev,
-      next,
-    ) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - lastSyncMs < 3000) return;
-      lastSyncMs = now;
-      ref.read(liveSubtitleProvider.notifier).syncPosition(next);
-    });
   }
 
   /// 查询系统是否支持画中画
@@ -137,12 +104,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void dispose() {
     _autoHideTimer?.cancel();
     _controlsAnim.dispose();
-    // 退出播放器时停掉实时字幕
-    try {
-      ref.read(liveSubtitleProvider.notifier).stop();
-    } catch (_) {}
-    // 兜底：不依赖 ref（dispose 阶段取 ref 会抛异常，
-    // 一旦抛出就会跳过后面的方向重置 → 退出后卡在横屏）
     _restoreIdleOrientation();
     try {
       ref.read(playerProvider.notifier).saveProgress();
@@ -229,8 +190,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 松手提交跳转
   void _onSeekCommit(int targetMs) {
     ref.read(playerProvider.notifier).seekTo(Duration(milliseconds: targetMs));
-    // 同步字幕引擎：旧字幕时间戳已失效，清空并从新位置重新追
-    ref.read(liveSubtitleProvider.notifier).seekTo(targetMs);
     if (mounted) setState(() => _seekPreviewMs = null);
   }
 
@@ -286,9 +245,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ? 0
               : widget.startIndex.clamp(0, queue.length - 1),
         );
-
-    // 换片时停掉上一部的实时字幕（新的字幕由用户重新开启）
-    ref.read(liveSubtitleProvider.notifier).clear();
   }
 
   @override
@@ -425,17 +381,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                 ),
               ),
-            // 实时 AI 字幕（边播边转写）：浮在最上层，贴底显示
-            _LiveAiSubtitle(
-              builder: (context, liveState, positionMs) => Positioned(
-                bottom: isLarge ? 150 : 110,
-                left: isLarge ? 48 : 24,
-                right: isLarge ? 48 : 24,
-                child: liveState.entries.isEmpty
-                    ? const SizedBox.shrink()
-                    : _buildAiSubtitleText(liveState, positionMs, isLarge),
-              ),
-            ),
             // 弹出面板
             _buildPopupMenus(context, state),
             // 控制栏（玻璃动画）
@@ -754,119 +699,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   // ═══════════════ 字幕 ═══════════════
 
-  /// 实时 AI 字幕开关：启动 / 停止边播边生成的字幕
-  Future<void> _toggleLiveSubtitle() async {
-    final notifier = ref.read(liveSubtitleProvider.notifier);
-    final current = ref.read(liveSubtitleProvider);
-    final videoPath = widget.videoPath;
-
-    if (current.running) {
-      await notifier.stop();
-      return;
-    }
-
-    // 从当前播放位置开始追（而不是从 0 开始），用户拖到中间开字幕也接得上
-    final positionMs = ref.read(playerProvider).position.inMilliseconds;
-    final ok = await notifier.start(videoPath, atMs: positionMs);
-    if (!mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice'),
-          backgroundColor: Color(0xFFFF9500),
-          duration: Duration(seconds: 4),
-        ),
-      );
-    }
-  }
-
-  /// 双语开关 + 目标语言（实时字幕）。
-  void _toggleBilingual(String lang) {
-    final notifier = ref.read(liveSubtitleProvider.notifier);
-    notifier.setBilingual(true, lang: lang);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已开启双语字幕（中文 + ${lang.toUpperCase()}）'),
-        backgroundColor: GlassTheme.accentTeal,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  /// 全片生成字幕：跑完整视频 → 缓存 SRT → 自动加载为外挂字幕。
-  Future<void> _generateFullSubtitles({String? translateLang}) async {
-    final videoPath = widget.videoPath;
-    final durationMs = ref.read(playerProvider).duration.inMilliseconds;
-
-    if (durationMs <= 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('视频时长尚未就绪，请稍后再试'),
-            backgroundColor: GlassTheme.accentPink,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      return;
-    }
-
-    // 解析 ASR 模型目录（复用实时字幕的同一解析逻辑）
-    final modelDir = await ref
-        .read(liveSubtitleProvider.notifier)
-        .resolveAsrModelDir();
-    if (modelDir == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice'),
-            backgroundColor: Color(0xFFFF9500),
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-      return;
-    }
-
-    final batch = BatchSubtitleService.instance;
-    final srtPath = await batch.generateFull(
-      videoPath,
-      durationMs: durationMs,
-      asrModelDir: modelDir,
-      translate: translateLang != null,
-      translateLang: translateLang ?? 'en',
-      onProgress: null,
-      onError: (msg) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg),
-              backgroundColor: GlassTheme.accentPink,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      },
-    );
-
-    if (srtPath != null && mounted) {
-      // 自动加载生成的字幕为外挂字幕
-      await ref
-          .read(playerProvider.notifier)
-          .loadExternalSubtitle(srtPath, title: 'AI 生成字幕', language: 'AI 字幕');
-      if (mounted) {
-        final n = BatchSubtitleService.instance.lastGeneratedCount;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(n > 0 ? '全片字幕已生成并加载（共 $n 条）' : '全片字幕已生成并加载'),
-            backgroundColor: GlassTheme.accentTeal,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
   /// 字幕面板：内嵌轨道 + 同目录外挂 + 手动添加文件
   void _showSubtitleSheet() {
     // 快照读取：playerProvider 每 200ms 更新位置，
@@ -916,285 +748,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ),
               ),
               const SizedBox(height: 8),
-
-              // ── AI 字幕卡片区 ──
-              Container(
-                margin: const EdgeInsets.only(top: 8, bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: GlassTheme.accentPurple.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
-                  border: Border.all(
-                    color: GlassTheme.accentPurple.withOpacity(0.12),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 卡片标题
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 16,
-                          color: GlassTheme.accentPurple,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'AI 字幕',
-                          style: TextStyle(
-                            color: GlassTheme.accentPurple,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // 实时字幕开关
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final live = ref.watch(liveSubtitleProvider);
-                        return ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.bolt_rounded,
-                            size: 20,
-                            color: live.running
-                                ? GlassTheme.accentTeal
-                                : GlassTheme.textSecondary,
-                          ),
-                          title: const Text(
-                            '实时字幕（边播边出）',
-                            style: TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 13,
-                            ),
-                          ),
-                          subtitle: Text(
-                            live.running
-                                ? '已开启 · ${live.entries.length} 条'
-                                : '打开后逐段转写，随播放推进',
-                            style: const TextStyle(
-                              color: GlassTheme.textTertiary,
-                              fontSize: 11,
-                            ),
-                          ),
-                          trailing: Switch(
-                            value: live.running,
-                            activeColor: GlassTheme.accentTeal,
-                            onChanged: (_) {
-                              Navigator.pop(ctx);
-                              _toggleLiveSubtitle();
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                    // 双语开关（实时字幕开放时可用）
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final live = ref.watch(liveSubtitleProvider);
-                        return ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.translate_rounded,
-                            size: 20,
-                            color: live.bilingual
-                                ? GlassTheme.accentTeal
-                                : GlassTheme.textSecondary,
-                          ),
-                          title: const Text(
-                            '双语字幕（中文 + 外文）',
-                            style: TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 13,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '目标语言：${live.targetLang.toUpperCase()} · ${live.backendLabel}',
-                            style: const TextStyle(
-                              color: GlassTheme.textTertiary,
-                              fontSize: 11,
-                            ),
-                          ),
-                          trailing: DropdownButton<String>(
-                            value: live.targetLang,
-                            underline: const SizedBox.shrink(),
-                            items: aiSubtitleTargetLanguages
-                                .map(
-                                  (l) => DropdownMenuItem(
-                                    value: l,
-                                    child: Text(l.toUpperCase()),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (lang) {
-                              if (lang != null) _toggleBilingual(lang);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                    // 双语显示模式（双语开启时可选）
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final live = ref.watch(liveSubtitleProvider);
-                        if (!live.bilingual) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 40, bottom: 4),
-                          child: Row(
-                            children: [
-                              Text(
-                                '显示',
-                                style: TextStyle(
-                                  color: GlassTheme.textTertiary,
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _modeChip(BilingualMode.both, '双语',
-                                  live.bilingualMode),
-                              const SizedBox(width: 6),
-                              _modeChip(BilingualMode.zh, '中文',
-                                  live.bilingualMode),
-                              const SizedBox(width: 6),
-                              _modeChip(BilingualMode.foreign, '外文',
-                                  live.bilingualMode),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(height: 12, color: Color(0x1A000000)),
-                    // 全片生成 + 进度 + 导出缓存
-                    ValueListenableBuilder<double>(
-                      valueListenable: BatchSubtitleService.instance.progress,
-                      builder: (context, progress, _) {
-                        final running = progress >= 0 && progress < 1;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextButton.icon(
-                                    onPressed: running
-                                        ? null
-                                        : () => _generateFullSubtitles(
-                                            translateLang: _fullSubtitleLang,
-                                          ),
-                                    icon: const Icon(
-                                      Icons.download_rounded,
-                                      size: 18,
-                                    ),
-                                    label: Text(running ? '生成中…' : '全片生成字幕'),
-                                  ),
-                                ),
-                                // 目标语言（含「不翻译」）
-                                DropdownButton<String?>(
-                                  value: _fullSubtitleLang,
-                                  underline: const SizedBox.shrink(),
-                                  borderRadius: BorderRadius.circular(8),
-                                  items: [
-                                    const DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Text('不翻译',
-                                          style: TextStyle(fontSize: 12)),
-                                    ),
-                                    ...aiSubtitleTargetLanguages.map(
-                                      (l) => DropdownMenuItem<String?>(
-                                        value: l,
-                                        child: Text(l.toUpperCase(),
-                                            style:
-                                                const TextStyle(fontSize: 12)),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: running
-                                      ? null
-                                      : (v) =>
-                                          setState(() => _fullSubtitleLang = v),
-                                ),
-                              ],
-                            ),
-                            if (running) ...[
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(3),
-                                child: LinearProgressIndicator(
-                                  value: progress,
-                                  minHeight: 6,
-                                  backgroundColor: GlassTheme.accentPurple
-                                      .withOpacity(0.1),
-                                  valueColor: const AlwaysStoppedAnimation(
-                                    GlassTheme.accentPurple,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${(progress * 100).toStringAsFixed(0)}%',
-                                style: const TextStyle(
-                                  color: GlassTheme.accentPurple,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                _aiSmallButton(
-                                  '导出 SRT',
-                                  onTap: () async {
-                                    final path = await BatchSubtitleService
-                                        .instance
-                                        .exportSrt(widget.videoPath);
-                                    if (path != null && mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text('字幕已缓存于：$path'),
-                                          backgroundColor:
-                                              GlassTheme.accentTeal,
-                                          duration: const Duration(seconds: 4),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _aiSmallButton(
-                                  '清除缓存',
-                                  color: GlassTheme.accentPink,
-                                  onTap: () async {
-                                    await BatchSubtitleService.instance
-                                        .deleteCache(widget.videoPath);
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                            const SnackBar(
-                                              content: Text('已清除缓存字幕'),
-                                              backgroundColor:
-                                                  GlassTheme.accentPink,
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
 
               // 关闭字幕
               ListTile(
@@ -1433,64 +986,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  /// AI 卡片里的小按钮。
-  Widget _aiSmallButton(
-    String label, {
-    Color color = GlassTheme.accentPurple,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 双语显示模式的单选小胶囊（both/zh/foreign）
-  Widget _modeChip(BilingualMode mode, String label, BilingualMode current) {
-    final active = mode == current;
-    return GestureDetector(
-      onTap: () =>
-          ref.read(liveSubtitleProvider.notifier).setBilingualMode(mode),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: active
-              ? GlassTheme.accentTeal.withOpacity(0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active
-                ? GlassTheme.accentTeal
-                : GlassTheme.textTertiary.withOpacity(0.4),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? GlassTheme.accentTeal : GlassTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ),
-    );
-  }
-
   /// 选择字幕文件（扫描视频同目录与常用下载目录）
   Future<void> _pickSubtitleFile(String videoPath) async {
     final files = await SubtitleService.findCandidateSubtitles(videoPath);
@@ -1712,8 +1207,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               : null,
                           onTap: _showSubtitleSheet,
                         ),
-                        // 实时 AI 字幕（边播边转写）
-                        _LiveAiSubtitleToggle(onTap: _toggleLiveSubtitle),
                         GlassButton(
                           icon: Icons.skip_previous_rounded,
                           compact: true,
@@ -1994,103 +1487,6 @@ class _LiveSubtitle extends ConsumerWidget {
     );
     return builder(context, ref.read(playerProvider));
   }
-}
-
-/// 只订阅「实时 AI 字幕」状态的小部件。
-///
-/// 实时字幕条目会随转写推进不断追加，浮层需要感知「当前应显示哪一条」，
-/// 这里同时订阅实时字幕状态与播放位置两个流。
-class _LiveAiSubtitle extends ConsumerWidget {
-  final Widget Function(
-    BuildContext context,
-    LiveSubtitleState live,
-    int positionMs,
-  )
-  builder;
-  const _LiveAiSubtitle({required this.builder});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final live = ref.watch(liveSubtitleProvider);
-    final positionMs = ref.watch(
-      playerProvider.select((p) => p.position.inMilliseconds),
-    );
-    return builder(context, live, positionMs);
-  }
-}
-
-/// 实时字幕开关按钮（订阅运行状态，切换图标高亮）
-class _LiveAiSubtitleToggle extends ConsumerWidget {
-  final VoidCallback onTap;
-  const _LiveAiSubtitleToggle({required this.onTap});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final running = ref.watch(liveSubtitleProvider.select((s) => s.running));
-    return GlassButton(
-      icon: Icons.auto_awesome_rounded,
-      compact: true,
-      foregroundColor: running ? GlassTheme.accentTeal : null,
-      onTap: onTap,
-    );
-  }
-}
-
-/// 计算「当前应显示的实时字幕条目」，叠加对应的字幕文本。
-Widget _buildAiSubtitleText(
-  LiveSubtitleState live,
-  int positionMs,
-  bool isLarge,
-) {
-  SubtitleEntry? current;
-  for (final e in live.entries) {
-    if (positionMs >= e.start.inMilliseconds &&
-        positionMs < e.end.inMilliseconds) {
-      current = e;
-    }
-  }
-
-  final fullText =
-      current?.text ??
-      (live.status == LiveSubtitleStatus.transcribing
-          ? '正在识别语音…'
-          : (live.status == LiveSubtitleStatus.paused ? '已暂停' : ''));
-
-  if (fullText.isEmpty) return const SizedBox.shrink();
-
-  // 双语三态：text 格式为「中文\n外文」，按模式显示对应行
-  String label = fullText;
-  if (live.bilingual && live.bilingualMode != BilingualMode.both) {
-    final lines = fullText.split('\n');
-    if (live.bilingualMode == BilingualMode.zh) {
-      label = lines.first; // 中文（识别原文）
-    } else if (live.bilingualMode == BilingualMode.foreign) {
-      label = lines.length > 1 ? lines.last : fullText; // 外文（翻译结果）
-    }
-  }
-
-  return Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: isLarge ? 16 : 12,
-      vertical: isLarge ? 7 : 5,
-    ),
-    decoration: BoxDecoration(
-      color: Colors.black.withOpacity(0.6),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      label,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: isLarge ? 18 : 16,
-        fontWeight: FontWeight.w500,
-        shadows: const [
-          Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1)),
-        ],
-      ),
-    ),
-  );
 }
 
 class _CastDeviceSheet extends ConsumerStatefulWidget {
