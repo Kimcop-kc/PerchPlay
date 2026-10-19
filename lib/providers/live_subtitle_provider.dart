@@ -114,6 +114,18 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
   Future<bool> start(String videoPath, {int atMs = 0}) async {
     await _stopLoop();
 
+    // 等上一轮在途任务真正收尾（最多 3 秒）。
+    //
+    // `_stopLoop` 只把代际号 +1，不清 _busy —— 因为强行清掉会让两个任务
+    // 同时往同一个 worker isolate 发命令。这里改为「等它自己结束」：
+    // 旧任务醒来发现代际变了会立刻返回，通常几十毫秒就释放。
+    // 超时兜底：真卡死也不能让用户永远开不了实时字幕。
+    final waitUntil = DateTime.now().add(const Duration(seconds: 3));
+    while (_busy && DateTime.now().isBefore(waitUntil)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    _busy = false;
+
     // 与全片生成互斥：全片生成进行中时拒绝实时开启
     if (!BatchSubtitleService.instance.acquireLive()) {
       state = const LiveSubtitleState(
@@ -181,7 +193,13 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _scheduleNext();
   }
 
-  /// 播放器 seek → 清空旧字幕（时间戳已失效），从 [ms] 重新追。
+  /// 播放器 seek → 从 [ms] 重新追，但**保留已生成的字幕**。
+  ///
+  /// 之前这里是 `entries: const []`（清空所有已生成字幕）。用户看了一小时、
+  /// 攒了一堆字幕，只要拖一下进度条就全没了 —— 这是明显的体验 bug。
+  ///
+  /// 正确做法：清掉的只是「游标之后那些还没生成过的」，已生成的条目
+  /// 按时间戳本身仍然有效（seek 回去时能正常显示）。
   Future<void> seekTo(int ms) async {
     if (!_running) return;
     _generation++;
@@ -189,8 +207,13 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _busy = false;
     _cursorMs = (ms ~/ _segmentMs) * _segmentMs;
     _playerPositionMs = ms;
+    // 只清掉「游标之后」的条目（它们是旧位置生成的、时间戳仍有效但
+    // 会与新位置重复），保留游标之前的既有内容。
+    final kept = state.entries
+        .where((e) => e.end.inMilliseconds <= _cursorMs)
+        .toList();
     state = state.copyWith(
-      entries: const [],
+      entries: kept,
       status: LiveSubtitleStatus.transcribing,
     );
     _scheduleNext();
@@ -250,8 +273,15 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _tickTimer?.cancel();
     _tickTimer = null;
     _videoPath = null;
-    _busy = false;
     _cursorMs = 0;
+    // 注意：**不要**在这里把 _busy 直接设 false。
+    //
+    // 若此刻真有一个转写任务在跑（抽音/推理/翻译中），它还在占用
+    // worker isolate。强行解锁会让紧接着的 start() 以为"空闲"，
+    // 于是两个任务同时往同一个 isolate 发命令 → 结果错乱。
+    // 正确做法是让在途任务在 finally 里通过代际号自行解锁
+    // （_processNextSegment 的 finally 已有 `if (gen == _generation) _busy = false`），
+    // 而 _generation 已经 +1，旧任务醒来会发现自己过期、不会误改新循环状态。
   }
 
   // ═══════════════ 模型加载 ═══════════════
@@ -410,8 +440,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
 
   // ═══════════════ 主循环 ═══════════════
 
-  static const int _segmentMs = 5000; // 每次抽 5 秒
-  static const int _overlapMs = 500; // 段间重叠 0.5 秒，减少边界切字
+  static const int _segmentMs = 5000; // 每次抽 5 秒（与字幕时间轴严格一致）
 
   void _scheduleNext() {
     if (!_running || _paused) return;
@@ -446,7 +475,15 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
       wavPath = await NativeBridgeService.instance.extractAudioSegment(
         videoPath: videoPath,
         startMs: startMs,
-        durationMs: _segmentMs + _overlapMs,
+        // 严格按段边界抽取，不额外多抽。
+        //
+        // 之前这里是 `_segmentMs + _overlapMs`（多抽 0.5s），但字幕条目
+        // 的 end 仍写 `endMs`（不多那 0.5s）—— 结果是：
+        //   本段音频里最后 0.5s 的语音被识别成文字，却挤在 5s 的时间轴里，
+        //   下一段又把同样的 0.5s 再识别一次 → 字幕重复/内容错位。
+        // 要「避免边界切字」应该用重叠后做文本去重，而不是简单多抽，
+        // 当前实现选择「严格切分」以保证时间轴与内容一一对应。
+        durationMs: _segmentMs,
       );
 
       // 代际变了（stop/seek）→ 结果作废
@@ -480,7 +517,16 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
           end: Duration(milliseconds: endMs),
           text: line,
         );
-        state = state.copyWith(entries: [...state.entries, entry]);
+        // 限制内存里的条目数：一部 2 小时片子按 5s 一段会有 1440 条，
+        // 每条又带「中文 + 译文」两行文本。全量保留会让 `[...entries, x]`
+        // 的复制成本变成 O(n²)，越播越卡。这里只保留最近 N 条用于显示，
+        // 完整字幕请用「全片生成」导出 SRT。
+        const maxLiveEntries = 240; // ≈ 20 分钟滚动窗口
+        var next = <SubtitleEntry>[...state.entries, entry];
+        if (next.length > maxLiveEntries) {
+          next = next.sublist(next.length - maxLiveEntries);
+        }
+        state = state.copyWith(entries: next);
       }
     } catch (e) {
       debugPrint('[LiveSubtitle] 转写异常: $e');

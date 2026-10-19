@@ -1174,13 +1174,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                 _aiSmallButton(
                                   '导出 SRT',
                                   onTap: () async {
+                                    // 在 await 之前取好 messenger，
+                                    // 避免跨异步间隙再碰 BuildContext
+                                    final messenger =
+                                        ScaffoldMessenger.of(context);
                                     final path = await BatchSubtitleService
                                         .instance
                                         .exportSrt(widget.videoPath);
                                     if (path != null && mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
+                                      messenger.showSnackBar(
                                         SnackBar(
                                           content: Text('字幕已缓存于：$path'),
                                           backgroundColor:
@@ -1196,18 +1198,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                   '清除缓存',
                                   color: GlassTheme.accentPink,
                                   onTap: () async {
+                                    final messenger =
+                                        ScaffoldMessenger.of(context);
                                     await BatchSubtitleService.instance
                                         .deleteCache(widget.videoPath);
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                            const SnackBar(
-                                              content: Text('已清除缓存字幕'),
-                                              backgroundColor:
-                                                  GlassTheme.accentPink,
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text('已清除缓存字幕'),
+                                          backgroundColor:
+                                              GlassTheme.accentPink,
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
                                     }
                                   },
                                 ),
@@ -2069,17 +2072,30 @@ Widget _buildAiSubtitleText(
 ) {
   SubtitleEntry? current;
   for (final e in live.entries) {
+    // 条目按时间升序，命中后不必再往下扫
     if (positionMs >= e.start.inMilliseconds &&
         positionMs < e.end.inMilliseconds) {
       current = e;
+      break;
     }
   }
 
-  final fullText =
-      current?.text ??
-      (live.status == LiveSubtitleStatus.transcribing
-          ? '正在识别语音…'
-          : (live.status == LiveSubtitleStatus.paused ? '已暂停' : ''));
+  // 没有命中条目时，只在「确实还在识别且尚未生成到当前位置」提示，
+  // 已生成过的区间内不显示「正在识别…」（否则用户以为一直在识别）。
+  String fullText;
+  if (current != null) {
+    fullText = current.text;
+  } else if (live.status == LiveSubtitleStatus.transcribing) {
+    final generatedUpTo = live.entries.isEmpty
+        ? 0
+        : live.entries.last.end.inMilliseconds;
+    // 当前位置已越过已生成范围才提示「正在识别」
+    fullText = positionMs >= generatedUpTo ? '正在识别语音…' : '';
+  } else if (live.status == LiveSubtitleStatus.paused) {
+    fullText = '已暂停';
+  } else {
+    fullText = '';
+  }
 
   if (fullText.isEmpty) return const SizedBox.shrink();
 

@@ -101,6 +101,20 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   }
 
   Future<void> _startDownload(AiModel model) async {
+    // 同一时间只允许下载一个模型：多个大文件并发会互相抢带宽，
+    // 还容易触发磁盘/内存压力导致全部失败，反而更慢。
+    if (_progress.isNotEmpty) {
+      final busyId = _progress.keys.first;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('正在下载「$busyId」，请等它完成再下下一个'),
+          backgroundColor: const Color(0xFFFF9500),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
     setState(() {
       _progress[model.id] = 0;
       _errors.remove(model.id);

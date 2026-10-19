@@ -436,6 +436,16 @@ class MainActivity : FlutterActivity() {
     /** 把 float 样本写成 16kHz 单声道 16-bit PCM WAV，返回文件路径 */
     private fun writeSubtitleWav(samples: ArrayList<Float>, sampleRate: Int): String? {
         if (samples.isEmpty()) return null
+        // 兜底清理：实时字幕每 5 秒生成一个 wav，Dart 侧理论上用完即删，
+        // 但异常路径（转写抛错、isolate 被杀、App 被强杀）会漏删。
+        // 这里在写新文件前顺手清掉 10 分钟前的残留，避免缓存目录无限膨胀
+        // （每个 ~160KB，一小时不清理能涨到 1GB 级别）。
+        try {
+            val cutoff = System.currentTimeMillis() - 10 * 60 * 1000
+            cacheDir.listFiles { f ->
+                f.name.startsWith("live_sub_") && f.lastModified() < cutoff
+            }?.forEach { it.delete() }
+        } catch (_: Exception) {}
         val file = File(cacheDir, "live_sub_${System.currentTimeMillis()}.wav")
         writeWav(file, samples, sampleRate)
         return file.absolutePath

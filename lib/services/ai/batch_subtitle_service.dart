@@ -127,7 +127,12 @@ class BatchSubtitleService {
             .extractAudioSegment(
               videoPath: videoPath,
               startMs: cursor,
-              durationMs: (end - cursor) + 500,
+              // 严格按段边界抽取（不额外多抽 500ms）。
+              //
+              // 之前是 `(end - cursor) + 500`，多抽的 0.5s 会被识别成文字、
+              // 但字幕时间轴只到 `end`，下一段又从 `end` 开始 → 同 0.5s
+              // 音频被识别两次，SRT 里出现重复字幕。
+              durationMs: end - cursor,
             )
             .timeout(const Duration(seconds: 20), onTimeout: () => null);
 
@@ -204,9 +209,15 @@ class BatchSubtitleService {
     final cacheDir = Directory('${docs.path}/ai_subtitles');
     if (!await cacheDir.exists()) await cacheDir.create(recursive: true);
 
+    // 缓存文件名 = 视频基础名 + 路径短哈希。
+    //
+    // 只用基础名会让「不同目录下的同名视频」互相覆盖缓存
+    // （例如两部都叫 Movie.mp4 的片子，第二部生成会覆盖第一部）。
+    // 这里加路径的短哈希，既保持可读又保证唯一。
     final videoName = videoPath.split(Platform.pathSeparator).last;
     final base = videoName.replaceAll(RegExp(r'\.[^.]+$'), '');
-    final srtFile = File('${cacheDir.path}/$base.ai.srt');
+    final pathHash = videoPath.hashCode.toRadixString(16).replaceAll('-', '');
+    final srtFile = File('${cacheDir.path}/$base.$pathHash.ai.srt');
 
     final buf = StringBuffer();
     for (final e in entries) {
@@ -229,13 +240,35 @@ class BatchSubtitleService {
     return '$h:$m:$s,$ms';
   }
 
+  /// 缓存 SRT 的文件名（与 [_writeSrt] 保持一致的命名规则）。
+  ///
+  /// 必须和写入时用同一套规则，否则「生成成功但找不到缓存」。
+  static String _cacheFileName(String videoPath) {
+    final videoName = videoPath.split(Platform.pathSeparator).last;
+    final base = videoName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final pathHash = videoPath.hashCode.toRadixString(16).replaceAll('-', '');
+    return '$base.$pathHash.ai.srt';
+  }
+
   /// 取缓存 SRT 路径（不存在返回 null）。
   Future<String?> cachedSrtPath(String videoPath) async {
     final docs = await getApplicationDocumentsDirectory();
-    final videoName = videoPath.split(Platform.pathSeparator).last;
-    final base = videoName.replaceAll(RegExp(r'\.[^.]+$'), '');
-    final f = File('${docs.path}/ai_subtitles/$base.ai.srt');
-    return await f.exists() ? f.path : null;
+    final f = File('${docs.path}/ai_subtitles/${_cacheFileName(videoPath)}');
+    if (await f.exists()) return f.path;
+
+    // 兼容旧命名（升级前生成的 `<base>.ai.srt`）：找到就顺便迁移过来，
+    // 避免老用户升级后「之前生成的字幕全没了」。
+    final legacy = File(
+      '${docs.path}/ai_subtitles/'
+      '${videoPath.split(Platform.pathSeparator).last.replaceAll(RegExp(r'\.[^.]+$'), '')}.ai.srt',
+    );
+    try {
+      if (await legacy.exists()) {
+        await legacy.rename(f.path);
+        return f.path;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// 删除缓存。
