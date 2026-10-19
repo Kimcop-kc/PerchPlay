@@ -48,13 +48,9 @@ class AiModelRegistry {
   /// 没有列出的能力 = 不指定默认，纯走排序。
   static const Map<AiCapability, String> catalogDefaultModelIds =
       <AiCapability, String>{
-    AiCapability.ocr: 'paddleocr-ppocr-v4',
     AiCapability.asr: 'sensevoice-small',
     AiCapability.asrStreaming: 'paraformer-zh-streaming',
-    AiCapability.translate: 'qwen3-1.7b',
-    AiCapability.classify: 'qwen3-0.6b',
-    AiCapability.embed: 'bge-small-zh-v1.5',
-    AiCapability.frameScore: 'nima-frame-quality',
+    AiCapability.translate: 'opus-mt-zh-en',
     AiCapability.vad: 'silero-vad',
   };
 
@@ -180,25 +176,16 @@ class AiModelRegistry {
   ///  - translate：nmt > llm。纯翻译用 NMT 更快更省电；LLM 的优势是译文更自然、
   ///    能控制格式（双语对照之类），那属于更高档位才需要权衡的事 ——
   ///    现清单里 balanced 及以上没有 nmt 候选，所以这条实际只影响 light 档。
-  ///  - classify：只有 llm 干得了，NMT 不做分类。
-  ///  - asr / asrStreaming / ocr / vad：各归各类，没有跨类比较的必要，
+  ///  - asr / asrStreaming / vad：各归各类，没有跨类比较的必要，
   ///    表里只放一类，等于「同类内按体积比」。
-  ///  - embed：只有 embedding 类能做检索向量，生成式 llm 不能当向量用。
-  ///  - frameScore：只有 vision 类能做画面打分；而**默认连模型都不需要**
-  ///    （纯算法抽帧已够用，见 `AiCapability.frameScore` 的说明），
-  ///    这张表只在「用户装了可选模型」时才决定选谁。
   ///
   /// 不在表里的类别：排在该能力所有已列类别之后（见 [_kindRank]）。
   static const Map<AiCapability, List<ModelKind>> _kindPreference =
       <AiCapability, List<ModelKind>>{
     AiCapability.translate: <ModelKind>[ModelKind.nmt, ModelKind.llm],
-    AiCapability.classify: <ModelKind>[ModelKind.llm],
     AiCapability.asr: <ModelKind>[ModelKind.asr],
     AiCapability.asrStreaming: <ModelKind>[ModelKind.asr],
-    AiCapability.ocr: <ModelKind>[ModelKind.ocr],
     AiCapability.vad: <ModelKind>[ModelKind.vad],
-    AiCapability.embed: <ModelKind>[ModelKind.embedding],
-    AiCapability.frameScore: <ModelKind>[ModelKind.vision],
   };
 
   /// 某类别在该能力下的优先级（越小越优先；不在表里 = 最后）
@@ -268,24 +255,8 @@ class AiModelSelector {
         return '实时识别';
       case AiCapability.translate:
         return '翻译';
-      case AiCapability.classify:
-        return '文本分类';
-      case AiCapability.ocr:
-        return '字幕识别';
-      case AiCapability.embed:
-        return '语义搜索';
-      case AiCapability.frameScore:
-        return '选帧评分';
-      case AiCapability.tts:
-        return '语音合成';
       case AiCapability.punctuation:
         return '标点恢复';
-      case AiCapability.keywordSpotting:
-        return '关键词';
-      case AiCapability.speakerDiarization:
-        return '说话人分离';
-      case AiCapability.speechEnhancement:
-        return '降噪增强';
     }
   }
 

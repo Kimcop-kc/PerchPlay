@@ -1,9 +1,11 @@
 import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+
 import '../models/video_model.dart';
 import '../models/subtitle_model.dart';
 import '../services/subtitle_service.dart';
@@ -11,6 +13,7 @@ import '../services/subtitle_auto_service.dart';
 import '../services/subtitle_matcher.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
 
 /// 播放器状态
@@ -48,6 +51,11 @@ class PlayerState {
   final double? videoFps;
   final List<AudioTrack> audioTracks;
 
+  /// HDR / 色彩信息（来自 mpv video-params，识别 HDR10 / 杜比视界 / SDR）
+  final String? colorPrimaries; // 色域：bt.2020 / bt.709 / ...
+  final String? transferFunction; // 传递函数：pq / hlg / bt.1886 / ...
+  final double? sigPeak; // 信号峰值亮度（HDR 才有，SDR 通常 null 或 1.0）
+
   /// 第二字幕：内嵌轨道 id（交给 mpv 的 secondary-sid 渲染）
   final String? secondaryTrackId;
 
@@ -55,6 +63,13 @@ class PlayerState {
   final SubtitleModel? secondarySubtitle;
   final List<SubtitleEntry>? secondaryEntries;
   final int secondarySubtitleIndex;
+
+  /// 当前 mpv 正在显示的字幕文本（多行，来自 `player.stream.subtitle`）。
+  ///
+  /// 统一字幕渲染的**唯一事实来源**：无论内嵌还是外挂，mpv 都把当前应该
+  /// 显示的字幕吐到这里，浮层只渲染这份文本，避免「mpv 画一份 + 自绘浮层
+  /// 又画一份」的双重/错位 bug。
+  final List<String> currentSubtitleLines;
 
   const PlayerState({
     required this.player,
@@ -81,10 +96,14 @@ class PlayerState {
     this.videoCodec,
     this.videoFps,
     this.audioTracks = const [],
+    this.colorPrimaries,
+    this.transferFunction,
+    this.sigPeak,
     this.secondaryTrackId,
     this.secondarySubtitle,
     this.secondaryEntries,
     this.secondarySubtitleIndex = 0,
+    this.currentSubtitleLines = const [],
   });
 
   PlayerState copyWith({
@@ -112,10 +131,14 @@ class PlayerState {
     String? videoCodec,
     double? videoFps,
     List<AudioTrack>? audioTracks,
+    String? colorPrimaries,
+    String? transferFunction,
+    double? sigPeak,
     String? secondaryTrackId,
     SubtitleModel? secondarySubtitle,
     List<SubtitleEntry>? secondaryEntries,
     int? secondarySubtitleIndex,
+    List<String>? currentSubtitleLines,
     bool clearActiveSubtitle = false,
     bool clearTrackId = false,
     bool clearMediaInfo = false,
@@ -137,34 +160,71 @@ class PlayerState {
       volume: volume ?? this.volume,
       brightness: brightness ?? this.brightness,
       speed: speed ?? this.speed,
-      currentVideo:
-          clearCurrentVideo ? null : (currentVideo ?? this.currentVideo),
+      currentVideo: clearCurrentVideo
+          ? null
+          : (currentVideo ?? this.currentVideo),
       queue: queue ?? this.queue,
       currentIndex: currentIndex ?? this.currentIndex,
       availableSubtitles: availableSubtitles ?? this.availableSubtitles,
-      activeSubtitle:
-          clearActiveSubtitle ? null : (activeSubtitle ?? this.activeSubtitle),
+      activeSubtitle: clearActiveSubtitle
+          ? null
+          : (activeSubtitle ?? this.activeSubtitle),
       subtitleEntries: subtitleEntries ?? this.subtitleEntries,
       activeSubtitleIndex: activeSubtitleIndex ?? this.activeSubtitleIndex,
       videoWidth: videoWidth ?? this.videoWidth,
       videoHeight: videoHeight ?? this.videoHeight,
       embeddedSubtitles: embeddedSubtitles ?? this.embeddedSubtitles,
-      activeTrackId: clearTrackId ? null : (activeTrackId ?? this.activeTrackId),
+      activeTrackId: clearTrackId
+          ? null
+          : (activeTrackId ?? this.activeTrackId),
       videoCodec: clearMediaInfo ? null : (videoCodec ?? this.videoCodec),
       videoFps: clearMediaInfo ? null : (videoFps ?? this.videoFps),
-      audioTracks: clearMediaInfo ? const [] : (audioTracks ?? this.audioTracks),
+      audioTracks: clearMediaInfo
+          ? const []
+          : (audioTracks ?? this.audioTracks),
+      colorPrimaries: clearMediaInfo
+          ? null
+          : (colorPrimaries ?? this.colorPrimaries),
+      transferFunction: clearMediaInfo
+          ? null
+          : (transferFunction ?? this.transferFunction),
+      sigPeak: clearMediaInfo ? null : (sigPeak ?? this.sigPeak),
       secondaryTrackId: clearSecondaryTrackId
           ? null
           : (secondaryTrackId ?? this.secondaryTrackId),
       secondarySubtitle: clearSecondarySubtitle
           ? null
           : (secondarySubtitle ?? this.secondarySubtitle),
-      secondaryEntries:
-          clearSecondarySubtitle ? null : (secondaryEntries ?? this.secondaryEntries),
+      secondaryEntries: clearSecondarySubtitle
+          ? null
+          : (secondaryEntries ?? this.secondaryEntries),
       secondarySubtitleIndex: clearSecondarySubtitle
           ? 0
           : (secondarySubtitleIndex ?? this.secondarySubtitleIndex),
+      currentSubtitleLines: currentSubtitleLines ?? this.currentSubtitleLines,
     );
+  }
+
+  /// 推断 HDR 类型（供 UI 展示）。
+  ///
+  /// 判断依据（mpv video-params）：
+  ///  - 传递函数 pq + 色域 bt.2020 → HDR10（或杜比视界回退的 HDR10 基础层）
+  ///  - 传递函数 hlg → HLG（广播 HDR）
+  ///  - 否则 → SDR
+  ///
+  /// 注意：libmpv 对 Dolby Vision 的支持有限（Profile 5 单层可 tone-map 播放，
+  /// Profile 7/8 双层通常回退 HDR10 基础层），无法从 video-params 直接区分
+  /// 「真杜比」与「HDR10」，故这里统一识别为 HDR10，UI 层面不误导用户。
+  String? get hdrType {
+    final tf = (transferFunction ?? '').toLowerCase();
+    final cp = (colorPrimaries ?? '').toLowerCase();
+    if (tf.contains('pq') || cp.contains('2020')) {
+      if (sigPeak != null && sigPeak! > 1.0) return 'HDR10';
+      // 有 pq 传递函数但没读出峰值，仍按 HDR10 处理（元数据可能缺失）
+      if (tf.contains('pq')) return 'HDR10';
+    }
+    if (tf.contains('hlg')) return 'HLG';
+    return null; // SDR 或未知
   }
 }
 
@@ -172,10 +232,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   final DatabaseService _db = DatabaseService.instance;
   late final VideoController _globalController;
 
-  PlayerNotifier()
-      : super(PlayerState(
-          player: Player(),
-        )) {
+  PlayerNotifier() : super(PlayerState(player: Player())) {
     // VideoController 由 Provider 全局创建，跨页面复用
     _globalController = VideoController(state.player);
     state = state.copyWith(videoController: _globalController);
@@ -183,16 +240,59 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     applyDecodingMode();
   }
 
-  /// 应用硬解/软解设置（mpv hwdec）
+  /// 应用硬解/软解设置（mpv hwdec）+ 配套播放引擎参数。
+  ///
+  /// 这里不只是「开/关硬件解码」，而是把与解码相关的 mpv 参数一起对齐：
+  ///  - `hwdec`：硬解后端（auto-safe 会自动在硬解失败时退回软解）
+  ///  - `vd-lavc-dr`：直接渲染（direct rendering），减少一次内存拷贝
+  ///  - `vd-lavc-threads`：解码线程数，按设备核心自适应
   Future<void> applyDecodingMode() async {
     final on = AppSettingsService.instance.hardwareDecoding;
     try {
       final platform = state.player.platform;
-      if (platform is NativePlayer) {
-        await platform.setProperty('hwdec', on ? 'auto-safe' : 'no');
-      }
+      if (platform is! NativePlayer) return;
+
+      // 硬解：auto-safe（优先硬解，失败自动回退软解，避免花屏/黑屏直接卡死）
+      await platform.setProperty('hwdec', on ? 'auto-safe' : 'no');
+
+      // 直接渲染（direct rendering）：硬解时让解码器直接写 GPU 显存，
+      // 少一次 CPU 拷贝，4K 高码率下明显降低 CPU 占用与功耗。
+      await platform.setProperty('vd-lavc-dr', on ? 'yes' : 'no');
+
+      // 软解线程数：硬解时解码负载在 GPU，软解靠 CPU；核心越多线程越多。
+      // 不要超过 8，否则线程切换开销反而拖慢。
+      final cores = DeviceInfoService.instance.capabilities.cpuCores;
+      final threads = on ? 2 : (cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
+      await platform.setProperty('vd-lavc-threads', '$threads');
     } catch (e) {
-      debugPrint('[Player] set hwdec failed: $e');
+      debugPrint('[Player] 应用解码参数失败: $e');
+    }
+  }
+
+  /// 播放引擎关键参数健壮性兜底：容器/音视频轨道异常时自动跳过坏流，
+  /// 同时配置 HDR 色调映射，让 HDR10/HLG 视频在 SDR 屏幕上正确显示。
+  Future<void> applyRobustPlayback() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+      // 允许过期/不兼容的字幕编码自动替换字符，避免 ASS 特效子幕导致崩溃
+      await platform.setProperty('sub-ass-override', 'yes');
+      // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
+      await platform.setProperty('framedrop', 'vo');
+
+      // ── HDR 色调映射（对 SDR 视频无副作用）──
+      // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
+      await platform.setProperty('tone-mapping', 'bt.2390');
+      // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
+      await platform.setProperty('target-peak', '250');
+      // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
+      await platform.setProperty('hdr-compute-peak', 'yes');
+      // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
+      await platform.setProperty('hdr10plus', 'auto');
+      // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
+      await platform.setProperty('dolbyvision', 'yes');
+    } catch (e) {
+      debugPrint('[Player] 应用健壮性参数失败: $e');
     }
   }
 
@@ -249,8 +349,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       state = state.copyWith(position: pos);
       _updateActiveSubtitle();
       // 每 5 秒落盘一次进度
-      if (_lastSaveAt == null ||
-          now.difference(_lastSaveAt!).inSeconds >= 5) {
+      if (_lastSaveAt == null || now.difference(_lastSaveAt!).inSeconds >= 5) {
         _lastSaveAt = now;
         _persistProgress();
       }
@@ -299,6 +398,25 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       );
     });
 
+    // 视频色彩参数（识别 HDR10 / 杜比视界 / SDR，用于详情展示与色调映射）
+    state.player.stream.videoParams.listen((params) {
+      state = state.copyWith(
+        colorPrimaries: params.primaries,
+        transferFunction: params.gamma,
+        sigPeak: params.sigPeak,
+      );
+    });
+
+    // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
+    // 内嵌/外挂都走这个流，浮层只渲染这一份，避免双重绘制与位置错乱。
+    state.player.stream.subtitle.listen((lines) {
+      state = state.copyWith(
+        currentSubtitleLines: lines.isEmpty
+            ? const <String>[]
+            : List<String>.from(lines),
+      );
+    });
+
     state.player.stream.completed.listen((_) {
       // 防止 mpv 在 EOF 处反复上报导致 playCount 被多次 +1、
       // 历史里插入多条相同记录
@@ -307,8 +425,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 播完清零进度并记入历史，下次从头播放
       final v = state.currentVideo;
       if (v != null) {
-        _db.updatePlayPosition(v.id, 0,
-            durationMs: state.duration.inMilliseconds);
+        _db.updatePlayPosition(
+          v.id,
+          0,
+          durationMs: state.duration.inMilliseconds,
+        );
       }
       // 自动播放下一个（受设置控制）
       if (AppSettingsService.instance.autoPlayNext) {
@@ -349,8 +470,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> saveProgress() => _persistProgress();
 
   /// 加载视频
-  Future<void> loadVideo(VideoModel video,
-      {List<VideoModel>? queue, int? startIndex}) async {
+  Future<void> loadVideo(
+    VideoModel video, {
+    List<VideoModel>? queue,
+    int? startIndex,
+  }) async {
     final token = ++_loadToken;
     // 播放页可能只传 path/title 构造的临时模型；
     // 从数据库取真实记录，拿到真实 id 与上次进度。
@@ -384,15 +508,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
     await applyDecodingMode();
+    await applyRobustPlayback();
 
     // 应用默认播放速度
-    await state.player
-        .setRate(AppSettingsService.instance.defaultSpeed);
+    await state.player.setRate(AppSettingsService.instance.defaultSpeed);
 
     // 恢复上次播放位置（<1s 视为从头开始）
     final resumeMs = effective.lastPosition;
-    debugPrint('[Player] load "${effective.name}" id=${effective.id} '
-        'resume=${resumeMs.toInt()}ms');
+    debugPrint(
+      '[Player] load "${effective.name}" id=${effective.id} '
+      'resume=${resumeMs.toInt()}ms',
+    );
     if (resumeMs > 1000) {
       _pendingResume = Duration(milliseconds: resumeMs.toInt());
       try {
@@ -401,8 +527,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
 
     // 加载外挂字幕（同目录下所有同名文件，面板里可选）
-    final subtitles =
-        await SubtitleService.findExternalSubtitles(video.path);
+    final subtitles = await SubtitleService.findExternalSubtitles(video.path);
     // 切片了：这份列表属于上一部，别再往当前状态里塞
     if (token != _loadToken) return;
     state = state.copyWith(availableSubtitles: subtitles);
@@ -448,8 +573,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _waitForTracks() async {
     if (_tracksProbed) return;
     try {
-      await state.player.stream.tracks.first
-          .timeout(const Duration(milliseconds: 1200));
+      await state.player.stream.tracks.first.timeout(
+        const Duration(milliseconds: 1200),
+      );
     } catch (_) {
       // 超时 / 流异常：把「没拿到轨道信息」当成「没有内嵌字幕」，
       // 免得流程一直卡着（这种片子本来也挂不出内嵌字幕）
@@ -589,8 +715,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _playNext() async {
     if (state.currentIndex < state.queue.length - 1) {
       final nextVideo = state.queue[state.currentIndex + 1];
-      await loadVideo(nextVideo,
-          queue: state.queue, startIndex: state.currentIndex + 1);
+      await loadVideo(
+        nextVideo,
+        queue: state.queue,
+        startIndex: state.currentIndex + 1,
+      );
       await state.player.play();
     }
   }
@@ -602,13 +731,34 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> playPrevious() async {
     if (state.currentIndex > 0) {
       final prevVideo = state.queue[state.currentIndex - 1];
-      await loadVideo(prevVideo,
-          queue: state.queue, startIndex: state.currentIndex - 1);
+      await loadVideo(
+        prevVideo,
+        queue: state.queue,
+        startIndex: state.currentIndex - 1,
+      );
       if (state.isPlaying) await state.player.play();
     }
   }
 
   // ═══════════════ 字幕 ═══════════════
+
+  /// 关闭 mpv 的「默认字幕渲染」但保留 sub-text 流。
+  ///
+  /// 统一字幕渲染策略：主字幕由自绘浮层画（用 `currentSubtitleLines`），
+  /// mpv 只负责解析出「当前该显示的字幕文本」，不再自己画 —— 否则会出现
+  /// 「mpv 画一份 + 浮层又画一份」的双重字幕（导入外挂字幕位置不对的根因）。
+  ///
+  /// sub-visibility=no 只关渲染，`stream.subtitle`（对应 mpv sub-text）依旧
+  /// 正常推送当前文本，浮层照常拿到内容。
+  Future<void> _disableMpvSubtitleRendering() async {
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      await platform.setProperty('sub-visibility', 'no');
+    } catch (e) {
+      debugPrint('[Subtitle] 关闭 mpv 字幕渲染失败: $e');
+    }
+  }
 
   /// 选择内嵌字幕轨道（容器内的字幕流，用户手动选）
   Future<void> selectEmbeddedSubtitle(SubtitleTrack track) async {
@@ -621,6 +771,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _applyEmbeddedSubtitle(SubtitleTrack track) async {
     try {
       await state.player.setSubtitleTrack(track);
+      await _disableMpvSubtitleRendering();
     } catch (e) {
       debugPrint('[Subtitle] 选择内嵌轨道失败: $e');
     }
@@ -646,8 +797,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   /// 加载外挂字幕文件并立即生效（用户手动选）
-  Future<void> loadExternalSubtitle(String path,
-      {String? title, String? language}) async {
+  Future<void> loadExternalSubtitle(
+    String path, {
+    String? title,
+    String? language,
+  }) async {
     await _applyExternalSubtitle(path, title: title, language: language);
     // 只有手动选择才写记忆：自动挂载如果也写，等于把自动挑的结果
     // 伪装成用户意愿，下次"恢复"的其实是自己猜的东西
@@ -655,12 +809,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   /// 把外挂字幕挂到播放器并解析成本地条目（不写记忆）
-  Future<void> _applyExternalSubtitle(String path,
-      {String? title, String? language}) async {
+  Future<void> _applyExternalSubtitle(
+    String path, {
+    String? title,
+    String? language,
+  }) async {
     try {
       await state.player.setSubtitleTrack(
         SubtitleTrack.uri(path, title: title, language: language),
       );
+      await _disableMpvSubtitleRendering();
     } catch (e) {
       debugPrint('[Subtitle] 载入外挂字幕失败: $e');
     }

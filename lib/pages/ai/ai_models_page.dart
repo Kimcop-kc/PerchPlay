@@ -313,18 +313,10 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     // 分组定义：类别名 → 包含的 ModelKind
     const groups = <({String label, Set<ModelKind> kinds})>[
       (label: '语音识别 (ASR)', kinds: {ModelKind.asr}),
-      (label: '语言模型 (LLM / GGUF / MLC)', kinds: {ModelKind.llm}),
       (label: '专用翻译 (NMT)', kinds: {ModelKind.nmt}),
       (label: '其他模型', kinds: {
         ModelKind.vad,
-        ModelKind.ocr,
-        ModelKind.embedding,
-        ModelKind.vision,
-        ModelKind.tts,
         ModelKind.punctuation,
-        ModelKind.keywordSpotting,
-        ModelKind.speakerDiarization,
-        ModelKind.speechEnhancement,
       }),
     ];
 
@@ -785,22 +777,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         return '专用翻译模型，比同体积 LLM 翻得更准更快。各语种对独立运行。';
       case ModelKind.vad:
         return '只判断有没有人声，不转写。适合前置过滤噪音或长录音切割。';
-      case ModelKind.ocr:
-        return '识别画面里的硬字幕，输出文本。适合提取影片内嵌字幕。';
-      case ModelKind.embedding:
-        return '文本→向量，用于语义搜索。配合索引检索，不生成文字。';
-      case ModelKind.vision:
-        return '画面质量打分，用于智能抽帧时挑好看的那一帧当封面。';
-      case ModelKind.tts:
-        return '文本→自然语音波形。适合旁白配音、无障碍朗读。';
       case ModelKind.punctuation:
         return '给 ASR 输出的无标点文本补上句号和逗号，提升可读性。';
-      case ModelKind.keywordSpotting:
-        return '从音频流中检测预定义关键词（如"你好小星"），常驻后台低功耗。';
-      case ModelKind.speakerDiarization:
-        return '标记一段多人对话中"谁在什么时候说了什么"，不负责转写内容。';
-      case ModelKind.speechEnhancement:
-        return '去除背景噪音，为下游 ASR 或听觉场景提升信噪比。';
     }
   }
 
@@ -821,29 +799,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       case ModelKind.nmt:
         icon = Icons.translate;
         break;
-      case ModelKind.ocr:
-        icon = Icons.text_fields;
-        break;
-      case ModelKind.embedding:
-        icon = Icons.search;
-        break;
-      case ModelKind.vision:
-        icon = Icons.image;
-        break;
-      case ModelKind.tts:
-        icon = Icons.volume_up;
-        break;
       case ModelKind.punctuation:
         icon = Icons.format_quote;
-        break;
-      case ModelKind.keywordSpotting:
-        icon = Icons.hearing;
-        break;
-      case ModelKind.speakerDiarization:
-        icon = Icons.group_work;
-        break;
-      case ModelKind.speechEnhancement:
-        icon = Icons.noise_control_off;
         break;
     }
     return Container(

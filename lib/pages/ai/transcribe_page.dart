@@ -14,7 +14,6 @@ import '../../services/ai/audio_transcoder.dart';
 import '../../services/ai/model_downloader.dart';
 import '../../services/ai/punct_service.dart';
 import '../../services/ai/speech_service.dart';
-import '../../services/ai/tts_service.dart';
 import '../../services/ai/vad_service.dart';
 
 /// 语音转写页面。
@@ -33,7 +32,6 @@ enum _Step { selectModel, selectAudio, transcribing, done }
 class _TranscribePageState extends State<TranscribePage> {
   final _speech = SpeechService();
   final _punct = PunctService();
-  final _tts = TtsService();
   final _vad = VadService();
   final _downloader = ModelDownloader();
 
@@ -53,9 +51,6 @@ class _TranscribePageState extends State<TranscribePage> {
 
   /// 错误信息
   String? _error;
-
-  /// TTS 是否正在合成
-  bool _ttsBusy = false;
 
   /// 是否正在转码音频
   bool _transcoding = false;
@@ -106,7 +101,6 @@ class _TranscribePageState extends State<TranscribePage> {
   void dispose() {
     _speech.dispose();
     _punct.dispose();
-    _tts.dispose();
     _vad.dispose();
     _downloader.dispose();
     super.dispose();
@@ -171,13 +165,12 @@ class _TranscribePageState extends State<TranscribePage> {
   // ── 步骤 2：选音频文件 ──
 
   Future<void> _pickWav() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac'],
-      allowMultiple: false,
     );
-    if (result == null || result.files.isEmpty) return;
-    final path = result.files.single.path;
+    if (result == null) return;
+    final path = result.path;
     if (path == null) return;
 
     // 非 WAV 文件 → FFmpeg 转码为 16kHz 单声道 WAV
@@ -382,75 +375,6 @@ class _TranscribePageState extends State<TranscribePage> {
     final min = totalSec ~/ 60;
     final sec = totalSec % 60;
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-  }
-
-  /// 查找 TTS 模型目录（按优先级：中文 > 英文 > 粤语）。
-  Future<String?> _resolveTtsModelDir() async {
-    final dir = await ModelDownloader.modelsDir();
-    for (final id in ['vits-zh', 'vits-en', 'vits-yue']) {
-      final d = Directory('${dir.path}${Platform.pathSeparator}$id');
-      if (!await d.exists()) continue;
-      final hasOnnx = await d.list().any((e) =>
-          e is File && e.path.toLowerCase().endsWith('.onnx'));
-      if (hasOnnx) return d.path;
-    }
-    return null;
-  }
-
-  /// TTS 朗读当前转写结果。
-  Future<void> _speakResult() async {
-    final text = _result;
-    if (text == null || text.isEmpty) return;
-    if (_ttsBusy) return;
-
-    final ttsDir = await _resolveTtsModelDir();
-    if (ttsDir == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请先下载 TTS 模型（VITS-中文/英文/粤语）'),
-          backgroundColor: Color(0xFFFF9500),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _ttsBusy = true);
-    try {
-      _tts.loadModel(ttsDir);
-      final audio = _tts.synthesize(text, speed: 1.0);
-      if (audio == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('TTS 合成失败'),
-            backgroundColor: GlassTheme.accentPink,
-          ),
-        );
-        return;
-      }
-
-      // 写临时 WAV 文件
-      final tmpDir = await getTemporaryDirectory();
-      final wavFile = File(
-          '${tmpDir.path}${Platform.pathSeparator}tts_${DateTime.now().millisecondsSinceEpoch}.wav');
-      sherpa.writeWave(
-        filename: wavFile.path,
-        samples: audio.samples,
-        sampleRate: audio.sampleRate,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('朗读已生成: ${wavFile.path}'),
-          backgroundColor: GlassTheme.accentTeal,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _ttsBusy = false);
-    }
   }
 
   // ── UI ──
@@ -878,20 +802,6 @@ class _TranscribePageState extends State<TranscribePage> {
             Expanded(
               child: _outlineButton('重新选择文件', _pickWav),
             ),
-            const SizedBox(width: 12),
-            if (!hasError)
-              Expanded(
-                child: _ttsBusy
-                    ? const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: GlassTheme.accentPurple),
-                        ),
-                      )
-                    : _outlineButton('朗读结果', _speakResult),
-              ),
           ],
         ),
       ],

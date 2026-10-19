@@ -12,45 +12,48 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # 播放引擎 (media_kit_video 1.x 兼容 Flutter 3.22)
-  media_kit: 1.2.0
-  media_kit_video: 1.2.0
+  # 播放引擎
+  # media_kit 本体是纯 Dart 封装
+  media_kit: 1.2.6
+  # media_kit_video 2.0.1：官方已升 compileSdk 36 + AGP 8.13，移除 volume_controller 旧依赖
+  media_kit_video: 2.0.1
   media_kit_libs_video: 1.0.0
-  # 1.3.8 把 compileSdkVersion 提成了 36，而 Flutter 3.22 自带的 AGP 8.1 的 aapt2
-  # 解析不了 API 36 的 android.jar（:verifyReleaseResources 报 RES_TABLE_TYPE_TYPE
-  # entry offsets overlap actual entry data）。1.3.7 仍是 compileSdk 31，钉住它。
-  media_kit_libs_android_video: 1.3.7
+  # 1.3.8：compileSdk 36 + AGP 8.13；构建时从 GitHub 下载 libmpv jar（需走代理）
+  media_kit_libs_android_video: 1.3.8
 
   # Windows 桌面播放
   media_kit_libs_windows_video: 1.0.9
 
   # 状态管理
-  flutter_riverpod: 2.5.1
-  riverpod_annotation: 2.3.5
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
 
   # 路由
-  go_router: 14.8.0
+  go_router: ^14.8.0
 
-  # 本地存储
-  sqflite: 2.3.0
-  shared_preferences: 2.2.2
-  path_provider: 2.1.5
-  path: 1.9.0
+  # 本地存储（升 Flutter 3.47 后旧版用 v1 embedding，需升到 v2 embedding 版本）
+  sqflite: ^2.4.0
+  shared_preferences: ^2.5.0
+  path_provider: ^2.1.5
+  # 升级 Flutter 3.47 后 flutter_test 要求 path ^1.9.1（原 1.9.0 版本解析冲突）
+  path: ^1.9.1
 
   # 权限
-  permission_handler: 11.3.1
+  permission_handler: ^11.3.1
 
-  # 系统亮度控制（media_kit_video 已依赖 ^0.2.2）
-  screen_brightness: ^0.2.2
+  # 系统亮度控制（升新版支持 Flutter 3.47 编译链）
+  screen_brightness: ^2.0.0
 
   # 视频缩略图
-  flutter_video_thumbnail_plus: 1.0.6
+  flutter_video_thumbnail_plus: ^1.0.6
 
   # 工具
-  intl: 0.19.0
-  uuid: 4.5.1
+  intl: ^0.19.0
+  uuid: ^4.5.1
   crypto: ^3.0.3
-  # Flutter 3.22 的 flutter_test 将 collection 锁定为 1.18.0，这里不能超过它
+  # API Key 等敏感信息的本地 AES 加密存储（纯 Dart，无原生依赖）
+  encrypt: ^5.0.3
+  # 注：旧 SDK 时代锁 collection 1.18.0，升级 Flutter 3.47 后放开为 caret 由 pub 解析
   collection: ^1.18.0
   # TMDB 刮削 & 海报缓存
   http: ^1.2.0
@@ -60,18 +63,21 @@ dependencies:
   sherpa_onnx: ^1.13.8
 
   # 模型导入：文件选择 + 解压（zip / tar / tar.gz / tar.bz2）
-  file_picker: ^6.2.1
+  # 6.2.1 用旧 v1 embedding，与 Flutter 3.47/AGP 9 不兼容；升到 13.x（v2 embedding）
+  file_picker: ^13.1.0
   archive: ^4.5.2
   onnxruntime: ^1.4.1
-
-  # 音频转码（mp3/m4a/ogg/flac → 16kHz WAV）
-  ffmpeg_kit_flutter_audio: ^6.0.3
-  translator: ^1.0.4+1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: 4.0.0
+
+# 本地 patch：onnxruntime 1.4.1 写死 compileSdk 33，但 Flutter 3.47 的传递依赖
+#（androidx.exifinterface）要求 ≥34。官方尚未发布修复版，故本地改 compileSdk 36。
+dependency_overrides:
+  onnxruntime:
+    path: local_packages/onnxruntime
 
 flutter:
   uses-material-design: true

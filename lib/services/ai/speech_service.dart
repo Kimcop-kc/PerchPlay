@@ -1,7 +1,11 @@
 import 'dart:io';
+import 'dart:math' show sqrt;
 import 'dart:typed_data' show Float32List;
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
+
+import 'speech_model_factory.dart';
 
 /// 端侧语音识别服务（非流式）。
 ///
@@ -41,201 +45,19 @@ class SpeechService {
 
     dispose();
 
-    final d = Directory(modelDir);
-    if (!d.existsSync()) {
-      debugPrint('[SpeechService] 模型目录不存在: $modelDir');
-      return;
-    }
-
-    // 扫描目录，按小写文件名去重映射
-    final files = d.listSync().whereType<File>().toList();
-    final onnx = <String, File>{};
-    for (final f in files) {
-      final name = f.path.split(Platform.pathSeparator).last.toLowerCase();
-      if (name.endsWith('.onnx')) onnx[name] = f;
-    }
-
-    if (onnx.isEmpty) {
-      debugPrint('[SpeechService] 目录中无 .onnx 文件: $modelDir');
-      return;
-    }
-
-    // tokens.txt 或 vocab.txt
-    final tokenFile = files.firstWhere(
-      (f) {
-        final name = f.path.split(Platform.pathSeparator).last;
-        return name == 'tokens.txt' || name == 'vocab.txt';
-      },
-      orElse: () => File(''),
-    );
-    if (tokenFile.path.isEmpty) {
-      debugPrint('[SpeechService] 目录中无 tokens.txt: $modelDir');
-      return;
-    }
-    final tokensPath = tokenFile.path;
-
-    // ── 架构检测 ──
-    sherpa.OfflineModelConfig modelConfig;
-
-    final hasEncoder = onnx.containsKey('encoder.onnx') ||
-        onnx.keys.any((k) => k.contains('encoder') && k.endsWith('.onnx'));
-    final hasDecoder = onnx.containsKey('decoder.onnx') ||
-        onnx.keys.any((k) => k.contains('decoder') && k.endsWith('.onnx'));
-    final hasJoiner = onnx.containsKey('joiner.onnx') ||
-        onnx.keys.any((k) => k.contains('joiner') && k.endsWith('.onnx'));
-
-    // helper: find a key by substring match
-    String? _findPath(bool Function(String k) pred) {
-      for (final e in onnx.entries) {
-        if (pred(e.key)) return e.value.path;
-      }
-      return null;
-    }
-
-    // 判定是否有 paraformer 类文件名 → streaming Paraformer 也是 Transducer
-    // （encoder + decoder，joiner optional）
-    final _isParaformer =
-        onnx.keys.any((k) => k.contains('paraformer')) ||
-        modelDir.toLowerCase().contains('paraformer');
-
-    if (hasEncoder && hasDecoder && hasJoiner) {
-      // Transducer（Zipformer 等三文件）
-      final enc = _findPath((k) => k.contains('encoder'))!;
-      final dec = _findPath((k) => k.contains('decoder'))!;
-      final jnr = _findPath((k) => k.contains('joiner'))!;
-      debugPrint('[SpeechService] 检测到 Transducer 架构');
-      final cfg = sherpa.OfflineTransducerModelConfig(
-        encoder: enc,
-        decoder: dec,
-        joiner: jnr,
-      );
-      modelConfig = sherpa.OfflineModelConfig(
-        transducer: cfg,
-        tokens: tokensPath,
-        debug: false,
-        numThreads: 1,
-      );
-    } else if (hasEncoder && hasDecoder && _isParaformer) {
-      // Paraformer streaming: encoder + decoder, no joiner
-      final enc = _findPath((k) => k.contains('encoder'))!;
-      final dec = _findPath((k) => k.contains('decoder'))!;
-      debugPrint('[SpeechService] 检测到 Paraformer 流式架构');
-      final cfg = sherpa.OfflineTransducerModelConfig(
-        encoder: enc,
-        decoder: dec,
-        joiner: '', // Paraformer streaming 不需要 joiner
-      );
-      modelConfig = sherpa.OfflineModelConfig(
-        transducer: cfg,
-        tokens: tokensPath,
-        debug: false,
-        numThreads: 1,
-      );
-    } else if (hasEncoder && hasDecoder) {
-      // Whisper
-      final enc = _findPath((k) => k.contains('encoder'))!;
-      final dec = _findPath((k) => k.contains('decoder'))!;
-      debugPrint('[SpeechService] 检测到 Whisper 架构');
-      final cfg = sherpa.OfflineWhisperModelConfig(
-        encoder: enc,
-        decoder: dec,
-        language: '',
-        task: '',
-      );
-      modelConfig = sherpa.OfflineModelConfig(
-        whisper: cfg,
-        tokens: tokensPath,
-        debug: false,
-        numThreads: 1,
-      );
-    } else if (onnx.length == 1) {
-      final key = onnx.keys.first;
-      final path = onnx.values.first.path;
-      if (key.contains('paraformer')) {
-        debugPrint('[SpeechService] 检测到 Paraformer 架构');
-        final cfg = sherpa.OfflineParaformerModelConfig(model: path);
-        modelConfig = sherpa.OfflineModelConfig(
-          paraformer: cfg,
-          tokens: tokensPath,
-          debug: false,
-          numThreads: 1,
-        );
-      } else if (key.contains('zipformer')) {
-        debugPrint('[SpeechService] 检测到 ZipformerCTC 架构');
-        final cfg = sherpa.OfflineZipformerCtcModelConfig(model: path);
-        modelConfig = sherpa.OfflineModelConfig(
-          zipformerCtc: cfg,
-          tokens: tokensPath,
-          debug: false,
-          numThreads: 1,
-        );
-      } else if (key.contains('omnilingual') ||
-          modelDir.toLowerCase().contains('omnilingual')) {
-        debugPrint('[SpeechService] 检测到 Omnilingual CTC 架构');
-        final cfg = sherpa.OfflineOmnilingualAsrCtcModelConfig(model: path);
-        modelConfig = sherpa.OfflineModelConfig(
-          omnilingual: cfg,
-          tokens: tokensPath,
-          debug: false,
-          numThreads: 1,
-        );
-      } else if (key.contains('sensevoice') ||
-          key.contains('int8') ||
-          modelDir.toLowerCase().contains('sensevoice')) {
-        debugPrint('[SpeechService] 检测到 SenseVoice 架构');
-        final cfg = sherpa.OfflineSenseVoiceModelConfig(
-          model: path,
-          language: '',
-          useInverseTextNormalization: false,
-        );
-        modelConfig = sherpa.OfflineModelConfig(
-          senseVoice: cfg,
-          tokens: tokensPath,
-          debug: false,
-          numThreads: 1,
-        );
-      } else {
-        // fallback → SenseVoice
-        debugPrint('[SpeechService] 无法判定架构，回退 SenseVoice');
-        final cfg = sherpa.OfflineSenseVoiceModelConfig(
-          model: path,
-          language: '',
-          useInverseTextNormalization: false,
-        );
-        modelConfig = sherpa.OfflineModelConfig(
-          senseVoice: cfg,
-          tokens: tokensPath,
-          debug: false,
-          numThreads: 1,
-        );
-      }
-    } else {
-      // 多个 .onnx 但不符合已知多文件模式 → 回退到 SenseVoice，用第一个 .onnx
-      final path = onnx.values.first.path;
-      debugPrint('[SpeechService] 无法判定架构，回退 SenseVoice: $modelDir');
-      final cfg = sherpa.OfflineSenseVoiceModelConfig(
-        model: path,
-        language: '',
-        useInverseTextNormalization: false,
-      );
-      modelConfig = sherpa.OfflineModelConfig(
-        senseVoice: cfg,
-        tokens: tokensPath,
-        debug: false,
-        numThreads: 1,
-      );
-    }
-
-    try {
-      final config = sherpa.OfflineRecognizerConfig(model: modelConfig);
-      _recognizer = sherpa.OfflineRecognizer(config);
-      _loadedDir = modelDir;
-      debugPrint('[SpeechService] 模型加载成功: $modelDir');
-    } catch (e) {
-      debugPrint('[SpeechService] 模型加载失败: $e');
+    // 架构检测 + 建 recognizer 统一下沉到共享工厂，避免与 worker isolate
+    // 各维护一份逻辑导致漂移（见 speech_model_factory.dart）
+    final rec = buildOfflineRecognizer(modelDir);
+    if (rec == null) {
+      debugPrint('[SpeechService] 模型加载失败: $modelDir');
       _recognizer = null;
       _loadedDir = null;
+      return;
     }
+
+    _recognizer = rec;
+    _loadedDir = modelDir;
+    debugPrint('[SpeechService] 模型加载成功: $modelDir');
   }
 
   /// 转写一个 WAV 文件，返回识别文本。
@@ -252,8 +74,57 @@ class SpeechService {
       // 完成 native 库加载；这里不需要再调用一次。
       final wave = sherpa.readWave(wavPath);
       final stream = r.createStream();
-      stream.acceptWaveform(
-          samples: wave.samples, sampleRate: wave.sampleRate);
+      stream.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
+      r.decode(stream);
+      final result = r.getResult(stream);
+      final text = result.text;
+      stream.free();
+      return text;
+    } catch (e) {
+      debugPrint('[SpeechService] 转写失败: $e');
+      return null;
+    }
+  }
+
+  /// 转写 WAV，但若音频近乎静音则直接返回空字符串，跳过 ASR 推理。
+  ///
+  /// 用于实时字幕：视频里大量无台词的空白段（纯音乐、过场、喘息）占很高
+  /// 比例，静音检测在纯 Dart 侧 O(n) 算 RMS，远比跑一次 SenseVoice 便宜，
+  /// 能显著降低边播边转写的 CPU 占用与发热。
+  ///
+  /// 返回 `null` 表示「模型未加载/读文件失败」（调用方判定为异常）；
+  /// 返回空字符串表示「检测为静音，已跳过」；
+  /// 返回非空字符串表示正常转写结果。
+  Future<String?> transcribeFileSkipSilence(
+    String wavPath, {
+    double silenceThreshold = 0.01,
+  }) async {
+    final r = _recognizer;
+    if (r == null) return null;
+    if (!File(wavPath).existsSync()) return null;
+
+    try {
+      final wave = sherpa.readWave(wavPath);
+      final samples = wave.samples;
+
+      // RMS 静音检测：均方根 < 阈值 判为静音
+      if (samples.isNotEmpty) {
+        var sumSq = 0.0;
+        // 抽样计算（每 8 个点取 1），大段音频也很快
+        final stride = (samples.length ~/ 8000).clamp(1, 1 << 31);
+        for (var i = 0; i < samples.length; i += stride) {
+          final v = samples[i];
+          sumSq += v * v;
+        }
+        final count = (samples.length / stride).ceil();
+        final rms = count > 0 ? sqrt(sumSq / count) : 0.0;
+        if (rms < silenceThreshold) {
+          return ''; // 静音，跳过
+        }
+      }
+
+      final stream = r.createStream();
+      stream.acceptWaveform(samples: samples, sampleRate: wave.sampleRate);
       r.decode(stream);
       final result = r.getResult(stream);
       final text = result.text;

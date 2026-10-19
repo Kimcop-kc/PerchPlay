@@ -10,6 +10,7 @@ import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/storage_manager.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_settings_provider.dart';
@@ -85,6 +86,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 24),
                     _sectionHeader('影库'),
                     _buildLibrarySettings(),
+                    const SizedBox(height: 24),
+                    _sectionHeader('存储与缓存'),
+                    _buildStorageSettings(),
                     const SizedBox(height: 24),
                     if (device.brand.isChineseBrand)
                       _buildChineseRomOptimization(context, device),
@@ -645,7 +649,462 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ),
+        const SizedBox(height: 8),
+        GlassCard(
+          radius: GlassTheme.radiusMd,
+          tint: GlassTheme.tintWhite,
+          padding: const EdgeInsets.all(0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+            child: ListTile(
+              leading: const Icon(Icons.translate,
+                  color: GlassTheme.accentPink, size: 22),
+              title: const Text('AI 翻译设置',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500)),
+              subtitle: const Text('翻译后端、LLM Key 与目标语言',
+                  style: TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right,
+                  color: GlassTheme.textTertiary, size: 20),
+              onTap: () => _showTranslateSettings(context),
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// 存储与缓存：展示各类数据占用并可清理。
+  Widget _buildStorageSettings() {
+    return GlassCard(
+      radius: GlassTheme.radiusMd,
+      tint: GlassTheme.tintWhite,
+      padding: const EdgeInsets.all(12),
+      child: FutureBuilder<List<StorageItem>>(
+        future: StorageManager.instance.scan(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: GlassTheme.accentPurple,
+                  ),
+                ),
+              ),
+            );
+          }
+          final items = snapshot.data ?? const <StorageItem>[];
+          if (items.isEmpty) {
+            return const Text('暂无缓存数据',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 13));
+          }
+          return Column(
+            children: [
+              for (final item in items) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(
+                    item.canClear
+                        ? Icons.folder_open_rounded
+                        : Icons.storage_rounded,
+                    color: item.canClear
+                        ? GlassTheme.accentTeal
+                        : GlassTheme.textTertiary,
+                    size: 20,
+                  ),
+                  title: Text(
+                    item.label,
+                    style: const TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    item.description,
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 11),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        StorageManager.instance.formatSize(item.sizeBytes),
+                        style: const TextStyle(
+                            color: GlassTheme.textSecondary, fontSize: 13),
+                      ),
+                      if (item.canClear) ...[
+                        const SizedBox(width: 8),
+                        GlassButton.outlined(
+                          label: '清理',
+                          height: 30,
+                          foregroundColor: GlassTheme.accentPink,
+                          onTap: () => _confirmClearStorage(item),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (item != items.last)
+                  const Divider(height: 1, color: Color(0x1A000000)),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmClearStorage(StorageItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GlassTheme.bg.withOpacity(0.95),
+        title: Text('清理「${item.label}」？'),
+        content: Text(
+          '将释放 ${StorageManager.instance.formatSize(item.sizeBytes)}。\n${item.description}',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清理',
+                style: TextStyle(color: GlassTheme.accentPink)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await StorageManager.instance.clearItem(item.id);
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已清理「${item.label}」'),
+          backgroundColor: GlassTheme.accentTeal,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 「AI 翻译设置」弹窗：翻译后端 / LLM Key / 目标语言
+  void _showTranslateSettings(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom + 24;
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          String backend = _settings.translateBackend;
+          String targetLang = _settings.translateTargetLang;
+          final keyCtrl = TextEditingController(text: _settings.llmApiKey);
+          final urlCtrl =
+              TextEditingController(text: _settings.llmBaseUrl);
+          final modelCtrl = TextEditingController(text: _settings.llmModel);
+
+          const backendOptions = <(String, String, IconData)>[
+            ('google', 'Google 免费', Icons.public_rounded),
+            ('llm', 'LLM 自配 Key', Icons.key_rounded),
+            ('local', '本地离线', Icons.offline_pin_rounded),
+          ];
+
+          const langOptions = <(String, String)>[
+            ('en', 'en (英文)'),
+            ('ja', 'ja (日文)'),
+            ('ko', 'ko (韩文)'),
+            ('fr', 'fr (法文)'),
+            ('de', 'de (德文)'),
+            ('es', 'es (西班牙文)'),
+            ('ru', 'ru (俄文)'),
+            ('yue', 'yue (粤语)'),
+          ];
+
+          Future<void> persist() async {
+            await _settings.setTranslateBackend(backend);
+            await _settings.setLlmApiKey(keyCtrl.text.trim());
+            await _settings.setLlmBaseUrl(urlCtrl.text.trim());
+            await _settings.setLlmModel(modelCtrl.text.trim());
+            await _settings.setTranslateTargetLang(targetLang);
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ClipRRect(
+              borderRadius:
+                  BorderRadius.circular(GlassTheme.radiusLg),
+              child: SafeBackdropFilter(
+                blurSigma: 24,
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.88),
+                        Colors.white.withOpacity(0.6),
+                      ],
+                    ),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.4), width: 0.8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.translate,
+                                color: GlassTheme.accentPink, size: 22),
+                            const SizedBox(width: 8),
+                            const Text('AI 翻译设置',
+                                style: TextStyle(
+                                    color: GlassTheme.textPrimary,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 翻译后端单选
+                        const Text('翻译后端',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        for (final (value, label, icon) in backendOptions)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassCard(
+                              radius: GlassTheme.radiusMd,
+                              tint: backend == value
+                                  ? GlassTheme.tintPink
+                                  : GlassTheme.tintWhite,
+                              padding: const EdgeInsets.all(0),
+                              enableHover: false,
+                              onTap: () =>
+                                  setDialogState(() => backend = value),
+                              child: ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(GlassTheme.radiusMd),
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(icon,
+                                      color: backend == value
+                                          ? GlassTheme.accentPink
+                                          : GlassTheme.textSecondary,
+                                      size: 20),
+                                  title: Text(label,
+                                      style: TextStyle(
+                                          color: GlassTheme.textPrimary,
+                                          fontSize: 14,
+                                          fontWeight: backend == value
+                                              ? FontWeight.w600
+                                              : FontWeight.w400)),
+                                  trailing: Icon(
+                                    backend == value
+                                        ? Icons.radio_button_checked
+                                        : Icons.radio_button_unchecked,
+                                    color: backend == value
+                                        ? GlassTheme.accentPink
+                                        : GlassTheme.textTertiary,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        // LLM 专属字段
+                        if (backend == 'llm') ...[
+                          const SizedBox(height: 4),
+                          const Text('API Key',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: keyCtrl,
+                                  obscureText: true,
+                                  obscuringCharacter: '\u2022',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: GlassTheme.textPrimary),
+                                  decoration: _translateInputDecoration(
+                                      '粘贴 LLM API Key'),
+                                  onChanged: (_) =>
+                                      setDialogState(() {}),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (keyCtrl.text.isNotEmpty)
+                                GlassButton.outlined(
+                                  label: '清除',
+                                  height: 42,
+                                  foregroundColor: GlassTheme.accentPink,
+                                  onTap: () =>
+                                      setDialogState(() => keyCtrl.clear()),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Text('Base URL',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: urlCtrl,
+                            keyboardType: TextInputType.url,
+                            style: const TextStyle(
+                                fontSize: 13, color: GlassTheme.textPrimary),
+                            decoration: _translateInputDecoration(
+                                'OpenAI 兼容 chat/completions 地址'),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text('Model',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: modelCtrl,
+                            style: const TextStyle(
+                                fontSize: 13, color: GlassTheme.textPrimary),
+                            decoration:
+                                _translateInputDecoration('模型名称'),
+                            onChanged: (_) => setDialogState(() {}),
+                          ),
+                        ],
+
+                        const SizedBox(height: 16),
+                        const Text('目标语言',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 44,
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.5),
+                            borderRadius:
+                                BorderRadius.circular(GlassTheme.radiusSm),
+                            border: Border.all(
+                                color: Colors.black.withOpacity(0.1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: targetLang,
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down,
+                                  color: GlassTheme.textTertiary),
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  color: GlassTheme.textPrimary),
+                              items: [
+                                for (final (code, label) in langOptions)
+                                  DropdownMenuItem<String>(
+                                    value: code,
+                                    child: Text(label),
+                                  ),
+                              ],
+                              onChanged: (v) {
+                                if (v == null) return;
+                                setDialogState(
+                                    () => targetLang = v);
+                              },
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GlassButton.outlined(
+                                label: '取消',
+                                height: 46,
+                                foregroundColor: GlassTheme.textSecondary,
+                                onTap: () => Navigator.pop(dialogCtx),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GlassButton.filled(
+                                label: '保存',
+                                height: 46,
+                                onTap: () async {
+                                  final navigator =
+                                      Navigator.of(dialogCtx);
+                                  await persist();
+                                  if (mounted) setState(() {});
+                                  navigator.pop();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  InputDecoration _translateInputDecoration(String hintText) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(
+          fontSize: 12, color: GlassTheme.textTertiary),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
+        borderSide: const BorderSide(color: GlassTheme.accentPink),
+      ),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.5),
     );
   }
 

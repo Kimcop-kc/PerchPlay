@@ -13,6 +13,26 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// 统一所有 Android 子项目（含插件）的 compileSdk 到 36，解决 Flutter 3.47
+// 引入的新传递依赖（androidx.window/exifinterface/package_info_plus 等）要求
+// compileSdk ≥33/34/36，而大量旧插件写死 compileSdk 31/33 导致的冲突。
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.library') {
+        if (project.hasProperty('android')) {
+            try {
+                project.android.compileSdkVersion = 36
+            } catch (ignored) {}
+        }
+    }
+    project.plugins.withId('com.android.application') {
+        if (project.hasProperty('android')) {
+            try {
+                project.android.compileSdkVersion = 36
+            } catch (ignored) {}
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

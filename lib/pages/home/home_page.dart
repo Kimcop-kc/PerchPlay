@@ -19,6 +19,7 @@ import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_sheet.dart';
 import '../../widgets/scrape/scrape_widgets.dart';
+import '../../pages/folders/folder_browser_page.dart';
 
 class HomePage extends StatelessWidget {
   final Widget child;
@@ -86,6 +87,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   /// 排序 / 筛选（持久化，下次进入保持）
   LibrarySort _sort = LibrarySort.name;
   LibraryFilter _filter = LibraryFilter.all;
+
+  /// 首页视图切换：false=全部视频，true=文件夹（仅在本页内切换，不变路由）
+  bool _showFolders = false;
 
   @override
   void initState() {
@@ -215,12 +219,17 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   @override
   Widget build(BuildContext context) {
-    final libraryAsync = ref.watch(libraryProvider);
-    // 这里仍然**不** watch playerProvider：小窗挪到 AdaptiveScaffold 了，
-    // 首页连"有没有小窗"都不用知道，播放位置每秒更新更不该重建这层网格。
     final columns = AppBreakpoints.gridColumns(context);
     final hp = AppBreakpoints.horizontalPadding(context);
 
+    // 文件夹视图不依赖影库：整块替换内容区，标题行保留分段切换便于切回
+    if (_showFolders) {
+      return _buildFolderLayout(hp);
+    }
+
+    final libraryAsync = ref.watch(libraryProvider);
+    // 这里仍然**不** watch playerProvider：小窗挪到 AdaptiveScaffold 了，
+    // 首页连"有没有小窗"都不用知道，播放位置每秒更新更不该重建这层网格。
     return libraryAsync.when(
       data: (all) {
         // 影库本身为空 vs 筛选后为空，是两种情况，不能都显示"影库为空"
@@ -280,6 +289,26 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
+  /// 文件夹视图：标题行保留「全部视频 / 文件夹」分段切换，内容区替换为
+  /// FolderBrowserPage。它自身是完整页面（自带 Scaffold 与顶栏），这里去掉
+  /// 顶部状态栏内边距，避免与首页标题行重复留白。
+  Widget _buildFolderLayout(double hp) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        _buildHeader(hp),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: const FolderBrowserPage(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHeader(double hp,
       {bool compact = false, int totalCount = 0, int shownCount = 0}) {
     // 沉浸式：标题延伸到状态栏下，紧贴安全区顶部
@@ -312,14 +341,19 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ],
             Row(
               children: [
-                Icon(Icons.movie_rounded,
-                    size: compact ? 16 : 18, color: GlassTheme.textTertiary),
+                Icon(
+                  _showFolders ? Icons.folder_rounded : Icons.movie_rounded,
+                  size: compact ? 16 : 18,
+                  color: GlassTheme.textTertiary,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   // 有筛选/搜索时显示"命中数 / 总数"，避免误以为影库变小了
-                  (shownCount > 0 && shownCount < totalCount)
-                      ? '$shownCount / $totalCount 个视频'
-                      : '全部视频',
+                  _showFolders
+                      ? '文件夹浏览'
+                      : (shownCount > 0 && shownCount < totalCount)
+                          ? '$shownCount / $totalCount 个视频'
+                          : '全部视频',
                   style: TextStyle(
                     color: GlassTheme.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -327,24 +361,109 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     letterSpacing: 0.4,
                   ),
                 ),
-                const Spacer(),
-                _buildSortMenu(),
-                _buildFilterMenu(),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  color: GlassTheme.textTertiary,
-                  onPressed: () async {
-                    final notifier = ref.read(permissionProvider.notifier);
-                    await notifier.requestVideoPermission();
-                    if (ref.read(permissionProvider).hasVideoPermission) {
-                      await ref.read(libraryProvider.notifier).scan();
-                    }
-                  },
-                ),
+                const SizedBox(width: 12),
+                _buildViewSwitcher(),
+                if (!_showFolders) ...[
+                  const Spacer(),
+                  _buildSortMenu(),
+                  _buildFilterMenu(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    color: GlassTheme.textTertiary,
+                    onPressed: () async {
+                      final notifier = ref.read(permissionProvider.notifier);
+                      await notifier.requestVideoPermission();
+                      if (ref.read(permissionProvider).hasVideoPermission) {
+                        await ref.read(libraryProvider.notifier).scan();
+                      }
+                    },
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 10),
-            _buildSearchField(),
+            if (!_showFolders) ...[
+              const SizedBox(height: 10),
+              _buildSearchField(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 视图切换器：在「全部视频」与「文件夹」之间切换（玻璃胶囊分段控件）。
+  ///
+  /// 不使用 Material TabBar（视觉突兀），改用与项目一致的胶囊分段：
+  /// 外层是一枚半透明玻璃胶囊，选中项用紫色高亮 + 白字，未选中为
+  /// 灰字，切换时用 AnimtedContainer 平滑滑动高亮。
+  Widget _buildViewSwitcher() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.08),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildSegmentItem(
+            selected: !_showFolders,
+            icon: Icons.movie_rounded,
+            label: '全部视频',
+            onTap: () => setState(() => _showFolders = false),
+          ),
+          _buildSegmentItem(
+            selected: _showFolders,
+            icon: Icons.folder_rounded,
+            label: '文件夹',
+            onTap: () => setState(() => _showFolders = true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 分段里的单个胶囊项
+  Widget _buildSegmentItem({
+    required bool selected,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? GlassTheme.accentPurple
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+          boxShadow: selected ? GlassTheme.glassShadow(GlassTheme.accentPurple) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: selected ? Colors.white : GlassTheme.textTertiary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : GlassTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),

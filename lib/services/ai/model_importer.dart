@@ -24,17 +24,16 @@ class ModelImporter {
   Future<int> import({
     required String modelId,
   }) async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const [
         'zip', 'tar', 'gz', 'bz2', 'xz',
         'onnx', 'txt', 'bin', 'safetensors',
       ],
     );
-    if (result == null || result.files.isEmpty) return 0;
+    if (result == null) return 0;
 
-    final picked = result.files.single;
+    final picked = result;
     if (picked.path == null) {
       throw Exception('文件路径不可用，可能是内容 URI（Android SAF）');
     }
