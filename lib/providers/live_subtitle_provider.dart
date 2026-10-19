@@ -310,6 +310,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     final candidates = <String>[];
     await for (final entry in base.list(followLinks: false)) {
       if (entry is! Directory) continue;
+      // 顶层找 onnx + tokens
       final files = await entry.list().toList();
       final hasOnnx = files.any(
         (f) => f is File && f.path.toLowerCase().endsWith('.onnx'),
@@ -321,7 +322,21 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
       });
       if (hasOnnx && hasTokens) {
         candidates.add(entry.path);
+        continue;
       }
+      // 顶层没有 → 递归一层再判（兼容带子目录的压缩包 / 手工导入）
+      try {
+        final deep = await entry.list(recursive: true).toList();
+        final deepOnnx = deep.any(
+          (f) => f is File && f.path.toLowerCase().endsWith('.onnx'),
+        );
+        final deepTokens = deep.any((f) {
+          if (f is! File) return false;
+          final name = f.path.split(Platform.pathSeparator).last;
+          return name == 'tokens.txt' || name == 'vocab.txt';
+        });
+        if (deepOnnx && deepTokens) candidates.add(entry.path);
+      } catch (_) {}
     }
 
     if (candidates.isEmpty) return null;

@@ -129,10 +129,30 @@ String? _transcribePath(
     stream.acceptWaveform(samples: samples, sampleRate: wave.sampleRate);
     recognizer.decode(stream);
     final result = recognizer.getResult(stream);
-    final text = result.text;
+    final raw = result.text;
     stream.free();
-    return text;
+    return _cleanAsrText(raw);
   } catch (_) {
     return null;
   }
+}
+
+/// 清洗 ASR 原始输出。
+///
+/// SenseVoice 会输出 `<|zh|><|NEUTRAL|><|Speech|><|woitn|>` 这类标签前缀，
+/// Whisper 偶尔也会带标记。不清理的话字幕里会出现一堆尖括号标签，
+/// 表现为「AI 识别出来了但显示的内容是乱的」。
+///
+/// 处理：
+///  1. 去掉 `<|...|>` 形式的标签 token；
+///  2. 合并连续重复的标点（SenseVoice 常见 `。。`）；
+///  3. 去掉首尾空白与开头多余的标点。
+String? _cleanAsrText(String raw) {
+  var s = raw.replaceAll(RegExp(r'<\|[^|]*\|>'), '');
+  // 压缩重复标点：。。 → 。，、、 → 、
+  s = s.replaceAll(RegExp(r'([。，、！？：；,.!?:;])\1+'), r'$1');
+  // 去掉开头连续的标点/空白（识别片段起始常有孤立标点）
+  s = s.replaceAll(RegExp(r'^[\s。，、！？：；,.!?:;\-—]+'), '');
+  s = s.trim();
+  return s;
 }

@@ -43,48 +43,40 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   Future<void> _refreshStatus() async {
     final dir = await ModelDownloader.modelsDir();
     final ids = <String>{};
-    final toDelete = <String>[];
+    // 有问题的模型：只标记、不自动删除。
+    // 之前是「缺 tokens / SHA 校验不过 → 立刻删目录」，一旦校验逻辑
+    // 有偏差（例如临时文件被算进清单）就会把用户刚下好的模型删掉，
+    // 表现为「模型下完一刷新就没了」。改为标记后由用户决定。
+    final broken = <String>[];
     if (await dir.exists()) {
       await for (final entry in dir.list(followLinks: false)) {
-        if (entry is Directory) {
-          final raw =
-              await entry.list().toList();
-          final files = raw.whereType<File>().toList();
-          final hasOnnx = files.any(
-              (f) => f.path.toLowerCase().endsWith('.onnx'));
-          if (!hasOnnx) continue;
+        if (entry is! Directory) continue;
+        final files = (await entry.list().toList()).whereType<File>().toList();
+        final hasOnnx = files.any(
+            (f) => f.path.toLowerCase().endsWith('.onnx'));
+        if (!hasOnnx) continue; // 不是模型目录（可能是空目录/别的资料）
 
-          final id = entry.path.split(Platform.pathSeparator).last;
+        final id = entry.path.split(Platform.pathSeparator).last;
 
-          // 完整性检查：必须有 tokens.txt 或 vocab.txt，否则自动删除
-          final hasTokens = files.any((f) {
-            final name = f.path.split(Platform.pathSeparator).last;
-            return name == 'tokens.txt' || name == 'vocab.txt';
-          });
-          if (!hasTokens) {
-            toDelete.add(id);
-            try {
-              await entry.delete(recursive: true);
-              debugPrint('[ModelPage] 自动删除损坏模型（缺 tokens）: $id');
-            } catch (_) {}
-            continue;
-          }
-
-          // SHA-256 校验（有 manifest 才验，兼容旧版本无清单的模型）
-          final corrupted =
-              await ModelDownloader.verifyModel(entry.path);
-          if (corrupted.isNotEmpty) {
-            debugPrint(
-                '[ModelPage] SHA-256 校验失败，自动删除: $id → $corrupted');
-            toDelete.add(id);
-            try {
-              await entry.delete(recursive: true);
-            } catch (_) {}
-            continue;
-          }
-
-          ids.add(id);
+        // 完整性检查：必须有 tokens.txt 或 vocab.txt，否则 AI 加载不了
+        final hasTokens = files.any((f) {
+          final name = f.path.split(Platform.pathSeparator).last;
+          return name == 'tokens.txt' || name == 'vocab.txt';
+        });
+        if (!hasTokens) {
+          broken.add('$id（缺 tokens.txt）');
+          continue;
         }
+
+        // SHA-256 校验（有 manifest 才验，兼容旧版本无清单的模型）
+        final corrupted = await ModelDownloader.verifyModel(entry.path);
+        if (corrupted.isNotEmpty) {
+          debugPrint('[ModelPage] SHA-256 校验不通过: $id → $corrupted');
+          broken.add('$id（校验不通过）');
+          continue;
+        }
+
+        ids.add(id);
       }
     }
     if (!mounted) return;
@@ -95,14 +87,14 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       _checking = false;
     });
 
-    // 静默通知用户有模型被自动清理了
-    if (toDelete.isNotEmpty && mounted) {
+    if (broken.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '${toDelete.length} 个模型已损坏，已自动清除\n${toDelete.take(2).join('、')}${toDelete.length > 2 ? ' 等' : ''}'),
-          backgroundColor: GlassTheme.accentPink,
-          duration: const Duration(seconds: 4),
+              '${broken.length} 个模型不可用（未删除）：\n${broken.take(3).join('、')}'
+              '${broken.length > 3 ? ' 等' : ''}\n可删除后重新下载'),
+          backgroundColor: const Color(0xFFFF9500),
+          duration: const Duration(seconds: 6),
         ),
       );
     }

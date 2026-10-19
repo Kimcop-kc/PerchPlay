@@ -33,12 +33,35 @@ sherpa.OfflineRecognizer? buildOfflineRecognizer(
     return null;
   }
 
-  final files = d.listSync().whereType<File>().toList();
-  final onnx = <String, File>{};
+  // 先扫顶层；顶层找不到 .onnx 时**递归一层**兜底。
+  //
+  // 为什么需要兜底：不同下载源/用户导入的压缩包目录结构不统一，模型文件
+  // 可能落在 `model/xxx.onnx` 这类子目录里。下载侧和导入侧已经尽量拍平，
+  // 但这里再兜一层，保证「只要文件在目录内的某处，AI 就一定能加载」——
+  // 避免出现「模型明明下好了，实时字幕却说没找到模型」。
+  var files = d.listSync().whereType<File>().toList();
+  var onnx = <String, File>{};
   for (final f in files) {
     final name = f.path.split(Platform.pathSeparator).last.toLowerCase();
     if (name.endsWith('.onnx')) onnx[name] = f;
   }
+
+  if (onnx.isEmpty) {
+    // 递归一层找 .onnx
+    try {
+      for (final e in d.listSync(recursive: true)) {
+        if (e is! File) continue;
+        final name = e.path.split(Platform.pathSeparator).last.toLowerCase();
+        if (name.endsWith('.onnx')) onnx[name] = e;
+      }
+      if (onnx.isNotEmpty) {
+        // tokens 也跟着用递归找到的那批（同一子树）
+        files = d.listSync(recursive: true).whereType<File>().toList();
+        debugPrint('[SpeechFactory] 顶层无 onnx，已递归找到 ${onnx.length} 个');
+      }
+    } catch (_) {}
+  }
+
   if (onnx.isEmpty) {
     debugPrint('[SpeechFactory] 目录中无 .onnx 文件: $modelDir');
     return null;
@@ -101,11 +124,16 @@ sherpa.OfflineRecognizer? buildOfflineRecognizer(
       numThreads: numThreads,
     );
   } else if (hasEncoder && hasDecoder) {
+    // Whisper：language / task 必须给有效值，否则 sherpa-onnx 会**输出空文本**。
+    //
+    // 之前这里是空字符串（language: '' / task: ''），实测会导致识别结果为空 ——
+    // 表象就是「模型下好了、也加载成功了、但字幕一个字都出不来」。
+    // 'auto' 让 Whisper 自动判语种，'transcribe' 表示做转写（而非翻译成英文）。
     final cfg = sherpa.OfflineWhisperModelConfig(
       encoder: _findPath((k) => k.contains('encoder'))!,
       decoder: _findPath((k) => k.contains('decoder'))!,
-      language: '',
-      task: '',
+      language: 'auto',
+      task: 'transcribe',
     );
     modelConfig = sherpa.OfflineModelConfig(
       whisper: cfg,

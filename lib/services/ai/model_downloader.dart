@@ -695,20 +695,27 @@ class ModelDownloader {
     return corrupted;
   }
 
-  /// 扫描模型目录下所有文件（排除 manifest.json），计算 SHA-256 并写入 manifest。
+  /// 扫描模型目录下所有**最终模型文件**（排除 manifest / .part / .dstate），
+  /// 计算 SHA-256 并写入 manifest。
   ///
   /// 下载成功后调用；也供导入器导入完批量写入。
+  ///
+  /// 为什么必须排除临时文件：下载中途会在同一目录留下 `xxx.part.N` 和
+  /// `xxx.dstate`。若把它们也写进 manifest，等临时文件清理后
+  /// [verifyModel] 就会判定「文件缺失 → 模型损坏 → 自动删除」，
+  /// 表现为「模型下好了，一刷新就没了」。
   static Future<void> recomputeManifest(Directory dir) async {
     if (!await dir.exists()) return;
     final entries = <String, String>{};
     await for (final entity in dir.list(recursive: false)) {
-      if (entity is File &&
-          entity.path.split(Platform.pathSeparator).last != _manifestName) {
-        final bytes = await entity.readAsBytes();
-        final hash = sha256.convert(bytes).toString();
-        final name = entity.path.split(Platform.pathSeparator).last;
-        entries[name] = hash;
-      }
+      if (entity is! File) continue;
+      final name = entity.path.split(Platform.pathSeparator).last;
+      // 跳过清单自身与所有下载中间态
+      if (name == _manifestName) continue;
+      if (name.endsWith('.dstate') || name.contains('.part.')) continue;
+      final bytes = await entity.readAsBytes();
+      final hash = sha256.convert(bytes).toString();
+      entries[name] = hash;
     }
     if (entries.isNotEmpty) {
       await _writeManifest(dir, entries);
@@ -754,18 +761,27 @@ class ModelDownloader {
     debugPrint('[Downloader] 解压完成，已删归档: ${archive.path}');
   }
 
-  /// 删除目录下的子文件 + .part / .dstate（保留目录本身）
+  /// 清理下载失败留下的**临时文件**（.part.N / .dstate / 半截归档）。
+  ///
+  /// 只删中间态，不动已经下好的模型文件 —— 原先的条件是
+  /// `name != _manifestName`（即删掉除 manifest 外的一切），多文件模型
+  /// 下载时若第 3 个文件失败，前 2 个已成功的文件会被一起删掉，
+  /// 用户看到的就是「下着下着整个模型没了」。
   Future<void> _cleanDir(Directory d) async {
     if (!(await d.exists())) return;
     await for (final entity in d.list(recursive: false)) {
-      if (entity is File) {
-        // 删除普通文件 + .part.N + .dstate
-        final name = entity.path.split(Platform.pathSeparator).last;
-        if (name.endsWith('.dstate') ||
-            name.contains('.part.') ||
-            name != _manifestName) {
+      if (entity is! File) continue;
+      final name = entity.path.split(Platform.pathSeparator).last;
+      final isTemp = name.endsWith('.dstate') ||
+          name.contains('.part.') ||
+          name.endsWith('.tmp') ||
+          name.endsWith('.tar.bz2') ||
+          name.endsWith('.tar.gz') ||
+          name.endsWith('.zip');
+      if (isTemp) {
+        try {
           await entity.delete();
-        }
+        } catch (_) {}
       }
     }
   }
