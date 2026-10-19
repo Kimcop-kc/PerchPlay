@@ -9,7 +9,6 @@ import '../../pages/history/history_page.dart';
 import '../../pages/cast/cast_page.dart';
 import '../../pages/nas/nas_browser_page.dart';
 import '../../pages/ai/ai_models_page.dart';
-import '../../pages/ai/transcribe_page.dart';
 
 class AppRouter {
   AppRouter._();
@@ -108,12 +107,6 @@ class AppRouter {
         name: 'aiModels',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AiModelsPage(),
-      ),
-      GoRoute(
-        path: '/transcribe',
-        name: 'transcribe',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const TranscribePage(),
       ),
     ],
   );
