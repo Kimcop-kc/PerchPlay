@@ -1228,6 +1228,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.skip_previous_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () =>
                               ref.read(playerProvider.notifier).playPrevious(),
                         ),
@@ -1236,6 +1237,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () => ref
                               .read(playerProvider.notifier)
                               .togglePlayPause(),
@@ -1243,6 +1245,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.skip_next_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () =>
                               ref.read(playerProvider.notifier).playNext(),
                         ),
@@ -1264,10 +1267,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: state.isPlaying ? 0 : 1,
-          child: GlassButton.filled(
-            icon: Icons.play_arrow_rounded,
-            width: (64 * scale).clamp(48, 80),
-            height: (64 * scale).clamp(48, 80),
+          // 只要一个干净的白色三角，不要毛玻璃底 —— 带背景压在画面上很突兀
+          child: Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: (76 * scale).clamp(56, 96),
+            shadows: const [
+              Shadow(color: Colors.black54, blurRadius: 12),
+            ],
           ),
         ),
       ),
@@ -1414,6 +1421,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           controller: _videoController,
           fit: BoxFit.contain,
           controls: NoVideoControls,
+          // 关闭 media_kit 内置的 Flutter 字幕层（SubtitleView）。
+          //
+          // 这是「字幕显示两个」的根因：SubtitleView 由
+          // subtitleViewConfiguration.visible 控制，**默认 true**，
+          // 和 mpv 的 libass 是两套独立的绘制路径。
+          // 只关 mpv 的 sub-visibility 不够，SubtitleView 仍会画一份，
+          // 叠加上本项目自绘的字幕浮层就是双字幕。
+          subtitleViewConfiguration: const SubtitleViewConfiguration(
+            visible: false,
+          ),
         ),
       ),
     );
