@@ -3,7 +3,31 @@
 一个用 Flutter 写的本地视频播放器，同时支持 **Android / iOS / iPadOS**。
 播放内核是 **media_kit（libmpv）**，界面走玻璃拟态（毛玻璃 + 紫青渐变）风格。
 
-当前版本：**1.0.49**（设置页「关于」里也能看到）
+当前版本：**1.0.75**
+
+---
+
+## 两个版本（重要）
+
+PerchPlay 发布两个 APK，**软件内版本号都是 1.0.75**，靠文件名区分：
+
+| 版本 | APK 文件名 | 差异 |
+|---|---|---|
+| **旗舰版（AI）** | `PerchPlay-1.0.75-ai-full.apk` | 含 AI 离线实时字幕、AI 字幕翻译、全片字幕生成、双语字幕等全部功能 |
+| **纯净版（Standard）** | `PerchPlay-1.0.75-standard.apk` | **不含**任何 AI 功能，只含播放器本身（HDR、高帧率、倍速、投屏、NAS 等全部保留） |
+
+**区别一句话**：旗舰版 = 纯净版 + 「AI 离线实时字幕 + AI 翻译」模块。除此之外两个版本的其它功能（播放、HDR、字幕、投屏、NAS、UI）完全一致。
+
+### 为什么版本号一样
+
+软件内版本号保持 `1.0.75` 不变（不做 `1.0.74`/`1.0.75` 这种区分），是因为两个版本**功能等价、代码同源**，区别只在「是否捆绑 AI 模块」。区分靠 APK 文件名 + Release 说明，不靠版本号，避免用户误以为「纯净版是旧版」。
+
+### 代码分支
+
+| 分支 | 对应版本 | 说明 |
+|---|---|---|
+| `master` | 旗舰版（AI） | AI 字幕/翻译代码 + onnxruntime/sherpa_onnx 依赖 |
+| `standard` | 纯净版 | 从 master 移除所有 AI 层，无 sherpa_onnx/onnxruntime/加密依赖 |
 
 ---
 
@@ -156,7 +180,7 @@ flutter build appbundle --release    # Google Play 用 AAB
 flutter build ios --release          # iOS（需 macOS + Xcode）
 ```
 
-Android 的 `release` 构建目前用 debug 签名（`signingConfigs.debug`），自测安装够用；上架前请换成自己的 keystore。
+Android 的 `release` 构建：本仓库提供默认回退（无 keystore 时用 debug 签名，保证 clone 后可直接构建）。正式发布需在 `android/key.properties` 里指向你自己的 keystore（该文件已被 `.gitignore` 忽略，不会进仓库）。
 iOS 首次在 Xcode 里需要改两处：**Bundle ID**（现为 `com.vidflow.vidflow`）和 **Signing Team**，然后打开 `Runner.xcworkspace`（不是 `.xcodeproj`）。
 
 ### 权限说明（Android）
