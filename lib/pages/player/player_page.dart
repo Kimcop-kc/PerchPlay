@@ -89,6 +89,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
     // 方向：平板强制横屏（只写横屏系统才会触发旋转），手机四方向全开
     OrientationPolicy.applyPlayer();
+    // 沉浸式状态栏：黑色背景 + 透明状态栏 + 白色图标（否则深色图标在黑底看不清）
+    _applyPlayerFullscreenUi();
     // 延迟到 widget tree 构建完成后加载视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -97,6 +99,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _checkPipSupport();
     });
     _bindLiveSubtitleSync();
+  }
+
+  /// 进入播放页时设置的系统 UI 样式（透明状态栏 + 白色图标，沉浸式）。
+  static void _applyPlayerFullscreenUi() {
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.black,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
   }
 
   /// 把播放器「播放/暂停」状态单向同步给实时字幕引擎。
@@ -159,6 +173,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void _restoreIdleOrientation() {
     OrientationPolicy.applyIdle();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 恢复浅色状态栏图标（首页等页面是浅色背景，深色图标）
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: GlassTheme.bg,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
   }
 
   /// 退出播放器：先落盘进度、恢复方向，再返回
@@ -183,6 +205,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       await OrientationPolicy.applyFullscreen();
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
+    // 无论进出全屏，都保持白色状态栏图标（播放页黑底）
+    _applyPlayerFullscreenUi();
     if (mounted) setState(() {});
   }
 
@@ -370,6 +394,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       },
       child: Scaffold(
         backgroundColor: Colors.black,
+        // 视频铺到状态栏后面，实现真正的沉浸式（顶栏/底栏自己处理安全区）
+        extendBodyBehindAppBar: true,
+        extendBody: true,
         body: Stack(
           children: [
             _buildVideoLayer(state),
