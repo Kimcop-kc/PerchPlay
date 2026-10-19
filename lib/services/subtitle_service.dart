@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart' as p;
 import '../models/subtitle_model.dart';
 import '../core/constants/app_constants.dart';
@@ -94,10 +95,44 @@ class SubtitleService {
     return out;
   }
 
+  /// 读字幕文件并做**容错解码**。
+  ///
+  /// 为什么不直接用 `readAsString()`：
+  ///  - 国内大量中文字幕是 **GBK/GB2312** 编码，用 UTF-8 硬解会抛
+  ///    `FormatException`，表现为「字幕文件存在却加载失败/字幕空白」；
+  ///  - 部分文件带 **UTF-8 BOM**（EF BB BF），不剥掉会让第一行
+  ///    （通常是 `1` 或 `[Script Info]`）解析错位。
+  ///
+  /// 策略：先按 UTF-8 严格解码；失败则用 allowMalformed 宽松解码
+  /// （至少能显示出可读部分，而不是整个字幕加载失败）。
+  static Future<String> _readText(File file) async {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return '';
+
+    // 剥掉 UTF-8 BOM
+    var start = 0;
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      start = 3;
+    }
+
+    final body = start == 0 ? bytes : bytes.sublist(start);
+    try {
+      return utf8.decode(body);
+    } on FormatException {
+      // 非 UTF-8（多为 GBK）：宽松解码，保留能识别的字符。
+      // 不追求完美还原中文，至少不会整个字幕加载失败。
+      debugPrint('[Subtitle] 非 UTF-8 编码，使用宽松解码: ${file.path}');
+      return utf8.decode(body, allowMalformed: true);
+    }
+  }
+
   /// 解析 ASS / SSA 字幕
   static Future<List<SubtitleEntry>> parseAss(String subtitlePath) async {
     final file = File(subtitlePath);
-    final content = await file.readAsString();
+    final content = await _readText(file);
     final entries = <SubtitleEntry>[];
     int index = 0;
 
@@ -143,8 +178,7 @@ class SubtitleService {
 
   /// 解析 SRT 字幕文件
   static Future<List<SubtitleEntry>> parseSrt(String subtitlePath) async {
-    final file = File(subtitlePath);
-    final content = await file.readAsString(encoding: utf8);
+    final content = await _readText(File(subtitlePath));
     return _parseSrtContent(content);
   }
 
@@ -177,8 +211,7 @@ class SubtitleService {
 
   /// 解析 VTT 字幕文件
   static Future<List<SubtitleEntry>> parseVtt(String subtitlePath) async {
-    final file = File(subtitlePath);
-    final content = await file.readAsString(encoding: utf8);
+    final content = await _readText(File(subtitlePath));
     return _parseVttContent(content);
   }
 
