@@ -396,12 +396,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
             ),
             // 主字幕：统一用 mpv 吐出的 `currentSubtitleLines` 自绘浮层。
-            // 内嵌/外挂都走同一来源，贴视频底部，样式统一（修「导入字幕位置
-            // 不在底部」的 bug）。mpv 的默认字幕渲染已在 player_provider 关闭？
-            // 不 —— 这里保留 mpv 渲染会双重绘制，故优先用自绘、隐藏 mpv 的。
+            // 内嵌/外挂都走同一来源，贴视频最底部，样式统一。
+            // mpv 的默认字幕渲染已通过 Video(controls: NoVideoControls) 关闭。
             if (state.currentSubtitleLines.isNotEmpty)
               Positioned(
-                bottom: isLarge ? 60 : 48,
+                bottom: isLarge ? 20 : 12,
                 left: isLarge ? 40 : 20,
                 right: isLarge ? 40 : 20,
                 child: SubtitleOverlay(
@@ -413,7 +412,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             if (_hasSecondaryOverlay(state))
               _LiveSubtitle(
                 builder: (context, live) => Positioned(
-                  bottom: isLarge ? 110 : 84,
+                  bottom: isLarge ? 72 : 52,
                   left: isLarge ? 60 : 36,
                   right: isLarge ? 60 : 36,
                   child: SubtitleOverlay(
@@ -427,7 +426,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             // 实时 AI 字幕（边播边转写）：浮在最上层，贴底显示
             _LiveAiSubtitle(
               builder: (context, liveState, positionMs) => Positioned(
-                bottom: isLarge ? 150 : 110,
+                bottom: isLarge ? 100 : 76,
                 left: isLarge ? 48 : 24,
                 right: isLarge ? 48 : 24,
                 child: liveState.entries.isEmpty
@@ -1634,8 +1633,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             live.position.inMilliseconds.toDouble(),
                         min: 0,
                         max: live.duration.inMilliseconds.toDouble(),
-                        activeColor: GlassTheme.accentPurple,
-                        height: 4,
+                        activeColor: GlassTheme.accentPink,
+                        height: 2,
                         showThumb: _seekPreviewMs != null,
                         // 直接拖进度条时也实时预览
                         onChanged: (v) => _onSeekPreview(v.round()),
@@ -1664,8 +1663,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             ),
                             style: TextStyle(
                               color: _seekPreviewMs != null
-                                  ? GlassTheme.accentPurple
-                                  : Colors.white54,
+                                  ? GlassTheme.accentPink
+                                  : Colors.white70,
                               fontSize: 11 * scale,
                               fontWeight: _seekPreviewMs != null
                                   ? FontWeight.w700
@@ -1693,9 +1692,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           label: _fmtSpeed(state.speed),
                           compact: true,
-                          foregroundColor: state.speed != 1.0
-                              ? GlassTheme.accentTeal
-                              : Colors.white,
+                          foregroundColor: Colors.white,
                           onTap: () => setState(
                             () => _showSpeedSelector = !_showSpeedSelector,
                           ),
@@ -1704,11 +1701,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.subtitles_rounded,
                           compact: true,
-                          foregroundColor:
-                              (state.activeSubtitle != null ||
-                                  state.activeTrackId != null)
-                              ? GlassTheme.accentPurple
-                              : null,
+                          foregroundColor: Colors.white,
                           onTap: _showSubtitleSheet,
                         ),
                         // 实时 AI 字幕（边播边转写）
@@ -1898,7 +1891,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 topRight: Radius.circular(GlassTheme.radiusLg),
               )
             : BorderRadius.zero,
-        child: Video(controller: _videoController, fit: BoxFit.contain),
+        // controls: NoVideoControls 关键 —— 关闭 media_kit 自带的
+        // AdaptiveVideoControls（它有自己的进度条/字幕/手势层，会和
+        // PerchPlay 的自绘控制栏叠加成两套、并拦截屏幕手势）。
+        child: Video(
+          controller: _videoController,
+          fit: BoxFit.contain,
+          controls: NoVideoControls,
+        ),
       ),
     );
   }
@@ -2025,11 +2025,10 @@ class _LiveAiSubtitleToggle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final running = ref.watch(liveSubtitleProvider.select((s) => s.running));
     return GlassButton(
       icon: Icons.auto_awesome_rounded,
       compact: true,
-      foregroundColor: running ? GlassTheme.accentTeal : null,
+      foregroundColor: Colors.white,
       onTap: onTap,
     );
   }

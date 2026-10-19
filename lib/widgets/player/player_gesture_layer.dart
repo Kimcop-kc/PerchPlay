@@ -244,26 +244,28 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   }
 
   Widget _buildSpeedIndicator(double speed) {
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+        margin: const EdgeInsets.only(top: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.black54,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
               color: Colors.white.withOpacity(0.25), width: 1.5),
         ),
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.fast_forward_rounded,
-                color: Colors.white, size: 32),
-            const SizedBox(height: 6),
+                color: Colors.white, size: 22),
+            const SizedBox(width: 8),
             Text(
               '${speed}x 倍速',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
