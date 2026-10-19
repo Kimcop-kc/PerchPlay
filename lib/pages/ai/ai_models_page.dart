@@ -44,35 +44,45 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     final dir = await ModelDownloader.modelsDir();
     final ids = <String>{};
     // 有问题的模型：只标记、不自动删除。
-    // 之前是「缺 tokens / SHA 校验不过 → 立刻删目录」，一旦校验逻辑
-    // 有偏差（例如临时文件被算进清单）就会把用户刚下好的模型删掉，
-    // 表现为「模型下完一刷新就没了」。改为标记后由用户决定。
     final broken = <String>[];
     if (await dir.exists()) {
       await for (final entry in dir.list(followLinks: false)) {
         if (entry is! Directory) continue;
-        final files = (await entry.list().toList()).whereType<File>().toList();
-        final hasOnnx = files.any(
-            (f) => f.path.toLowerCase().endsWith('.onnx'));
-        if (!hasOnnx) continue; // 不是模型目录（可能是空目录/别的资料）
 
         final id = entry.path.split(Platform.pathSeparator).last;
 
-        // 完整性检查：必须有 tokens.txt 或 vocab.txt，否则 AI 加载不了
-        final hasTokens = files.any((f) {
-          final name = f.path.split(Platform.pathSeparator).last;
-          return name == 'tokens.txt' || name == 'vocab.txt';
-        });
+        // 扫描必须与「加载侧」用同一套判据，否则会出现
+        // 「模型明明能用，页面却说没下载」。
+        // 加载侧（speech_model_factory / _resolveAsrModelDir）都支持
+        // 递归查找，这里也必须递归 —— 有些压缩包会多套一层目录。
+        var hasOnnx = false;
+        var hasTokens = false;
+        try {
+          await for (final e in entry.list(recursive: true)) {
+            if (e is! File) continue;
+            final n = e.path.split(Platform.pathSeparator).last.toLowerCase();
+            if (n.endsWith('.onnx')) hasOnnx = true;
+            if (n == 'tokens.txt' || n == 'vocab.txt') hasTokens = true;
+          }
+        } catch (_) {
+          continue;
+        }
+
+        if (!hasOnnx) continue; // 不是模型目录
         if (!hasTokens) {
           broken.add('$id（缺 tokens.txt）');
           continue;
         }
 
-        // SHA-256 校验（有 manifest 才验，兼容旧版本无清单的模型）
+        // SHA-256 校验（有 manifest 才验）
         final corrupted = await ModelDownloader.verifyModel(entry.path);
         if (corrupted.isNotEmpty) {
           debugPrint('[ModelPage] SHA-256 校验不通过: $id → $corrupted');
-          broken.add('$id（校验不通过）');
+          // 校验不过也先认定为「已下载」—— 文件是齐的，只是内容可能被改。
+          // 把它算进 ids（否则用户看到「没下载」会反复重下），
+          // 同时列进 broken 提示。
+          ids.add(id);
+          broken.add('$id（校验不通过，建议删除重下）');
           continue;
         }
 

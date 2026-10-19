@@ -1739,6 +1739,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.skip_previous_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () =>
                               ref.read(playerProvider.notifier).playPrevious(),
                         ),
@@ -1747,6 +1748,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () => ref
                               .read(playerProvider.notifier)
                               .togglePlayPause(),
@@ -1754,6 +1756,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.skip_next_rounded,
                           compact: true,
+                          foregroundColor: Colors.white,
                           onTap: () =>
                               ref.read(playerProvider.notifier).playNext(),
                         ),
@@ -1769,16 +1772,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
+  /// 暂停时画面中央的大播放图标。
+  ///
+  /// 只要一个干净的白色三角，不要玻璃按钮底 —— 之前用 GlassButton.filled
+  /// 带一层毛玻璃圆角背景，压在画面上很突兀。
   Widget _buildCenterPlayButton(PlayerState state, {double scale = 1.0}) {
     return Center(
       child: IgnorePointer(
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: state.isPlaying ? 0 : 1,
-          child: GlassButton.filled(
-            icon: Icons.play_arrow_rounded,
-            width: (64 * scale).clamp(48, 80),
-            height: (64 * scale).clamp(48, 80),
+          child: Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: (76 * scale).clamp(56, 96),
+            // 深色画面下也能看清
+            shadows: const [
+              Shadow(color: Colors.black54, blurRadius: 12),
+            ],
           ),
         ),
       ),
@@ -1921,13 +1932,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 topRight: Radius.circular(GlassTheme.radiusLg),
               )
             : BorderRadius.zero,
-        // controls: NoVideoControls 关键 —— 关闭 media_kit 自带的
-        // AdaptiveVideoControls（它有自己的进度条/字幕/手势层，会和
-        // PerchPlay 的自绘控制栏叠加成两套、并拦截屏幕手势）。
+        // 双保险，缺一不可：
+        //  1) controls: NoVideoControls —— 关闭 media_kit 自带的控制层
+        //     （进度条/按钮/手势层，会和自绘控制栏叠加并拦截手势）；
+        //  2) subtitleViewConfiguration: visible=false —— 关闭 media_kit
+        //     内置的 **Flutter 字幕层**（SubtitleView）。
+        //
+        // 第 2 点就是「字幕还是显示两个」的真正根因：SubtitleView 由
+        // `subtitleViewConfiguration.visible` 控制，**默认是 true**，
+        // 它和 mpv 的 libass 渲染是**两套完全独立**的字幕绘制路径。
+        // 之前只关了 mpv 的 sub-visibility，SubtitleView 仍在画一份，
+        // 叠加上本项目自绘的字幕浮层 = 双字幕。
         child: Video(
           controller: _videoController,
           fit: BoxFit.contain,
           controls: NoVideoControls,
+          subtitleViewConfiguration: const SubtitleViewConfiguration(
+            visible: false,
+          ),
         ),
       ),
     );

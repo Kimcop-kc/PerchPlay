@@ -67,6 +67,10 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
   final TranslateService _translator = TranslateService();
   String? _loadedModelDir;
 
+  /// 最近一次模型加载失败的原因（供 UI 提示，便于定位到底卡在哪一步）。
+  String? _lastModelError;
+  String? get lastModelError => _lastModelError;
+
   /// 是否开启双语（中文 + 外文）。true 时每段 ASR 结果都翻译成外文拼在下面。
   bool _bilingual = false;
   bool get bilingual => _bilingual;
@@ -153,11 +157,13 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     final ok = await ensureModelLoaded();
     if (!ok) {
       BatchSubtitleService.instance.releaseLive();
-      state = const LiveSubtitleState(
+      state = LiveSubtitleState(
         running: false,
         status: LiveSubtitleStatus.unavailable,
-        entries: [],
-        message: '未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice',
+        entries: const [],
+        // 把真实失败原因带出来，而不是千篇一律「未找到模型」。
+        message: _lastModelError ??
+            '未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice',
       );
       return false;
     }
@@ -315,6 +321,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     final modelDir = await _resolveAsrModelDir();
     if (modelDir == null) {
       debugPrint('[LiveSubtitle] 未找到可用的 ASR 模型目录');
+      _lastModelError = '未找到模型文件（请到设置 → AI 模型管理下载）';
       return false;
     }
 
@@ -322,13 +329,11 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
 
     final ok = await _speech.loadModel(modelDir, numThreads: _adaptiveThreads());
     if (!ok) {
-      // 关键：**不要删除模型目录**。
-      //
-      // 之前这里加载失败就 delete(recursive:true)，结果只要 once
-      // 加载出问题（模型文件还在、只是临时失败/内存不足/线程忙），
-      // 用户辛苦下好的 200MB 模型就被直接销毁，表现为「下完就没了」。
-      // 失败只记录，让上层提示用户；删除必须由用户主动触发。
-      debugPrint('[LiveSubtitle] 模型加载失败（保留文件）: $modelDir');
+      // 关键：**不要删除模型目录**（曾导致用户 200MB 模型被销毁）。
+      // 把具体失败原因暴露出去，用户/日志都能看到卡在哪一步。
+      final reason = _speech.lastLoadError ?? '未知原因';
+      _lastModelError = '模型加载失败：$reason';
+      debugPrint('[LiveSubtitle] 模型加载失败（保留文件）: $modelDir → $reason');
       return false;
     }
 
