@@ -115,11 +115,8 @@ class NasClientService {
         case NasProtocol.ftp:
           return await _listFtp(path);
         case NasProtocol.smb:
-          // SMB 未实现，不再用 WebDAV 顶替（会静默返回错误结果）
-          return [];
         case NasProtocol.nfs:
-          return [];
-        default:
+          // SMB/NFS 未实现，不再用 WebDAV 顶替（会静默返回错误结果）
           return [];
       }
     } catch (e) {

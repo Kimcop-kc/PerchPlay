@@ -10,7 +10,9 @@ import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
 
 class FolderBrowserPage extends StatefulWidget {
-  const FolderBrowserPage({super.key});
+  /// 切回「全部视频」视图的回调（由首页传入，用于点击胶囊切换器时切回）。
+  final VoidCallback? onSwitchToVideos;
+  const FolderBrowserPage({super.key, this.onSwitchToVideos});
 
   @override
   State<FolderBrowserPage> createState() => _FolderBrowserPageState();
@@ -18,10 +20,20 @@ class FolderBrowserPage extends StatefulWidget {
 
 class _FolderBrowserPageState extends State<FolderBrowserPage> {
   String _currentPath = '';
+  String _rootPath = '';
   List<FileSystemEntity> _entries = [];
   bool _loading = true;
   bool _gridView = true;
   String? _errorMessage;
+
+  /// 搜索词（文件名模糊匹配，临时不持久化）
+  String _query = '';
+
+  /// 排序：name / time / size
+  String _sortBy = 'name';
+
+  /// 筛选：all / dir / video
+  String _filter = 'all';
 
   @override
   void initState() {
@@ -35,21 +47,27 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       _errorMessage = null;
     });
     try {
-      // 列出可用存储根目录（不包含应用私有目录）
-      final dirs = <FileSystemEntity>[];
+      // 直接进入内部存储根，列出其下的真实文件夹/文件，
+      // 不再展示「0 / sdcard」这类无意义的存储根节点。
       final storage = Directory('/storage/emulated/0');
-      if (await storage.exists()) dirs.add(storage);
-      final sdcard = Directory('/sdcard');
-      if (await sdcard.exists() && sdcard.path != storage.path) {
-        dirs.add(sdcard);
+      if (await storage.exists()) {
+        _rootPath = '/storage/emulated/0';
+      } else {
+        final sdcard = Directory('/sdcard');
+        _rootPath = await sdcard.exists() ? '/sdcard' : '';
       }
 
-      if (!mounted) return;
-      setState(() {
-        _entries = dirs;
-        _currentPath = '';
-        _loading = false;
-      });
+      if (_rootPath.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _entries = const [];
+          _currentPath = '';
+          _loading = false;
+        });
+        return;
+      }
+
+      await _navigate(_rootPath);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -111,10 +129,61 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   void _navigateUp() {
     if (_currentPath.isEmpty) return;
     final parent = Directory(_currentPath).parent.path;
-    if (parent == _currentPath) {
-      _loadRoots();
+    // 已在存储根：刷新根目录（不显示更高层的系统目录）
+    if (_currentPath == _rootPath ||
+        parent == _currentPath ||
+        !parent.startsWith(_rootPath)) {
+      _navigate(_rootPath);
     } else {
       _navigate(parent);
+    }
+  }
+
+  /// 应用搜索 + 筛选 + 排序后的条目列表。
+  List<FileSystemEntity> get _filteredEntries {
+    var list = _entries;
+    // 搜索：按文件名模糊匹配
+    if (_query.trim().isNotEmpty) {
+      final q = _query.trim().toLowerCase();
+      list = list.where((e) {
+        final name = e.path.split('/').last.toLowerCase();
+        return name.contains(q);
+      }).toList();
+    }
+    // 筛选
+    if (_filter == 'dir') {
+      list = list.where((e) => e is Directory).toList();
+    } else if (_filter == 'video') {
+      list = list.where((e) => e is File && _isVideoFile(e.path)).toList();
+    }
+    // 排序
+    list = List<FileSystemEntity>.from(list);
+    list.sort((a, b) {
+      switch (_sortBy) {
+        case 'time':
+          final at = _statMs(a);
+          final bt = _statMs(b);
+          return bt.compareTo(at);
+        case 'size':
+          final as = a is File ? a.lengthSync() : 0;
+          final bs = b is File ? b.lengthSync() : 0;
+          return bs.compareTo(as);
+        case 'name':
+        default:
+          final aDir = a is Directory ? 0 : 1;
+          final bDir = b is Directory ? 0 : 1;
+          if (aDir != bDir) return aDir - bDir;
+          return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+      }
+    });
+    return list;
+  }
+
+  static int _statMs(FileSystemEntity e) {
+    try {
+      return e.statSync().modified.millisecondsSinceEpoch;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -137,39 +206,244 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top + 12;
+    final topPad = MediaQuery.of(context).padding.top + 16;
     return GlassPanel(
       radius: 0,
       showShadow: true,
       padding: EdgeInsets.fromLTRB(16, topPad, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 第一行：返回 + 标题 + 视图切换（与首页一致的「全部视频/文件夹」胶囊）
+          Row(
+            children: [
+              if (_currentPath.isNotEmpty && _currentPath != _rootPath)
+                GlassButton(
+                  icon: Icons.arrow_back_rounded,
+                  compact: true,
+                  ghost: true,
+                  onTap: _navigateUp,
+                ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _currentPath.isEmpty
+                      ? '文件夹'
+                      : (_currentPath == _rootPath
+                          ? '内部存储'
+                          : _currentPath.split('/').last),
+                  style: const TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // 「全部视频 / 文件夹」胶囊切换器（与首页标题行一致，可切回）
+              _buildViewSwitcher(),
+              const SizedBox(width: 8),
+              GlassButton(
+                icon: _gridView
+                    ? Icons.view_list_rounded
+                    : Icons.grid_view_rounded,
+                compact: true,
+                ghost: true,
+                foregroundColor: GlassTheme.textSecondary,
+                onTap: () => setState(() => _gridView = !_gridView),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // 第二行：搜索 + 排序 + 筛选 + 刷新
+          Row(
+            children: [
+              Expanded(child: _buildSearchField()),
+              const SizedBox(width: 8),
+              _buildSortMenu(),
+              _buildFilterMenu(),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                color: GlassTheme.textTertiary,
+                tooltip: '刷新',
+                onPressed: () => _navigate(_currentPath.isNotEmpty
+                    ? _currentPath
+                    : _rootPath),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 与首页一致的「全部视频 / 文件夹」胶囊分段切换器。
+  /// 「全部视频」触发 [FolderBrowserPage.onSwitchToVideos] 回调切回首页视图。
+  Widget _buildViewSwitcher() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.08),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segmentItem(
+            selected: false,
+            icon: Icons.movie_rounded,
+            label: '全部视频',
+            onTap: () {
+              if (widget.onSwitchToVideos != null) {
+                widget.onSwitchToVideos!();
+              }
+            },
+          ),
+          _segmentItem(
+            selected: true,
+            icon: Icons.folder_rounded,
+            label: '文件夹',
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentItem({
+    required bool selected,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? GlassTheme.accentPurple : Colors.transparent,
+          borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? Colors.white : GlassTheme.textSecondary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : GlassTheme.textSecondary,
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.5), width: 0.8),
+      ),
+      child: TextField(
+        onChanged: (v) => setState(() => _query = v),
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: '搜索文件名',
+          hintStyle: const TextStyle(
+              color: GlassTheme.textTertiary, fontSize: 13),
+          prefixIcon: const Icon(Icons.search_rounded,
+              size: 18, color: GlassTheme.textTertiary),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 9),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSortMenu() {
+    return PopupMenuButton<String>(
+      tooltip: '排序',
+      icon: const Icon(Icons.sort_rounded,
+          size: 18, color: GlassTheme.textTertiary),
+      onSelected: (v) => setState(() => _sortBy = v),
+      itemBuilder: (ctx) => [
+        _sortItem('name', '名称'),
+        _sortItem('time', '最近修改'),
+        _sortItem('size', '文件大小'),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _sortItem(String value, String label) {
+    return PopupMenuItem<String>(
+      value: value,
       child: Row(
         children: [
-          if (_currentPath.isNotEmpty)
-            GlassButton(
-              icon: Icons.arrow_back_rounded,
-              compact: true,
-              ghost: true,
-              onTap: _navigateUp,
-            ),
+          Icon(
+            _sortBy == value
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 16,
+            color: _sortBy == value
+                ? GlassTheme.accentPurple
+                : GlassTheme.textTertiary,
+          ),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _currentPath.isEmpty ? '文件夹' : _currentPath.split('/').last,
-              style: const TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
+          Text(label, style: const TextStyle(fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterMenu() {
+    return PopupMenuButton<String>(
+      tooltip: '筛选',
+      icon: const Icon(Icons.filter_list_rounded,
+          size: 18, color: GlassTheme.textTertiary),
+      onSelected: (v) => setState(() => _filter = v),
+      itemBuilder: (ctx) => [
+        _filterItem('all', '全部'),
+        _filterItem('dir', '只看文件夹'),
+        _filterItem('video', '只看视频'),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _filterItem(String value, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(
+            _filter == value
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 16,
+            color: _filter == value
+                ? GlassTheme.accentPurple
+                : GlassTheme.textTertiary,
           ),
-          GlassButton(
-            icon: _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
-            compact: true,
-            ghost: true,
-            foregroundColor: GlassTheme.textSecondary,
-            onTap: () => setState(() => _gridView = !_gridView),
-          ),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 13)),
         ],
       ),
     );
@@ -187,6 +461,10 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     if (_entries.isEmpty) {
       return _buildEmptyState();
     }
+    final filtered = _filteredEntries;
+    if (filtered.isEmpty) {
+      return _buildNoMatchState();
+    }
     if (_currentPath.isNotEmpty) {
       // 面包屑路径
       return Column(
@@ -199,6 +477,22 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       );
     }
     return _buildGridView();
+  }
+
+  Widget _buildNoMatchState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.search_off_rounded,
+              size: 40, color: GlassTheme.textTertiary),
+          SizedBox(height: 8),
+          Text('没有匹配的文件',
+              style: TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 13)),
+        ],
+      ),
+    );
   }
 
   Widget _buildErrorState() {
@@ -320,9 +614,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         crossAxisSpacing: 10,
         childAspectRatio: ratio,
       ),
-      itemCount: _entries.length,
+      itemCount: _filteredEntries.length,
       itemBuilder: (context, index) {
-        final entry = _entries[index];
+        final entry = _filteredEntries[index];
         final isDir = entry is Directory;
         final isVideo = _isVideoFile(entry.path);
 
@@ -370,9 +664,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   Widget _buildListView() {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
-      itemCount: _entries.length,
+      itemCount: _filteredEntries.length,
       itemBuilder: (context, index) {
-        final entry = _entries[index];
+        final entry = _filteredEntries[index];
         final isDir = entry is Directory;
         final isVideo = _isVideoFile(entry.path);
 

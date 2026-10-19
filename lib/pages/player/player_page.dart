@@ -29,7 +29,6 @@ import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/scrape/scrape_widgets.dart';

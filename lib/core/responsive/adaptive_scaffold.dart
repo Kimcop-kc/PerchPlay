@@ -203,7 +203,6 @@ class _NavConfig {
 
   static const List<_NavItemConfig> all = [
     _NavItemConfig(icon: Icons.home_rounded, label: '首页', route: '/home'),
-    _NavItemConfig(icon: Icons.folder_rounded, label: '文件夹', route: '/folders'),
     _NavItemConfig(icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
     _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
     // 投屏不再占底栏：改为在视频播放页内直接搜索/连接设备

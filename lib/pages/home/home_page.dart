@@ -224,7 +224,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
     // 文件夹视图不依赖影库：整块替换内容区，标题行保留分段切换便于切回
     if (_showFolders) {
-      return _buildFolderLayout(hp);
+      return _buildFolderLayout();
     }
 
     final libraryAsync = ref.watch(libraryProvider);
@@ -289,23 +289,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  /// 文件夹视图：标题行保留「全部视频 / 文件夹」分段切换，内容区替换为
-  /// FolderBrowserPage。它自身是完整页面（自带 Scaffold 与顶栏），这里去掉
-  /// 顶部状态栏内边距，避免与首页标题行重复留白。
-  Widget _buildFolderLayout(double hp) {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        _buildHeader(hp),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: const FolderBrowserPage(),
-          ),
-        ),
-      ],
+  /// 文件夹视图：不再套外层首页 header（避免「切换器 + 搜索框」叠加成两套）。
+  /// FolderBrowserPage 自己渲染完整 header（含「全部视频/文件夹」切换器、
+  /// 搜索、排序、筛选、刷新），只通过回调切回「全部视频」视图。
+  Widget _buildFolderLayout() {
+    return FolderBrowserPage(
+      onSwitchToVideos: () => setState(() => _showFolders = false),
     );
   }
 
@@ -341,28 +330,20 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ],
             Row(
               children: [
-                Icon(
-                  _showFolders ? Icons.folder_rounded : Icons.movie_rounded,
-                  size: compact ? 16 : 18,
-                  color: GlassTheme.textTertiary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  // 有筛选/搜索时显示"命中数 / 总数"，避免误以为影库变小了
-                  _showFolders
-                      ? '文件夹浏览'
-                      : (shownCount > 0 && shownCount < totalCount)
-                          ? '$shownCount / $totalCount 个视频'
-                          : '全部视频',
-                  style: TextStyle(
-                    color: GlassTheme.textSecondary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: compact ? 12 : 13,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(width: 12),
+                // 视图切换器：唯一的「全部视频 / 文件夹」切换入口
                 _buildViewSwitcher(),
+                const SizedBox(width: 12),
+                // 只显示影库的实时计数（避免「全部视频」字样与切换器重复）
+                if (!_showFolders && shownCount > 0 && shownCount < totalCount)
+                  Text(
+                    '$shownCount / $totalCount',
+                    style: TextStyle(
+                      color: GlassTheme.textTertiary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: compact ? 12 : 13,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
                 if (!_showFolders) ...[
                   const Spacer(),
                   _buildSortMenu(),
@@ -1178,7 +1159,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   ),
                 ),
               ),
-            // 本地文件夹入口
+            // 本地文件夹入口（切到首页的文件夹视图）
             Semantics(
               button: true,
               label: '浏览本地文件夹',
@@ -1188,7 +1169,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 width: double.infinity,
                 height: 48,
                 foregroundColor: GlassTheme.accentPurple,
-                onTap: () => context.pushNamed('folders'),
+                onTap: () => setState(() => _showFolders = true),
               ),
             ),
             const SizedBox(height: 12),

@@ -935,11 +935,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final lower = subtitle.path.toLowerCase();
     try {
       if (lower.endsWith('.srt')) {
-        return SubtitleService.parseSrt(subtitle.path);
+        return await SubtitleService.parseSrt(subtitle.path);
       } else if (lower.endsWith('.vtt')) {
-        return SubtitleService.parseVtt(subtitle.path);
+        return await SubtitleService.parseVtt(subtitle.path);
       } else if (lower.endsWith('.ass') || lower.endsWith('.ssa')) {
-        return SubtitleService.parseAss(subtitle.path);
+        return await SubtitleService.parseAss(subtitle.path);
       }
     } catch (e) {
       debugPrint('[Subtitle] 解析失败: $e');
