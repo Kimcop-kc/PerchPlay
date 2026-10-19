@@ -195,6 +195,16 @@ class AiModelCatalog {
               'sherpa-onnx-paraformer-zh-small-2024-03-09/'
               'resolve/main/model.int8.onnx',
           sha256: '3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec',
+          fileUrls: <String, String>{
+            'model.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-paraformer-zh-small-2024-03-09/'
+                'resolve/main/model.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-paraformer-zh-small-2024-03-09/'
+                'resolve/main/tokens.txt',
+          },
         ),
       ],
       notes: 'Paraformer 中文小模型，100MB 轻量但中文准确率比 Zipformer 好',
@@ -219,6 +229,16 @@ class AiModelCatalog {
               'sherpa-onnx-paraformer-zh-2024-03-09/'
               'resolve/main/model.int8.onnx',
           sha256: '90bc03034ae1bef9575f8cc798cd1519c8be8aa9e8b458a033e32017ff4d584c',
+          fileUrls: <String, String>{
+            'model.int8.onnx':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-paraformer-zh-2024-03-09/'
+                'resolve/main/model.int8.onnx',
+            'tokens.txt':
+                'https://huggingface.co/csukuangfj/'
+                'sherpa-onnx-paraformer-zh-2024-03-09/'
+                'resolve/main/tokens.txt',
+          },
         ),
       ],
       notes: '纯中文非流式的天花板，准确率最高但体积大，适合对精度要求严格的场景',
@@ -534,7 +554,10 @@ class AiModelCatalog {
           },
         ),
       ],
-      notes: '覆盖面 400+ 语种，冷门语种几乎只有它能翻；3B GGUF 体积大，只在高配机开',
+      notes:
+          '覆盖面 400+ 语种，冷门语种几乎只有它能翻。注意：这是 GGUF 格式，'
+          '当前本地翻译后端只支持 Opus-MT 的 ONNX 格式，下载后暂时无法直接使用；'
+          '日常请用 Google 免费 / LLM Key 翻译',
     ),
   ];
 }

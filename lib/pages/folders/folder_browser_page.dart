@@ -206,43 +206,68 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    // 与「全部视频」页完全一致的头部结构：
+    // 透明背景（不用 GlassPanel 实心面板）+ 同样的左右留白 + 同样的标题区，
+    // 这样在首页切换视图时布局不会跳变。
+    final hp = AppBreakpoints.horizontalPadding(context);
     final topPad = MediaQuery.of(context).padding.top + 16;
-    return GlassPanel(
-      radius: 0,
-      showShadow: true,
-      padding: EdgeInsets.fromLTRB(16, topPad, 16, 12),
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(hp, topPad, hp, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 第一行：返回 + 标题 + 视图切换（与首页一致的「全部视频/文件夹」胶囊）
+          // 与首页一致的大标题区（不随视图切换而消失，视觉才连续）
+          const Text(
+            'PerchPlay',
+            style: TextStyle(
+              color: GlassTheme.textPrimary,
+              fontSize: 36,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.2,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '你的本地影库',
+            style: TextStyle(
+              color: GlassTheme.accentPurple.withOpacity(0.6),
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 18),
+          // 第一行：切换器 + 路径标题 + 返回 + 视图切换
           Row(
             children: [
+              _buildViewSwitcher(),
+              const SizedBox(width: 12),
               if (_currentPath.isNotEmpty && _currentPath != _rootPath)
                 GlassButton(
                   icon: Icons.arrow_back_rounded,
                   compact: true,
                   ghost: true,
+                  foregroundColor: GlassTheme.textSecondary,
                   onTap: _navigateUp,
                 ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   _currentPath.isEmpty
-                      ? '文件夹'
+                      ? ''
                       : (_currentPath == _rootPath
                           ? '内部存储'
                           : _currentPath.split('/').last),
                   style: const TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    color: GlassTheme.textTertiary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // 「全部视频 / 文件夹」胶囊切换器（与首页标题行一致，可切回）
-              _buildViewSwitcher(),
-              const SizedBox(width: 8),
               GlassButton(
                 icon: _gridView
                     ? Icons.view_list_rounded
@@ -255,7 +280,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ],
           ),
           const SizedBox(height: 10),
-          // 第二行：搜索 + 排序 + 筛选 + 刷新
+          // 第二行：搜索 + 排序 + 筛选 + 刷新（与首页搜索框同位置）
           Row(
             children: [
               Expanded(child: _buildSearchField()),
@@ -599,15 +624,18 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
 
   Widget _buildGridView() {
     final w = MediaQuery.of(context).size.width;
+    // 与「全部视频」页一致的左右留白，切视图时网格不左右跳
+    final hp = AppBreakpoints.horizontalPadding(context);
     // 手机用原来的 3 列，平板按屏幕宽度动态列数（≥600dp 起）
     final bool isMobile = w < 600;
     final columns = isMobile ? 3 : AppBreakpoints.gridColumns(context);
-    // 扣除 padding(24) + 列间距后，每张卡片宽度
-    final cardW = (w - 24 - (columns - 1) * 10) / columns;
+    // 扣除左右留白 + 列间距后，每张卡片宽度
+    final cardW = (w - hp * 2 - (columns - 1) * 10) / columns;
     // 文件夹卡片只展示图标(40px) + 标题(1-2行)，~115dp 高度足够
     final ratio = isMobile ? 0.85 : (cardW / 115).clamp(0.9, 2.0);
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12 + GlassTheme.navBarOverlay),
+      // 顶部 8 / 底部 96：与首页 SliverPadding(fromLTRB(hp, 8, hp, 96)) 对齐
+      padding: EdgeInsets.fromLTRB(hp, 8, hp, 96),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
         mainAxisSpacing: 10,
@@ -662,8 +690,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildListView() {
+    final hp = AppBreakpoints.horizontalPadding(context);
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
+      padding: EdgeInsets.fromLTRB(hp, 0, hp, 96),
       itemCount: _filteredEntries.length,
       itemBuilder: (context, index) {
         final entry = _filteredEntries[index];

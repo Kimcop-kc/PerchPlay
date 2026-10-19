@@ -31,11 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装 Flutter
+      - name: 安装 Flutter 3.47.7
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22'
-          channel: 'stable'
+          flutter-version: '3.47.7'
+          channel: stable
           cache: true
 
       # 说明（重要）：

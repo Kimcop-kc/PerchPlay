@@ -70,11 +70,91 @@ class ModelImporter {
       );
     }
 
+    // ── 关键：确保模型文件落在「AI 功能能扫描到的位置」──
+    //
+    // AI 侧（LiveSubtitleProvider._resolveAsrModelDir / speech_worker）只扫描
+    // `ai_models/{id}/` 的**顶层**（非递归）找 .onnx + tokens.txt。
+    // 有些压缩包会把文件放在一层子目录里（如 `model/xxx.onnx`），
+    // 解压后若不提升到顶层，就会出现「导入成功但 AI 用不了」。
+    await _flattenIntoRoot(destDir);
+
+    // 可用性体检：缺 tokens 直接报错，别让用户以为导入成功了
+    await _assertUsable(destDir);
+
     // 写入本地校验清单，后续每次刷新都会复验 SHA-256
     await ModelDownloader.recomputeManifest(destDir);
 
     debugPrint('[ModelImporter] 成功导入 $copied 个文件到 $modelId');
     return copied;
+  }
+
+  /// 把嵌套子目录里的模型文件提升到 [root] 顶层，并清掉空子目录。
+  ///
+  /// 递归深度限制 3 层，避免异常压缩包导致深层遍历。
+  Future<void> _flattenIntoRoot(Directory root, {int depth = 0}) async {
+    if (depth > 3) return;
+    if (!await root.exists()) return;
+
+    final subDirs = <Directory>[];
+    var rootHasOnnx = false;
+    await for (final entry in root.list(followLinks: false)) {
+      if (entry is Directory) subDirs.add(entry);
+      if (entry is File && entry.path.toLowerCase().endsWith('.onnx')) {
+        rootHasOnnx = true;
+      }
+    }
+    if (subDirs.isEmpty) return;
+
+    // 顶层已有 .onnx 说明位置正确，不再搬（子目录可能是分组资源）
+    if (!rootHasOnnx) {
+      for (final dir in subDirs) {
+        await for (final entry
+            in dir.list(recursive: true, followLinks: false)) {
+          if (entry is! File) continue;
+          if (!_isModelFile(p.basename(entry.path))) continue;
+          final target = File(p.join(root.path, p.basename(entry.path)));
+          if (await target.exists()) continue; // 已存在不覆盖
+          try {
+            await entry.copy(target.path);
+            debugPrint(
+                '[ModelImporter] 提升到顶层: ${entry.path} → ${target.path}');
+          } catch (e) {
+            debugPrint('[ModelImporter] 提升失败: $e');
+          }
+        }
+      }
+    }
+
+    // 清掉空子目录（非空的保留，避免误删）
+    for (final dir in subDirs) {
+      try {
+        if (await dir.list().isEmpty) await dir.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// 导入后的可用性体检：必须有 .onnx + tokens/vocab，否则抛异常。
+  ///
+  /// 为什么要在导入时就校验：AI 侧加载模型要求「onnx + tokens.txt」同时
+  /// 存在，缺一个就加载失败。提前报错比用户去开实时字幕发现没反应好。
+  Future<void> _assertUsable(Directory destDir) async {
+    var hasOnnx = false;
+    var hasTokens = false;
+    await for (final e in destDir.list(recursive: false)) {
+      if (e is! File) continue;
+      final name = p.basename(e.path).toLowerCase();
+      if (name.endsWith('.onnx')) hasOnnx = true;
+      if (name == 'tokens.txt' || name == 'vocab.txt') hasTokens = true;
+    }
+    if (!hasOnnx) {
+      throw Exception('导入的模型里没有 .onnx 文件，AI 无法调用');
+    }
+    if (!hasTokens) {
+      throw Exception(
+        '缺少 tokens.txt（词表文件）。sherpa-onnx 模型必须同时有 .onnx 和 '
+        'tokens.txt 才能被 AI 加载，请把 tokens.txt 一起放进压缩包。',
+      );
+    }
   }
 
   // ── 归档检测 ──
