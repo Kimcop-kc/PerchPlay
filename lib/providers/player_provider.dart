@@ -280,6 +280,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
       await platform.setProperty('framedrop', 'vo');
 
+      // ── 统一字幕渲染：关闭 mpv 自己画「主字幕」（关键）──
+      //
+      // media_kit 初始化时 `sub-visibility` 默认是 `yes`（libass 开启），
+      // 而本项目主字幕统一由 Flutter 自绘浮层渲染（读 stream.subtitle）。
+      // 不关掉 mpv 的渲染就会出现「mpv 画一份 + 浮层画一份」的双字幕，
+      // 片源自带内嵌字幕时尤其明显。
+      //
+      // 只关主字幕；第二内嵌字幕仍由 mpv 的 secondary-sid 渲染。
+      await platform.setProperty('sub-visibility', 'no');
+
       // ── HDR 色调映射（对 SDR 视频无副作用）──
       // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
       await platform.setProperty('tone-mapping', 'bt.2390');

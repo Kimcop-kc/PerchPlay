@@ -11,6 +11,15 @@
     <!-- Normal Theme -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- 沉浸式：状态栏/导航栏透明，内容延伸到系统栏后面。
+             Flutter 侧用 SystemUiMode.edgeToEdge + setSystemUIOverlayStyle
+             控制图标明暗；这里只负责「不让系统画不透明底色」。 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
     <!-- 全面屏适配：让内容延伸到凹口区域 -->
