@@ -25,9 +25,17 @@ class AiModelsPage extends ConsumerStatefulWidget {
 }
 
 class _AiModelsPageState extends ConsumerState<AiModelsPage> {
-  final _downloader = ModelDownloader();
+  // 用全局单例，且**不在页面 dispose 时销毁**。
+  //
+  // 之前是 `final _downloader = ModelDownloader();` + dispose 里
+  // `_downloader.dispose()` → 关闭 HTTP client。用户下载中途返回首页，
+  // 下载就被掐断；再进来还会因 client 已关闭而卡住。
+  final _downloader = ModelDownloader.instance;
   final _importer = ModelImporter();
-  final Map<String, double> _progress = {};
+
+  /// 下载进度：key = modelId。这个 Map 是静态的，页面被销毁重建后
+  /// 仍能读到「正在下载」的状态（进度由下载器回调持续写入）。
+  static final Map<String, double> _progress = {};
   final Map<String, String> _errors = {};
   final Set<String> _downloaded = {};
   final Set<String> _expanded = {};
@@ -134,8 +142,10 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         model: model,
         preferredSource: DownloadSource.huggingface,
         onProgress: (p) {
-          if (!mounted) return;
-          setState(() => _progress[model.id] = p);
+          // 先更新静态 Map（页面销毁也照常记录，保证回来时进度是新的），
+          // 再用 mounted 决定要不要触发重绘。
+          _progress[model.id] = p;
+          if (mounted) setState(() {});
         },
       );
 
@@ -154,8 +164,9 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       } catch (_) {}
 
       await _refreshStatus();
+      _progress.remove(model.id);
       if (!mounted) return;
-      setState(() => _progress.remove(model.id));
+      setState(() {});
 
       if (!hasOnnx || !hasTokens) {
         _errors[model.id] =
@@ -164,11 +175,10 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         setState(() {});
       }
     } catch (e) {
+      _progress.remove(model.id);
+      _errors[model.id] = e.toString();
       if (!mounted) return;
-      setState(() {
-        _progress.remove(model.id);
-        _errors[model.id] = e.toString();
-      });
+      setState(() {});
     }
   }
 
@@ -283,7 +293,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
 
   @override
   void dispose() {
-    _downloader.dispose();
+    // **不要**销毁 _downloader：它是全局单例，下载需要脱离页面生命周期
+    // 继续在后台进行。这里只做页面级清理。
     super.dispose();
   }
 

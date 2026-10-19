@@ -30,7 +30,17 @@ class ModelDownloader {
 
   ModelDownloader({http.Client? client}) : _client = client ?? http.Client();
 
-  /// 释放底层 HTTP 客户端（页面销毁时调用，避免悬挂连接）
+  /// **全局单例**：下载必须能脱离页面生命周期独立进行。
+  ///
+  /// 背景 bug：模型管理页在 dispose 时调 `_downloader.dispose()`，会把
+  /// HTTP client 关掉。用户下载中途返回首页、再进模型管理页时，进行中的
+  /// 下载直接被掐断（表现为「下载自己停了」「再进来卡住」）。
+  /// 改用单例 + 页面不再 dispose 它，下载就能在后台跑完。
+  static final ModelDownloader instance = ModelDownloader();
+
+  /// 释放底层 HTTP 客户端。
+  ///
+  /// 注意：页面**不应该**调用它。只有应用退出/需要强制清理时才调。
   void dispose() => _client.close();
 
   // ── 分片参数 ──

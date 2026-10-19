@@ -239,12 +239,14 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 第一行：切换器 + 路径标题 + 返回 + 视图切换
+          // 第一行：切换器 +（返回）+ 右侧视图切换。
+          // 结构与「全部视频」页保持一致：左侧切换器，中间 Spacer 撑开，
+          // 右侧操作按钮。不再显示「内部存储」这类冗余路径文字。
           Row(
             children: [
               _buildViewSwitcher(),
-              const SizedBox(width: 12),
-              if (_currentPath.isNotEmpty && _currentPath != _rootPath)
+              if (_currentPath.isNotEmpty && _currentPath != _rootPath) ...[
+                const SizedBox(width: 8),
                 GlassButton(
                   icon: Icons.arrow_back_rounded,
                   compact: true,
@@ -252,22 +254,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                   foregroundColor: GlassTheme.textSecondary,
                   onTap: _navigateUp,
                 ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  _currentPath.isEmpty
-                      ? ''
-                      : (_currentPath == _rootPath
-                          ? '内部存储'
-                          : _currentPath.split('/').last),
-                  style: const TextStyle(
-                    color: GlassTheme.textTertiary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              ],
+              const Spacer(),
               GlassButton(
                 icon: _gridView
                     ? Icons.view_list_rounded
@@ -280,11 +268,13 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ],
           ),
           const SizedBox(height: 10),
-          // 第二行：搜索 + 排序 + 筛选 + 刷新（与首页搜索框同位置）
+          // 第二行：搜索框独占一行（与首页完全一致）
+          _buildSearchField(),
+          const SizedBox(height: 6),
+          // 第三行：排序 / 筛选 / 刷新右对齐（与首页一致）
           Row(
             children: [
-              Expanded(child: _buildSearchField()),
-              const SizedBox(width: 8),
+              const Spacer(),
               _buildSortMenu(),
               _buildFilterMenu(),
               IconButton(
@@ -378,28 +368,43 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     );
   }
 
+  /// 搜索框：与「全部视频」页**完全一致**的实现
+  /// （GlassPanel + radiusFull 玻璃胶囊 + 同字号/图标/左内边距 + 清除按钮）。
   Widget _buildSearchField() {
-    return Container(
-      height: 38,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.5), width: 0.8),
-      ),
-      child: TextField(
-        onChanged: (v) => setState(() => _query = v),
-        textInputAction: TextInputAction.search,
-        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13),
-        decoration: InputDecoration(
-          hintText: '搜索文件名',
-          hintStyle: const TextStyle(
-              color: GlassTheme.textTertiary, fontSize: 13),
-          prefixIcon: const Icon(Icons.search_rounded,
+    return GlassPanel(
+      radius: GlassTheme.radiusFull,
+      opacity: GlassTheme.glassLight,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded,
               size: 18, color: GlassTheme.textTertiary),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 9),
-          isDense: true,
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              onChanged: (v) => setState(() => _query = v),
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(
+                  color: GlassTheme.textPrimary, fontSize: 14),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: '搜索文件名',
+                hintStyle: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 14),
+              ),
+            ),
+          ),
+          if (_query.isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() => _query = ''),
+              child: const Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(Icons.close_rounded,
+                    size: 16, color: GlassTheme.textTertiary),
+              ),
+            ),
+        ],
       ),
     );
   }
