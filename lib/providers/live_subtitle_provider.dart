@@ -283,71 +283,128 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     if (_speech.isLoaded) return true;
 
     final modelDir = await _resolveAsrModelDir();
-    if (modelDir == null) return false;
+    if (modelDir == null) {
+      debugPrint('[LiveSubtitle] 未找到可用的 ASR 模型目录');
+      return false;
+    }
 
-    if (_loadedModelDir == modelDir) return _speech.isLoaded;
+    if (_loadedModelDir == modelDir && _speech.isLoaded) return true;
 
     final ok = await _speech.loadModel(modelDir, numThreads: _adaptiveThreads());
     if (!ok) {
-      debugPrint('[LiveSubtitle] 模型加载失败: $modelDir');
-      // 模型损坏：清掉目录，让用户重新下载
-      try {
-        final d = Directory(modelDir);
-        if (await d.exists()) await d.delete(recursive: true);
-      } catch (_) {}
+      // 关键：**不要删除模型目录**。
+      //
+      // 之前这里加载失败就 delete(recursive:true)，结果只要 once
+      // 加载出问题（模型文件还在、只是临时失败/内存不足/线程忙），
+      // 用户辛苦下好的 200MB 模型就被直接销毁，表现为「下完就没了」。
+      // 失败只记录，让上层提示用户；删除必须由用户主动触发。
+      debugPrint('[LiveSubtitle] 模型加载失败（保留文件）: $modelDir');
       return false;
     }
 
     _loadedModelDir = modelDir;
+    debugPrint('[LiveSubtitle] 模型就绪: $modelDir');
     return true;
   }
 
-  /// 扫描已下载模型目录，挑一个能做 ASR 的（SenseVoice 优先，其次任意 onnx）。
-  Future<String?> _resolveAsrModelDir() async {
-    final base = await ModelDownloader.modelsDir();
-    if (!await base.exists()) return null;
-
-    final candidates = <String>[];
-    await for (final entry in base.list(followLinks: false)) {
-      if (entry is! Directory) continue;
-      // 顶层找 onnx + tokens
-      final files = await entry.list().toList();
-      final hasOnnx = files.any(
-        (f) => f is File && f.path.toLowerCase().endsWith('.onnx'),
+  /// 判断一个目录是否是「可直接交给 AI 用」的模型目录。
+  ///
+  /// 判据与 [buildOfflineRecognizer] 完全一致：有 .onnx + tokens/vocab。
+  /// 顶层找不到时会**递归一层**兜底（兼容带子目录的压缩包/手工导入）。
+  static Future<bool> _isUsableModelDir(Directory dir) async {
+    bool check(List<FileSystemEntity> items) {
+      final onnx = items.any(
+        (e) => e is File && e.path.toLowerCase().endsWith('.onnx'),
       );
-      final hasTokens = files.any((f) {
-        if (f is! File) return false;
-        final name = f.path.split(Platform.pathSeparator).last;
-        return name == 'tokens.txt' || name == 'vocab.txt';
+      final tokens = items.any((e) {
+        if (e is! File) return false;
+        final n = e.path.split(Platform.pathSeparator).last;
+        return n == 'tokens.txt' || n == 'vocab.txt';
       });
-      if (hasOnnx && hasTokens) {
-        candidates.add(entry.path);
-        continue;
-      }
-      // 顶层没有 → 递归一层再判（兼容带子目录的压缩包 / 手工导入）
-      try {
-        final deep = await entry.list(recursive: true).toList();
-        final deepOnnx = deep.any(
-          (f) => f is File && f.path.toLowerCase().endsWith('.onnx'),
-        );
-        final deepTokens = deep.any((f) {
-          if (f is! File) return false;
-          final name = f.path.split(Platform.pathSeparator).last;
-          return name == 'tokens.txt' || name == 'vocab.txt';
-        });
-        if (deepOnnx && deepTokens) candidates.add(entry.path);
-      } catch (_) {}
+      return onnx && tokens;
     }
 
-    if (candidates.isEmpty) return null;
+    try {
+      if (check(await dir.list().toList())) return true;
+    } catch (_) {
+      return false;
+    }
+    // 兜底：递归一层
+    try {
+      return check(await dir.list(recursive: true).toList());
+    } catch (_) {
+      return false;
+    }
+  }
 
-    // SenseVoice 优先（质量最好且有内置标点）
+  /// 解析 ASR 模型目录。
+  ///
+  /// ## 为什么这样设计（对齐 NovaPlayer 的可靠性）
+  /// NovaPlayer 之所以「下载完必定能调用」，是因为它**只支持一个模型**，
+  /// 路径由 `getModelPath()` 直接**字符串拼出来**，从不"扫描目录猜"。
+  /// 本项目的痛点正是：全靠启发式扫描，任何命名/结构偏差都会导致
+  /// 「模型明明在，却说找不到」。
+  ///
+  /// 所以这里改成**两级策略**：
+  ///  1. **确定性快速路径**：按已知模型 id 顺序直接拼路径检查，命中就用。
+  ///     默认场景（用户从模型页下载）走这条，几乎不可能失败。
+  ///  2. **扫描兜底**：支持用户自行导入的自定义目录名。
+  Future<String?> _resolveAsrModelDir() async {
+    final base = await ModelDownloader.modelsDir();
+    if (!await base.exists()) {
+      debugPrint('[LiveSubtitle] 模型根目录不存在: ${base.path}');
+      return null;
+    }
+
+    // ── 1. 确定性快速路径（按产品优先级顺序）──
+    //
+    // 顺序即偏好：SenseVoice 多语且自带标点，是实时字幕首选；
+    // 其后是其他已知 ASR 模型 id（用户可能只下了其中一个）。
+    const preferredIds = <String>[
+      'sensevoice-small',
+      'paraformer-zh-streaming',
+      'paraformer-trilingual-streaming',
+      'zipformer-zh-en-streaming',
+      'paraformer-zh-small',
+      'paraformer-zh-full',
+      'whisper-small',
+      'whisper-base',
+      'whisper-large-v3',
+      'omnilingual-asr-1b',
+    ];
+    for (final id in preferredIds) {
+      final d = Directory('${base.path}${Platform.pathSeparator}$id');
+      if (!await d.exists()) continue;
+      if (await _isUsableModelDir(d)) {
+        debugPrint('[LiveSubtitle] 命中已知模型: $id');
+        return d.path;
+      }
+      debugPrint('[LiveSubtitle] 模型 $id 存在但文件不完整，跳过');
+    }
+
+    // ── 2. 扫描兜底：用户自行导入、目录名不在已知列表里的 ──
+    final candidates = <String>[];
+    try {
+      await for (final entry in base.list(followLinks: false)) {
+        if (entry is! Directory) continue;
+        if (await _isUsableModelDir(entry)) candidates.add(entry.path);
+      }
+    } catch (e) {
+      debugPrint('[LiveSubtitle] 扫描模型目录失败: $e');
+    }
+
+    if (candidates.isEmpty) {
+      debugPrint('[LiveSubtitle] 扫描后仍无可用模型');
+      return null;
+    }
+
+    // 兜底里也优先 sensevoice
     for (final c in candidates) {
       final name = c.split(Platform.pathSeparator).last.toLowerCase();
       if (name.contains('sensevoice')) return c;
     }
-    // 退而求其次，取第一个
     candidates.sort();
+    debugPrint('[LiveSubtitle] 兜底选中: ${candidates.first}');
     return candidates.first;
   }
 

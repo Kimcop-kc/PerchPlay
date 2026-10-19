@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' show sqrt;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import 'speech_model_factory.dart';
@@ -51,18 +52,23 @@ void speechWorkerEntry(SendPort mainSendPort) {
       case 'load':
         final dir = message[2] as String;
         final threads = (message[3] as num?)?.toInt() ?? 1;
-        bool ok = false;
+        // 回传格式：成功为 true；失败为 String 错误原因（便于主线程打印诊断）
+        Object reply;
         try {
           sherpa.initBindings(); // 每个 isolate 都要初始化一次
           final rec = buildOfflineRecognizer(dir, numThreads: threads);
           if (rec != null) {
             recognizer = rec;
-            ok = true;
+            reply = true;
+          } else {
+            reply = 'buildOfflineRecognizer 返回 null'
+                '（目录缺 .onnx 或 tokens.txt，或架构未识别）';
           }
-        } catch (_) {
-          ok = false;
+        } catch (e, st) {
+          reply = '加载异常: $e';
+          debugPrint('[SpeechWorker] load 失败: $e\n$st');
         }
-        replyTo?.send(ok);
+        replyTo?.send(reply);
         break;
 
       case 'unload':

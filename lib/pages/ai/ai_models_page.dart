@@ -106,7 +106,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       _errors.remove(model.id);
     });
     try {
-      await _downloader.download(
+      final dirPath = await _downloader.download(
         model: model,
         preferredSource: DownloadSource.huggingface,
         onProgress: (p) {
@@ -114,8 +114,31 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
           setState(() => _progress[model.id] = p);
         },
       );
+
+      // 下载后立即做一次可用性校验：文件在不在、tokens 有没有。
+      // 这里只提示、**不删除**——删除必须由用户主动点「删除」。
+      final dir = Directory(dirPath);
+      var hasOnnx = false;
+      var hasTokens = false;
+      try {
+        await for (final e in dir.list(recursive: true)) {
+          if (e is! File) continue;
+          final n = e.path.split(Platform.pathSeparator).last.toLowerCase();
+          if (n.endsWith('.onnx')) hasOnnx = true;
+          if (n == 'tokens.txt' || n == 'vocab.txt') hasTokens = true;
+        }
+      } catch (_) {}
+
       await _refreshStatus();
+      if (!mounted) return;
       setState(() => _progress.remove(model.id));
+
+      if (!hasOnnx || !hasTokens) {
+        _errors[model.id] =
+            '下载完成但文件不完整（onnx=${hasOnnx ? "有" : "缺"}, '
+            'tokens=${hasTokens ? "有" : "缺"}），AI 可能无法调用';
+        setState(() {});
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

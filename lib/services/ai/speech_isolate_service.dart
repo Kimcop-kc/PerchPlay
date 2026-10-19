@@ -116,17 +116,26 @@ class SpeechIsolateService {
   /// 后台加载模型。返回是否成功。
   ///
   /// [numThreads] 是 onnxruntime 算子内并行度：全片离线生成传 4，实时字幕传 1~2。
+  ///
+  /// worker 回传 `true` 表示成功；回传 String 表示失败原因（会打印出来，
+  /// 方便定位「模型下好了但加载不了」到底是缺文件还是架构没识别）。
   Future<bool> loadModel(String modelDir, {int numThreads = 1}) async {
     await _ensureIsolate();
-    final ok = await _send(['load', modelDir, numThreads]);
-    _loaded = ok == true;
+    final reply = await _send(['load', modelDir, numThreads]);
+    _loaded = reply == true;
     if (_loaded) {
       debugPrint('[SpeechIsolate] 模型已加载: $modelDir (threads=$numThreads)');
     } else {
-      debugPrint('[SpeechIsolate] 模型加载失败: $modelDir');
+      debugPrint('[SpeechIsolate] 模型加载失败: $modelDir'
+          '${reply is String ? ' → $reply' : ''}');
+      _lastLoadError = reply is String ? reply : '未知原因';
     }
     return _loaded;
   }
+
+  /// 最近一次加载失败的原因（供 UI 提示）。
+  String? _lastLoadError;
+  String? get lastLoadError => _lastLoadError;
 
   /// 释放模型但**保留 worker isolate**（下次转写会自动重新加载）。
   ///
