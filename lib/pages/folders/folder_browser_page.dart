@@ -239,9 +239,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 第一行：切换器 + （返回） + 右侧视图切换。
-          // 结构与「全部视频」页保持一致：左侧切换器，中间用 Spacer 撑开，
-          // 右侧放操作按钮 —— 不再显示「内部存储」这类冗余路径文字。
+          // 第一行：切换器 +（返回）+ 右侧视图切换。
+          // 结构与「全部视频」页保持一致：左侧切换器，中间 Spacer 撑开，
+          // 右侧操作按钮。不再显示「内部存储」这类冗余路径文字。
           Row(
             children: [
               _buildViewSwitcher(),
@@ -268,10 +268,10 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ],
           ),
           const SizedBox(height: 10),
-          // 第二行：搜索框单独占一行（与首页完全一致）
+          // 第二行：搜索框独占一行（与首页完全一致）
           _buildSearchField(),
           const SizedBox(height: 6),
-          // 第三行：排序 / 筛选 / 刷新，右对齐（与首页一致）
+          // 第三行：排序 / 筛选 / 刷新右对齐（与首页一致）
           Row(
             children: [
               const Spacer(),
@@ -368,8 +368,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     );
   }
 
-  /// 搜索框：与「全部视频」页**逐像素一致**的实现
-  /// （GlassPanel + radiusFull 玻璃胶囊 + 同样字号/图标/左内边距）。
+  /// 搜索框：与「全部视频」页**完全一致**的实现
+  /// （GlassPanel + radiusFull 玻璃胶囊 + 同字号/图标/左内边距 + 清除按钮）。
   Widget _buildSearchField() {
     return GlassPanel(
       radius: GlassTheme.radiusFull,
@@ -407,7 +407,6 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         ],
       ),
     );
-  }
   }
 
   Widget _buildSortMenu() {
