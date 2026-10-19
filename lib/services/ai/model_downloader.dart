@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data' show BytesBuilder;
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -500,7 +501,6 @@ class ModelDownloader {
   }) async {
     debugPrint('[Downloader] 合并 $chunkCount 个分片...');
     final sink = dest.openWrite();
-    final hashAccum = sha256; // 每次 .convert() 返回新的，所以这里逐个更新
 
     // 先计算合并后的全量 SHA-256（边合并边算）
     final bytesBuilder = BytesBuilder(copy: false);
@@ -642,11 +642,6 @@ class ModelDownloader {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
     return a.toLowerCase() == b.toLowerCase();
-  }
-
-  /// 检查响应头是否声明了 Range 支持
-  bool _supportsRangeHeader(http.BaseResponse resp) {
-    return resp.headers['accept-ranges'] == 'bytes';
   }
 
   // ── 本地manifest：防止下载完成后被人/系统误改 ──

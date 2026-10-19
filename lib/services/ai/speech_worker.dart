@@ -37,7 +37,6 @@ void speechWorkerEntry(SendPort mainSendPort) {
   mainSendPort.send(rp.sendPort);
 
   sherpa.OfflineRecognizer? recognizer;
-  String? loadedDir;
 
   rp.listen((message) async {
     if (message is! List || message.length < 2) return;
@@ -58,7 +57,6 @@ void speechWorkerEntry(SendPort mainSendPort) {
           final rec = buildOfflineRecognizer(dir, numThreads: threads);
           if (rec != null) {
             recognizer = rec;
-            loadedDir = dir;
             ok = true;
           }
         } catch (_) {
@@ -72,7 +70,6 @@ void speechWorkerEntry(SendPort mainSendPort) {
           recognizer?.free();
         } catch (_) {}
         recognizer = null;
-        loadedDir = null;
         replyTo?.send('unloaded');
         break;
 
@@ -94,7 +91,6 @@ void speechWorkerEntry(SendPort mainSendPort) {
           recognizer?.free();
         } catch (_) {}
         recognizer = null;
-        loadedDir = null;
         replyTo?.send('disposed');
         rp.close();
         break;

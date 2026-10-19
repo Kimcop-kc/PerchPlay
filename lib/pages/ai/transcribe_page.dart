@@ -1,11 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../../core/theme/glass_theme.dart';
 import '../../services/ai/ai_model.dart';
@@ -42,9 +39,6 @@ class _TranscribePageState extends State<TranscribePage> {
 
   /// 用户选中的 WAV 文件路径
   String? _wavPath;
-
-  /// 转写结果（原始）
-  String? _rawResult;
 
   /// 标点后结果
   String? _result;
@@ -223,12 +217,11 @@ class _TranscribePageState extends State<TranscribePage> {
     try {
       // 检查 VAD 模型是否可用
       final vadDir = await _resolveVadModelDir();
-      final bool useVad = vadDir != null;
 
-      if (useVad) {
+      if (vadDir != null) {
         // ── VAD 预处理 + 逐段 ASR ──
         _updateStatus('VAD 切分…');
-        _vad.loadModel(vadDir!);
+        _vad.loadModel(vadDir);
         final segments = _vad.detectFromFile(wav);
 
         if (segments.isEmpty) {
@@ -273,7 +266,6 @@ class _TranscribePageState extends State<TranscribePage> {
       if (!mounted) return;
       setState(() {
         _step = _Step.done;
-        _rawResult = null;
         _result = null;
         _error = '转写失败: $e';
       });
@@ -304,7 +296,6 @@ class _TranscribePageState extends State<TranscribePage> {
     if (!mounted) return;
     setState(() {
       _step = _Step.done;
-      _rawResult = raw;
       _result = display;
     });
   }
@@ -315,7 +306,6 @@ class _TranscribePageState extends State<TranscribePage> {
     setState(() {
       _step = _Step.selectModel;
       _wavPath = null;
-      _rawResult = null;
       _result = null;
       _error = null;
     });

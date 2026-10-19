@@ -37,9 +37,6 @@ class SpeechIsolateService {
   bool _loaded = false;
   bool get isLoaded => _loaded;
 
-  /// 上次加载的模型目录（worker 崩溃重启后用它自动 reload）
-  String? _modelDir;
-
   /// 专门的 exit 监听端口：不能复用握手用的 ReceivePort（它在握手后就
   /// close 了），否则 onExit 事件永远收不到。
   ReceivePort? _exitPort;
@@ -121,7 +118,6 @@ class SpeechIsolateService {
   /// [numThreads] 是 onnxruntime 算子内并行度：全片离线生成传 4，实时字幕传 1~2。
   Future<bool> loadModel(String modelDir, {int numThreads = 1}) async {
     await _ensureIsolate();
-    _modelDir = modelDir;
     final ok = await _send(['load', modelDir, numThreads]);
     _loaded = ok == true;
     if (_loaded) {
@@ -141,7 +137,6 @@ class SpeechIsolateService {
       await _send(['unload'], timeout: const Duration(seconds: 10));
     } catch (_) {}
     _loaded = false;
-    _modelDir = null;
   }
 
   /// 后台转写 WAV，返回文本。
@@ -177,7 +172,6 @@ class SpeechIsolateService {
     _isolate = null;
     _commandPort = null;
     _loaded = false;
-    _modelDir = null;
     try {
       _exitPort?.close();
     } catch (_) {}
