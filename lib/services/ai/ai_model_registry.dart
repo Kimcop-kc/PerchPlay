@@ -51,7 +51,6 @@ class AiModelRegistry {
     AiCapability.asr: 'sensevoice-small',
     AiCapability.asrStreaming: 'paraformer-zh-streaming',
     AiCapability.translate: 'opus-mt-zh-en',
-    AiCapability.vad: 'silero-vad',
   };
 
   AiModelRegistry({
@@ -176,7 +175,7 @@ class AiModelRegistry {
   ///  - translate：nmt > llm。纯翻译用 NMT 更快更省电；LLM 的优势是译文更自然、
   ///    能控制格式（双语对照之类），那属于更高档位才需要权衡的事 ——
   ///    现清单里 balanced 及以上没有 nmt 候选，所以这条实际只影响 light 档。
-  ///  - asr / asrStreaming / vad：各归各类，没有跨类比较的必要，
+  ///  - asr / asrStreaming：各归各类，没有跨类比较的必要，
   ///    表里只放一类，等于「同类内按体积比」。
   ///
   /// 不在表里的类别：排在该能力所有已列类别之后（见 [_kindRank]）。
@@ -185,7 +184,6 @@ class AiModelRegistry {
     AiCapability.translate: <ModelKind>[ModelKind.nmt, ModelKind.llm],
     AiCapability.asr: <ModelKind>[ModelKind.asr],
     AiCapability.asrStreaming: <ModelKind>[ModelKind.asr],
-    AiCapability.vad: <ModelKind>[ModelKind.vad],
   };
 
   /// 某类别在该能力下的优先级（越小越优先；不在表里 = 最后）
@@ -247,16 +245,12 @@ class AiModelSelector {
   /// 能力的中文短标签
   static String capabilityLabel(AiCapability capability) {
     switch (capability) {
-      case AiCapability.vad:
-        return '人声检测';
       case AiCapability.asr:
         return '语音识别';
       case AiCapability.asrStreaming:
         return '实时识别';
       case AiCapability.translate:
         return '翻译';
-      case AiCapability.punctuation:
-        return '标点恢复';
     }
   }
 

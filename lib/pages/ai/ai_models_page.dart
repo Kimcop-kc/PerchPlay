@@ -483,10 +483,6 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     const groups = <({String label, Set<ModelKind> kinds})>[
       (label: '语音识别 (ASR)', kinds: {ModelKind.asr}),
       (label: '专用翻译 (NMT)', kinds: {ModelKind.nmt}),
-      (label: '其他模型', kinds: {
-        ModelKind.vad,
-        ModelKind.punctuation,
-      }),
     ];
 
     for (final group in groups) {
@@ -944,10 +940,6 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         return '通用大语言模型，可在本地做翻译、分类、对话。需要 GGUF 推理运行时。';
       case ModelKind.nmt:
         return '专用翻译模型，比同体积 LLM 翻得更准更快。各语种对独立运行。';
-      case ModelKind.vad:
-        return '只判断有没有人声，不转写。适合前置过滤噪音或长录音切割。';
-      case ModelKind.punctuation:
-        return '给 ASR 输出的无标点文本补上句号和逗号，提升可读性。';
     }
   }
 
@@ -959,17 +951,11 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       case ModelKind.asr:
         icon = Icons.mic;
         break;
-      case ModelKind.vad:
-        icon = Icons.graphic_eq;
-        break;
       case ModelKind.llm:
         icon = Icons.psychology;
         break;
       case ModelKind.nmt:
         icon = Icons.translate;
-        break;
-      case ModelKind.punctuation:
-        icon = Icons.format_quote;
         break;
     }
     return Container(

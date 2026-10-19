@@ -88,30 +88,6 @@ class AiModelCatalog {
   AiModelCatalog._();
 
   static const List<AiModel> all = <AiModel>[
-    // ── VAD / 语音活动检测 ──────────────────────────────────────────────
-    AiModel(
-      id: 'silero-vad',
-      displayName: 'Silero VAD 语音活动检测',
-      capabilities: <AiCapability>{AiCapability.vad},
-      kind: ModelKind.vad,
-      tier: ModelTier.light,
-      sizeMB: 2,
-      speedRating: 5,
-      qualityRating: 5,
-      languages: <String>[],
-      license: 'Apache-2.0',
-      minRamGB: 1.0,
-      mirrors: <ModelMirror>[
-        ModelMirror(
-          source: DownloadSource.githubRelease,
-          url:
-              'https://github.com/k2-fsa/sherpa-onnx/releases/'
-              'download/asr-models/silero_vad.onnx',
-          sha256: null,
-        ),
-      ],
-      notes: '2MB 就能过滤掉无声片段，省下大量白跑的 ASR 计算，值得一直开着',
-    ),
     // ── ASR：低延迟流式中英 ────────────────────────────────────────────
     AiModel(
       id: 'zipformer-zh-en-streaming',
@@ -495,31 +471,6 @@ class AiModelCatalog {
         ),
       ],
       notes: '1600+ 语种的超级覆盖，1B 参数仅旗舰机能跑，冷门方言的最后防线',
-    ),
-    // ── 标点恢复 ────────────────────────────────────────────────────────
-    AiModel(
-      id: 'punct-ct-transformer',
-      displayName: '标点恢复（中英文）',
-      capabilities: <AiCapability>{AiCapability.punctuation},
-      kind: ModelKind.punctuation,
-      tier: ModelTier.light,
-      sizeMB: 95,
-      speedRating: 5,
-      qualityRating: 5,
-      languages: <String>['zh', 'en'],
-      license: 'Apache-2.0',
-      minRamGB: 2.0,
-      mirrors: <ModelMirror>[
-        ModelMirror(
-          source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
-              'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12/'
-              'resolve/main/model.onnx',
-          sha256: 'e93593a6dbd69a07f8734ef269dbe861a379755f8d1c8354719432116f2c44bd',
-        ),
-      ],
-      notes: '给 ASR 输出补标点（句号、逗号、问号），让转写结果直接可读。100MB，中英文通用',
     ),
     // ── 翻译专用 ────────────────────────────────────────────────────────
     AiModel(

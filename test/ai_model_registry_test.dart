@@ -68,18 +68,16 @@ void main() {
       }
     });
 
-    test('现清单模型数量正确（ASR 11 + 标点 1 + 翻译 2 = 14）', () {
-      expect(catalog.length, 14,
-          reason: '精简后应只剩 14 个模型，多了说明有漏删的、少了说明误删了');
+    test('现清单模型数量正确（ASR 10 + 翻译 2 = 12）', () {
+      expect(catalog.length, 12,
+          reason: '精简后应只剩 12 个模型，多了说明有漏删的、少了说明误删了');
     });
 
     test('需求点名的模型都在，体积/许可证/档位/类别与约定一致', () {
       const expected = <String, ({int sizeMB, String license, ModelTier tier, ModelKind kind})>{
-        'silero-vad': (sizeMB: 2, license: 'Apache-2.0', tier: ModelTier.light, kind: ModelKind.vad),
         'sensevoice-small': (sizeMB: 234, license: 'Apache-2.0', tier: ModelTier.balanced, kind: ModelKind.asr),
         'paraformer-zh-streaming': (sizeMB: 220, license: 'Apache-2.0', tier: ModelTier.balanced, kind: ModelKind.asr),
-        'whisper-large-v3': (sizeMB: 1600, license: 'Apache-2.0', tier: ModelTier.highQuality, kind: ModelKind.asr),
-        'punct-ct-transformer': (sizeMB: 95, license: 'Apache-2.0', tier: ModelTier.light, kind: ModelKind.punctuation),
+        'whisper-large-v3': (sizeMB: 1600, license: 'MIT', tier: ModelTier.highQuality, kind: ModelKind.asr),
         'opus-mt-zh-en': (sizeMB: 110, license: 'CC-BY-4.0', tier: ModelTier.light, kind: ModelKind.nmt),
         'madlad-400-3b': (sizeMB: 2000, license: 'Apache-2.0', tier: ModelTier.multilingual, kind: ModelKind.nmt),
       };
@@ -188,7 +186,7 @@ void main() {
     test('capability 无候选时返回 null', () {
       final empty = AiModelRegistry(
         models: <AiModel>[
-          _testModel(id: 'only-vad', capability: AiCapability.vad),
+          _testModel(id: 'only-asr', capability: AiCapability.asr),
         ],
       );
       expect(
@@ -246,11 +244,6 @@ void main() {
         registry.recommended(capability: AiCapability.asr, deviceRamGB: 16)?.id,
         'sensevoice-small',
         reason: 'ASR 显式默认是 sensevoice-small',
-      );
-      expect(
-        registry.recommended(capability: AiCapability.vad, deviceRamGB: 16)?.id,
-        'silero-vad',
-        reason: 'VAD 显式默认是 silero-vad',
       );
       expect(
         registry
@@ -357,6 +350,7 @@ void main() {
 
     test('指定 huggingface 时 HF 排第一，且不丢镜像', () {
       final model = registry.byId('sensevoice-small')!;
+      final originalFirst = model.mirrors.first.source;
       final mirrors = registry.mirrorsFor(
         model,
         preferred: DownloadSource.huggingface,
@@ -367,7 +361,8 @@ void main() {
         mirrors.map((m) => m.url).toSet(),
         model.mirrors.map((m) => m.url).toSet(),
       );
-      expect(model.mirrors.first.source, DownloadSource.modelscope,
+      // 不能原地改清单：偏好重排后，原模型条目的镜像顺序必须保持不变
+      expect(model.mirrors.first.source, originalFirst,
           reason: '不能原地改清单');
     });
 
@@ -413,10 +408,6 @@ void main() {
         <String>['模型', '体积', '语言', '速度', '质量', '定位'],
       );
 
-      // 语言无关的模型（VAD）
-      final vadRow = AiModelSelector.tableRow(registry.byId('silero-vad')!);
-      expect(vadRow.split(' | ')[2], '语言无关');
-
       expect(AiModelSelector.table(catalog).length, catalog.length + 1);
     });
 
@@ -445,10 +436,6 @@ void main() {
       expect(AiModelSelector.tierLabel(model.tier), '均衡');
       expect(AiModelSelector.capabilityLabel(AiCapability.asrStreaming), '实时识别');
       expect(AiModelSelector.sourceLabel(DownloadSource.modelscope), '魔搭');
-
-      final vad = registry.byId('silero-vad')!;
-      expect(vad.languages, isEmpty);
-      expect(AiModelSelector.describe(vad), contains('语言无关'));
     });
   });
 }
