@@ -8,6 +8,7 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod/riverpod.dart';
 
@@ -719,38 +720,33 @@ class ModelDownloader {
   /// 解压 .tar.bz2 / .tar.gz / .zip 归档到目标目录
   ///
   /// 解压成功后删除归档文件。
+  ///
+  /// 关键：用 `basename` 把归档内文件**拍平**到目标目录顶层 —— 与
+  /// [ModelImporter] 的处理一致，也契合 `_resolveAsrModelDir` 只扫描
+  /// `ai_models/{id}/` 顶层（非递归）的约定。若保留 tar 内的嵌套目录
+  /// （如 `sherpa-onnx-xxx/model.onnx`），会导致模型下载成功却扫描不到。
   Future<void> _decompressArchive(File archive, Directory destDir) async {
     debugPrint('[Downloader] 解压: ${archive.path} → ${destDir.path}');
     final bytes = await archive.readAsBytes();
     final name = archive.path.split(Platform.pathSeparator).last;
 
+    void writeAll(Iterable<ArchiveFile> entries) {
+      for (final entry in entries) {
+        if (!entry.isFile) continue;
+        final target = File('${destDir.path}/${p.basename(entry.name)}');
+        target.writeAsBytesSync(entry.content as List<int>);
+        debugPrint('[Downloader] 提取: ${entry.name} → ${target.path}');
+      }
+    }
+
     if (name.endsWith('.tar.bz2')) {
       final tarBytes = BZip2Decoder().decodeBytes(bytes);
-      final tar = TarDecoder().decodeBytes(tarBytes);
-      for (final entry in tar) {
-        if (!entry.isFile) continue;
-        final dest = File('${destDir.path}/${entry.name}');
-        await dest.parent.create(recursive: true);
-        await dest.writeAsBytes(entry.content as List<int>);
-      }
+      writeAll(TarDecoder().decodeBytes(tarBytes));
     } else if (name.endsWith('.tar.gz')) {
       final tarBytes = GZipDecoder().decodeBytes(bytes);
-      final tar = TarDecoder().decodeBytes(tarBytes);
-      for (final entry in tar) {
-        if (!entry.isFile) continue;
-        final dest = File('${destDir.path}/${entry.name}');
-        await dest.parent.create(recursive: true);
-        await dest.writeAsBytes(entry.content as List<int>);
-      }
+      writeAll(TarDecoder().decodeBytes(tarBytes));
     } else if (name.endsWith('.zip')) {
-      final zip = ZipDecoder().decodeBytes(bytes);
-      for (final entry in zip) {
-        if (entry.isFile) {
-          final dest = File('${destDir.path}/${entry.name}');
-          await dest.parent.create(recursive: true);
-          await dest.writeAsBytes(entry.content as List<int>);
-        }
-      }
+      writeAll(ZipDecoder().decodeBytes(bytes));
     }
 
     // 解压后删除归档
