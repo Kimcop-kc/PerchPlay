@@ -777,44 +777,51 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   /// 「AI 翻译设置」弹窗：翻译后端 / LLM Key / 目标语言
+  ///
+  /// 关键：可选值（backend / targetLang）和三个 TextEditingController
+  /// **必须放在 StatefulBuilder 的 builder 之外**。
+  /// 之前它们写在 builder 内部，每次 setDialogState 触发重建都会重新
+  /// 执行一遍 `String backend = _settings.translateBackend;`，把用户刚点
+  /// 的选项又覆盖回已保存的旧值 —— 表现就是「点了其他选项没反应/跳回去」。
   void _showTranslateSettings(BuildContext context) {
     final bottomInset = MediaQuery.of(context).padding.bottom + 24;
+
+    // ── 对话框状态（生命周期 = 整个弹窗，不随重建重置）──
+    String backend = _settings.translateBackend;
+    String targetLang = _settings.translateTargetLang;
+    final keyCtrl = TextEditingController(text: _settings.llmApiKey);
+    final urlCtrl = TextEditingController(text: _settings.llmBaseUrl);
+    final modelCtrl = TextEditingController(text: _settings.llmModel);
+
+    const backendOptions = <(String, String, IconData)>[
+      ('google', 'Google 免费', Icons.public_rounded),
+      ('llm', 'LLM 自配 Key', Icons.key_rounded),
+      ('local', '本地离线', Icons.offline_pin_rounded),
+    ];
+
+    const langOptions = <(String, String)>[
+      ('en', 'en (英文)'),
+      ('ja', 'ja (日文)'),
+      ('ko', 'ko (韩文)'),
+      ('fr', 'fr (法文)'),
+      ('de', 'de (德文)'),
+      ('es', 'es (西班牙文)'),
+      ('ru', 'ru (俄文)'),
+      ('yue', 'yue (粤语)'),
+    ];
+
+    Future<void> persist() async {
+      await _settings.setTranslateBackend(backend);
+      await _settings.setLlmApiKey(keyCtrl.text.trim());
+      await _settings.setLlmBaseUrl(urlCtrl.text.trim());
+      await _settings.setLlmModel(modelCtrl.text.trim());
+      await _settings.setTranslateTargetLang(targetLang);
+    }
+
     showDialog<void>(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
-          String backend = _settings.translateBackend;
-          String targetLang = _settings.translateTargetLang;
-          final keyCtrl = TextEditingController(text: _settings.llmApiKey);
-          final urlCtrl =
-              TextEditingController(text: _settings.llmBaseUrl);
-          final modelCtrl = TextEditingController(text: _settings.llmModel);
-
-          const backendOptions = <(String, String, IconData)>[
-            ('google', 'Google 免费', Icons.public_rounded),
-            ('llm', 'LLM 自配 Key', Icons.key_rounded),
-            ('local', '本地离线', Icons.offline_pin_rounded),
-          ];
-
-          const langOptions = <(String, String)>[
-            ('en', 'en (英文)'),
-            ('ja', 'ja (日文)'),
-            ('ko', 'ko (韩文)'),
-            ('fr', 'fr (法文)'),
-            ('de', 'de (德文)'),
-            ('es', 'es (西班牙文)'),
-            ('ru', 'ru (俄文)'),
-            ('yue', 'yue (粤语)'),
-          ];
-
-          Future<void> persist() async {
-            await _settings.setTranslateBackend(backend);
-            await _settings.setLlmApiKey(keyCtrl.text.trim());
-            await _settings.setLlmBaseUrl(urlCtrl.text.trim());
-            await _settings.setLlmModel(modelCtrl.text.trim());
-            await _settings.setTranslateTargetLang(targetLang);
-          }
-
           return Dialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1055,7 +1062,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           );
         },
       ),
-    );
+    ).then((_) {
+      // 弹窗关闭后释放 controller，避免长会话里累积
+      keyCtrl.dispose();
+      urlCtrl.dispose();
+      modelCtrl.dispose();
+    });
   }
 
   InputDecoration _translateInputDecoration(String hintText) {
