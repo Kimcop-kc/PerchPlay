@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../services/ai/ai_model.dart';
 import '../../services/ai/ai_model_catalog.dart';
+import '../../services/ai/ai_model_registry.dart';
 import '../../services/ai/model_downloader.dart';
 import '../../services/ai/model_importer.dart';
 import '../../services/device_info_service.dart';
@@ -259,6 +260,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         child: CustomScrollView(
           slivers: [
             _buildHeader(),
+            // ── 推荐下载：明确告诉用户做「离线实时 AI 字幕」该下什么 ──
+            if (!_checking) _buildRecommendedSection(),
             if (_checking)
               const SliverToBoxAdapter(
                 child: Center(
@@ -293,6 +296,172 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 推荐下载区：按「离线实时 AI 字幕」这一核心功能，明确告诉用户该下什么。
+  ///
+  /// 用 [AiModelRegistry.recommended] 按本机 RAM 挑出每个能力的首推模型。
+  /// 只推荐**真实可下载**的 ASR 模型（翻译默认走 Google 免费接口，无需下载）。
+  Widget _buildRecommendedSection() {
+    final ramGB = DeviceInfoService.instance.ramGB;
+    final registry = AiModelRegistry.instance;
+    final effectiveRam = ramGB > 0 ? ramGB : 8.0;
+
+    // ASR 必选：整段/流式都能跑，SenseVoice 是多语默认
+    final asr = registry.recommended(
+          capability: AiCapability.asr,
+          deviceRamGB: effectiveRam,
+        ) ??
+        _fallbackAsr();
+    final asrStreaming = registry.recommended(
+          capability: AiCapability.asrStreaming,
+          deviceRamGB: effectiveRam,
+        ) ??
+        _fallbackAsrStreaming();
+
+    // 只推荐「真实可下载」的 ASR；翻译走网络（Google 免费），不进推荐。
+    final items = <({String role, AiModel model})>[
+      (role: '语音识别（必需）', model: asr),
+      // 若流式模型和整段模型重复，就不再列第二条
+      if (asrStreaming.id != asr.id)
+        (role: '流式识别（可换）', model: asrStreaming),
+    ];
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              GlassTheme.accentPurple.withOpacity(0.12),
+              GlassTheme.accentTeal.withOpacity(0.08),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
+          border: Border.all(
+            color: GlassTheme.accentPurple.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome_rounded,
+                    size: 16, color: GlassTheme.accentPurple),
+                const SizedBox(width: 6),
+                const Text('推荐下载',
+                    style: TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                if (ramGB > 0)
+                  Text('本机 ${ramGB.toStringAsFixed(1)} GB',
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '做「离线实时 AI 字幕」，下载语音识别模型即可；\n翻译默认走 Google 免费接口，无需下载。',
+              style: TextStyle(
+                  color: GlassTheme.textTertiary,
+                  fontSize: 12,
+                  height: 1.4),
+            ),
+            const SizedBox(height: 10),
+            for (final item in items) ...[
+              _buildRecommendRow(item.role, item.model),
+              if (item != items.last) const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 兜底：如果推荐算法因某种原因返回不了，硬编码这两个「产品首选」
+  AiModel _fallbackAsr() =>
+      AiModelCatalog.all.firstWhere((m) => m.id == 'sensevoice-small',
+          orElse: () => AiModelCatalog.all.first);
+  AiModel _fallbackAsrStreaming() =>
+      AiModelCatalog.all.firstWhere((m) => m.id == 'paraformer-zh-streaming',
+          orElse: () => AiModelCatalog.all.first);
+
+  Widget _buildRecommendRow(String role, AiModel model) {
+    final isReady = _downloaded.contains(model.id);
+    final isDownloading = _progress.containsKey(model.id);
+    final p = _progress[model.id] ?? 0;
+
+    return Row(
+      children: [
+        // 角色标签
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: GlassTheme.accentPurple.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(role,
+              style: const TextStyle(
+                  color: GlassTheme.accentPurple,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 10),
+        // 模型名 + 体积
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(model.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+              Text('${model.sizeLabel} · ${model.languages.take(3).map((l) => l.toUpperCase()).join('/')}',
+                  style: const TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 11)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 状态：已下载 / 下载中 / 下载按钮
+        if (isReady)
+          const Icon(Icons.check_circle_rounded,
+              size: 20, color: GlassTheme.accentTeal)
+        else if (isDownloading)
+          SizedBox(
+            width: 64,
+            child: Column(
+              children: [
+                LinearProgressIndicator(
+                  value: p > 0 ? p : null,
+                  minHeight: 4,
+                  backgroundColor: GlassTheme.accentPurple.withOpacity(0.1),
+                  valueColor: const AlwaysStoppedAnimation(
+                      GlassTheme.accentPurple),
+                ),
+                const SizedBox(height: 2),
+                Text('${(p * 100).toInt()}%',
+                    style: const TextStyle(
+                        color: GlassTheme.accentPurple, fontSize: 10)),
+              ],
+            ),
+          )
+        else
+          _smallButton('下载',
+              color: GlassTheme.accentPurple,
+              onTap: () => _startDownload(model)),
+      ],
     );
   }
 
