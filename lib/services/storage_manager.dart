@@ -41,8 +41,7 @@ class StorageManager {
   /// 目录不存在、单个文件读取失败等情况一律按 0 / 静默跳过处理，不抛异常，
   /// 保证设置页随时可以安全调用。
   Future<List<StorageItem>> scan() async {
-    // 并发解析三个基础目录（path_provider 调用互相独立）
-    final docs = await getApplicationDocumentsDirectory();
+    // 并发解析基础目录（path_provider 调用互相独立）
     final support = await getApplicationSupportDirectory();
     final temp = await getTemporaryDirectory();
 

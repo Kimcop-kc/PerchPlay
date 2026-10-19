@@ -15,7 +15,6 @@ import '../../core/system/orientation_policy.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../models/cast_device_model.dart';
-import '../../models/subtitle_model.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/cast_provider.dart';
@@ -26,7 +25,6 @@ import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/scrape/scrape_widgets.dart';
@@ -85,6 +83,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
     // 方向：平板强制横屏（只写横屏系统才会触发旋转），手机四方向全开
     OrientationPolicy.applyPlayer();
+    // 沉浸式状态栏：黑色背景 + 透明状态栏 + 白色图标（否则深色图标在黑底看不清）
+    _applyPlayerFullscreenUi();
     // 延迟到 widget tree 构建完成后加载视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -92,6 +92,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _startAutoHideTimer();
       _checkPipSupport();
     });
+  }
+
+  /// 进入播放页时设置的系统 UI 样式（透明状态栏 + 白色图标，沉浸式）。
+  static void _applyPlayerFullscreenUi() {
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.black,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
   }
 
   /// 查询系统是否支持画中画
@@ -121,6 +133,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void _restoreIdleOrientation() {
     OrientationPolicy.applyIdle();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 恢复浅色状态栏图标（首页等页面是浅色背景，深色图标）
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: GlassTheme.bg,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
   }
 
   /// 退出播放器：先落盘进度、恢复方向，再返回
@@ -145,6 +165,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       await OrientationPolicy.applyFullscreen();
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
+    // 无论进出全屏，都保持白色状态栏图标（播放页黑底）
+    _applyPlayerFullscreenUi();
     if (mounted) setState(() {});
   }
 
@@ -327,6 +349,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       },
       child: Scaffold(
         backgroundColor: Colors.black,
+        // 视频铺到状态栏后面，实现真正的沉浸式（顶栏/底栏自己处理安全区）
+        extendBodyBehindAppBar: true,
+        extendBody: true,
         body: Stack(
           children: [
             _buildVideoLayer(state),
@@ -353,12 +378,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
             ),
             // 主字幕：统一用 mpv 吐出的 `currentSubtitleLines` 自绘浮层。
-            // 内嵌/外挂都走同一来源，贴视频底部，样式统一（修「导入字幕位置
-            // 不在底部」的 bug）。mpv 的默认字幕渲染已在 player_provider 关闭？
-            // 不 —— 这里保留 mpv 渲染会双重绘制，故优先用自绘、隐藏 mpv 的。
+            // 内嵌/外挂都走同一来源，贴视频最底部，样式统一。
+            // mpv 的默认字幕渲染已通过 Video(controls: NoVideoControls) 关闭。
             if (state.currentSubtitleLines.isNotEmpty)
               Positioned(
-                bottom: isLarge ? 60 : 48,
+                bottom: isLarge ? 20 : 12,
                 left: isLarge ? 40 : 20,
                 right: isLarge ? 40 : 20,
                 child: SubtitleOverlay(
@@ -370,7 +394,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             if (_hasSecondaryOverlay(state))
               _LiveSubtitle(
                 builder: (context, live) => Positioned(
-                  bottom: isLarge ? 110 : 84,
+                  bottom: isLarge ? 72 : 52,
                   left: isLarge ? 60 : 36,
                   right: isLarge ? 60 : 36,
                   child: SubtitleOverlay(
@@ -1130,8 +1154,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             live.position.inMilliseconds.toDouble(),
                         min: 0,
                         max: live.duration.inMilliseconds.toDouble(),
-                        activeColor: GlassTheme.accentPurple,
-                        height: 4,
+                        activeColor: GlassTheme.accentPink,
+                        height: 2,
                         showThumb: _seekPreviewMs != null,
                         // 直接拖进度条时也实时预览
                         onChanged: (v) => _onSeekPreview(v.round()),
@@ -1160,8 +1184,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             ),
                             style: TextStyle(
                               color: _seekPreviewMs != null
-                                  ? GlassTheme.accentPurple
-                                  : Colors.white54,
+                                  ? GlassTheme.accentPink
+                                  : Colors.white70,
                               fontSize: 11 * scale,
                               fontWeight: _seekPreviewMs != null
                                   ? FontWeight.w700
@@ -1189,9 +1213,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           label: _fmtSpeed(state.speed),
                           compact: true,
-                          foregroundColor: state.speed != 1.0
-                              ? GlassTheme.accentTeal
-                              : Colors.white,
+                          foregroundColor: Colors.white,
                           onTap: () => setState(
                             () => _showSpeedSelector = !_showSpeedSelector,
                           ),
@@ -1200,11 +1222,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         GlassButton(
                           icon: Icons.subtitles_rounded,
                           compact: true,
-                          foregroundColor:
-                              (state.activeSubtitle != null ||
-                                  state.activeTrackId != null)
-                              ? GlassTheme.accentPurple
-                              : null,
+                          foregroundColor: Colors.white,
                           onTap: _showSubtitleSheet,
                         ),
                         GlassButton(
@@ -1392,7 +1410,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 topRight: Radius.circular(GlassTheme.radiusLg),
               )
             : BorderRadius.zero,
-        child: Video(controller: _videoController, fit: BoxFit.contain),
+        child: Video(
+          controller: _videoController,
+          fit: BoxFit.contain,
+          controls: NoVideoControls,
+        ),
       ),
     );
   }
