@@ -29,6 +29,12 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   /// 搜索词（文件名模糊匹配，临时不持久化）
   String _query = '';
 
+  /// 搜索输入框控制器。
+  ///
+  /// 必须有：否则点「清除」按钮只把 _query 置空，输入框里的文字仍留在屏幕上
+  /// （TextField 没有 controller 时无法被外部清空）。
+  final _searchController = TextEditingController();
+
   /// 排序：name / time / size
   String _sortBy = 'name';
 
@@ -39,6 +45,12 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   void initState() {
     super.initState();
     _loadRoots();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRoots() async {
@@ -78,7 +90,11 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Future<void> _navigate(String path) async {
+    // 进入新目录时清空搜索词 —— 否则会带着上一个目录的过滤条件，
+    // 新目录里的文件被"搜掉"，看起来像目录是空的。
+    _searchController.clear();
     setState(() {
+      _query = '';
       _loading = true;
       _errorMessage = null;
     });
@@ -382,6 +398,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
+              controller: _searchController,
               onChanged: (v) => setState(() => _query = v),
               textInputAction: TextInputAction.search,
               style: const TextStyle(
@@ -397,7 +414,10 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           ),
           if (_query.isNotEmpty)
             GestureDetector(
-              onTap: () => setState(() => _query = ''),
+              onTap: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
               child: const Padding(
                 padding: EdgeInsets.all(6),
                 child: Icon(Icons.close_rounded,
