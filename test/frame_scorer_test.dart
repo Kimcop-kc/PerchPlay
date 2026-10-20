@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
-import 'package:perchplay/services/ai/frame_scorer.dart';
+import 'package:perchplay/services/frame_scorer.dart';
 
 /// 用 `image` 包在内存里生成测试帧，不依赖外部文件。
 Uint8List _encodeJpeg(img.Image image) =>
