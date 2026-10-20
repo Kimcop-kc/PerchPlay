@@ -326,7 +326,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               Text(
                 '你的本地影库',
                 style: TextStyle(
-                  color: GlassTheme.accentPurple.withOpacity(0.6),
+                  color: GlassTheme.accentPurple.withValues(alpha: 0.6),
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
                 ),
@@ -388,10 +388,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.04),
+        color: Colors.black.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           width: 0.5,
         ),
       ),
@@ -868,7 +868,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   ///   1. 先判断文件是否真的还在
   ///   2. 给 Image.file 加 errorBuilder 兜底
   Widget _thumbPlaceholder() => Container(
-        color: Colors.black.withOpacity(0.08),
+        color: Colors.black.withValues(alpha: 0.08),
         child: const Center(
           child: Icon(Icons.movie_rounded,
               color: GlassTheme.textTertiary, size: 40),
@@ -931,9 +931,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.black.withOpacity(0.35),
+                  color: Colors.black.withValues(alpha: 0.35),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     width: 1.5,
                   ),
                 ),
@@ -953,7 +953,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withValues(alpha: 0.4),
                   ),
                   child: const Icon(
                     Icons.visibility_off_rounded,
@@ -979,7 +979,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.75),
+                      Colors.black.withValues(alpha: 0.75),
                     ],
                   ),
                 ),
@@ -1001,7 +1001,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     Text(
                       _formatDuration(video.durationMs),
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.85),
+                        color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 10,
                       ),
                     ),
@@ -1019,7 +1019,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 child: Container(
                   height: 3,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: const BorderRadius.vertical(
                         bottom: Radius.circular(GlassTheme.radiusLg)),
                   ),
@@ -1176,7 +1176,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 width: double.infinity,
                 height: 48,
                 foregroundColor: GlassTheme.accentPurple,
-                onTap: () => context.pushNamed('folders'),
+                // 切到首页自身的文件夹视图（与标题行的切换器同一状态），
+                // 不要再 pushNamed('folders') —— 那个路由已经删了，
+                // 留着会抛 "no routes for location"。
+                onTap: () => setState(() => _showFolders = true),
               ),
             ),
             const SizedBox(height: 12),

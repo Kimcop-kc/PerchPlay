@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +17,7 @@ import '../../providers/scrape_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
+import '../../widgets/common/app_page_header.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -109,16 +109,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildHeader() {
-    final topPad = MediaQuery.of(context).padding.top + 24;
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPad, 20, 20),
-        child: const Text('设置',
-            style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 28,
-                fontWeight: FontWeight.w800)),
-      ),
+    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    return const AppPageHeader(
+      title: '设置',
+      subtitle: '播放、字幕、存储与外观',
     );
   }
 
@@ -284,7 +278,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Icons.text_fields_rounded,
             '字幕样式',
             trailing: _unsupportedTag(null),
-            onTap: () => _showComingSoon('字幕样式'),
+            onTap: () => _showSubtitleStyleSheet(context),
           ),
           _divider(),
           _settingRow(
@@ -332,7 +326,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
           ),
           child: const Text('暂未支持',
@@ -505,7 +499,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: GlassTheme.accentTeal.withOpacity(0.12),
+                    color: GlassTheme.accentTeal.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
                   ),
                   child: const Text('已启用',
@@ -518,7 +512,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
                   ),
                   child: const Text('未启用',
@@ -550,18 +544,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                      borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+                      borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                      borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+                      borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
                       borderSide: const BorderSide(color: GlassTheme.accentTeal),
                     ),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.5),
+                    fillColor: Colors.white.withValues(alpha: 0.5),
                   ),
                   onChanged: (v) {
                     _settings.setTmdbApiKey(v.trim());
@@ -742,7 +736,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: GlassTheme.bg.withOpacity(0.95),
+        backgroundColor: GlassTheme.bg.withValues(alpha: 0.95),
         title: Text('清理「${item.label}」？'),
         content: Text(
           '将释放 ${StorageManager.instance.formatSize(item.sizeBytes)}。\n${item.description}',
@@ -838,12 +832,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withOpacity(0.88),
-                        Colors.white.withOpacity(0.6),
+                        Colors.white.withValues(alpha: 0.88),
+                        Colors.white.withValues(alpha: 0.6),
                       ],
                     ),
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.4), width: 0.8),
+                        color: Colors.white.withValues(alpha: 0.4), width: 0.8),
                   ),
                   child: SingleChildScrollView(
                     child: Column(
@@ -995,11 +989,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             borderRadius:
                                 BorderRadius.circular(GlassTheme.radiusSm),
                             border: Border.all(
-                                color: Colors.black.withOpacity(0.1)),
+                                color: Colors.black.withValues(alpha: 0.1)),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
@@ -1070,27 +1064,425 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
   }
 
+  /// 「字幕样式」面板：字号 / 位置 / 背景 / 颜色 / 双语样式，全部实时预览。
+  void _showSubtitleStyleSheet(BuildContext context) {
+    final s = AppSettingsService.instance;
+
+    // 状态放在 Sheet 外：每次 setState 重建时不会把用户的改动冲掉
+    double fontSize = s.subtitleFontSize;
+    double position = s.subtitlePosition;
+    double bgOpacity = s.subtitleBgOpacity;
+    int textColor = s.subtitleTextColorValue;
+    bool stroke = s.subtitleStroke;
+    double secScale = s.subtitleSecondaryScale;
+    bool secDim = s.subtitleSecondaryDim;
+    bool nativeAss = s.subtitleNativeAss;
+
+    const colorOptions = <(int, String, Color)>[
+      (0xFFFFFFFF, '白色', Colors.white),
+      (0xFFFFEB3B, '黄色', Color(0xFFFFEB3B)),
+      (0xFF80DEEA, '青色', Color(0xFF80DEEA)),
+      (0xFFFFB74D, '橙色', Color(0xFFFFB74D)),
+      (0xFF81C784, '绿色', Color(0xFF81C784)),
+    ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          void persist() {
+            s.setSubtitleFontSize(fontSize);
+            s.setSubtitlePosition(position);
+            s.setSubtitleBgOpacity(bgOpacity);
+            s.setSubtitleTextColor(textColor);
+            s.setSubtitleStroke(stroke);
+            s.setSubtitleSecondaryScale(secScale);
+            s.setSubtitleSecondaryDim(secDim);
+            s.setSubtitleNativeAss(nativeAss);
+            // 通知播放页重建：字幕浮层读的是同步 getter，
+            // 不重建就会出现「改了设置但正在播的视频没反应」。
+            try {
+              ref.read(subtitleSettingsTickProvider.notifier).state++;
+            } catch (_) {}
+          }
+
+          final previewSize = fontSize > 0 ? fontSize : 16.0;
+
+          return Container(
+            margin: EdgeInsets.only(
+              left: 12,
+              right: 12,
+              bottom: MediaQuery.of(context).padding.bottom + 12,
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            decoration: BoxDecoration(
+              color: GlassTheme.bg,
+              borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.text_fields_rounded,
+                            color: GlassTheme.accentPurple, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('字幕样式',
+                            style: TextStyle(
+                                color: GlassTheme.textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700)),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              fontSize = 0;
+                              position = 0.12;
+                              bgOpacity = 0.62;
+                              textColor = 0xFFFFFFFF;
+                              stroke = true;
+                              secScale = 0.82;
+                              secDim = true;
+                            });
+                            persist();
+                          },
+                          child: const Text('恢复默认',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // ── 实时预览 ──
+                    Container(
+                      height: 96,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      alignment: Alignment(
+                        0,
+                        // 预览里位置映射到 -1~1，便于直观感受
+                        position <= 0 ? 0.85 : (0.85 - position * 2.6),
+                      ),
+                      child: nativeAss
+                          // 原生模式下上面的样式参数不生效，别给用户错误暗示
+                          ? const Center(
+                              child: Text(
+                                '已启用 ASS 原生渲染\n字幕样式由字幕文件决定',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  height: 1.6,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _previewLine(
+                                  '字幕预览效果',
+                                  previewSize,
+                                  Color(textColor),
+                                  stroke,
+                                  bgOpacity,
+                                ),
+                                if (secScale > 0)
+                                  _previewLine(
+                                    'Bilingual preview',
+                                    previewSize * secScale,
+                                    secDim
+                                        ? Color(textColor)
+                                            .withValues(alpha: 0.72)
+                                        : Color(textColor),
+                                    stroke,
+                                    bgOpacity,
+                                  ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _sliderRow(
+                      '字号',
+                      fontSize <= 0 ? '自动' : fontSize.toStringAsFixed(0),
+                      fontSize <= 0 ? 16 : fontSize,
+                      14,
+                      30,
+                      (v) {
+                        setSheetState(() => fontSize = v);
+                        persist();
+                      },
+                    ),
+                    _sliderRow(
+                      '垂直位置',
+                      position <= 0.02 ? '贴底' : '${(position * 100).round()}%',
+                      position,
+                      0,
+                      0.5,
+                      (v) {
+                        setSheetState(() => position = v);
+                        persist();
+                      },
+                    ),
+                    _sliderRow(
+                      '背景透明度',
+                      '${(bgOpacity * 100).round()}%',
+                      bgOpacity,
+                      0,
+                      1,
+                      (v) {
+                        setSheetState(() => bgOpacity = v);
+                        persist();
+                      },
+                    ),
+                    _sliderRow(
+                      '译文比例',
+                      '${(secScale * 100).round()}%',
+                      secScale,
+                      0.5,
+                      1.0,
+                      (v) {
+                        setSheetState(() => secScale = v);
+                        persist();
+                      },
+                    ),
+
+                    const SizedBox(height: 6),
+                    const Text('文字颜色',
+                        style: TextStyle(
+                            color: GlassTheme.textTertiary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        for (final (argb, name, c) in colorOptions)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Tooltip(
+                              message: name,
+                              child: GestureDetector(
+                                onTap: () {
+                                  setSheetState(() => textColor = argb);
+                                  persist();
+                                },
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: c,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: textColor == argb
+                                          ? GlassTheme.accentPurple
+                                          : Colors.white24,
+                                      width: textColor == argb ? 3 : 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('文字描边',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14)),
+                      subtitle: const Text('复杂画面上更清晰',
+                          style: TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                      value: stroke,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => stroke = v);
+                        persist();
+                      },
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('译文弱化',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14)),
+                      subtitle: const Text('双语时译文用灰色，突出原文',
+                          style: TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                      value: secDim,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => secDim = v);
+                        persist();
+                      },
+                    ),
+
+                    const SizedBox(height: 6),
+                    const Divider(height: 1, color: Colors.white12),
+                    const SizedBox(height: 6),
+
+                    // ── ASS 原生渲染 ──
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('ASS 原生渲染',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                      subtitle: const Text(
+                        '用 mpv/libass 绘制字幕，保留卡拉OK、旋转、矢量绘图等\n'
+                        'ASS 特效。开启后上面的外观设置不生效（样式跟随字幕文件）。\n'
+                        '只对 ASS/SSA 字幕有区别，SRT 无影响。',
+                        style: TextStyle(
+                            color: GlassTheme.textTertiary,
+                            fontSize: 11,
+                            height: 1.5),
+                      ),
+                      isThreeLine: true,
+                      value: nativeAss,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => nativeAss = v);
+                        persist();
+                        // 正在播放时立即生效，不必等下一个视频
+                        try {
+                          ref
+                              .read(playerProvider.notifier)
+                              .reapplySubtitleMode();
+                        } catch (_) {}
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 字幕预览里的一行（带黑底，和实际渲染一致）
+  Widget _previewLine(
+    String text,
+    double size,
+    Color color,
+    bool stroke,
+    double bg,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: bg.clamp(0.0, 1.0)),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: size,
+              fontWeight: FontWeight.w500,
+              shadows: stroke
+                  ? const [
+                      Shadow(
+                          color: Colors.black87,
+                          blurRadius: 3,
+                          offset: Offset(1, 1)),
+                      Shadow(
+                          color: Colors.black87,
+                          blurRadius: 3,
+                          offset: Offset(-1, -1)),
+                    ]
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sliderRow(
+    String label,
+    String value,
+    double current,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    color: GlassTheme.textTertiary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text(value,
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+        SliderTheme(
+          data: SliderThemeData(
+            trackHeight: 3,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            value: current.clamp(min, max),
+            min: min,
+            max: max,
+            activeColor: GlassTheme.accentPurple,
+            inactiveColor: Colors.white24,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
   InputDecoration _translateInputDecoration(String hintText) {
     return InputDecoration(
-      hintText: hintText,
-      hintStyle: const TextStyle(
+      hintText: hintText,      hintStyle: const TextStyle(
           fontSize: 12, color: GlassTheme.textTertiary),
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-        borderSide: BorderSide(color: Colors.black.withOpacity(0.1)),
+        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
         borderSide: const BorderSide(color: GlassTheme.accentPink),
       ),
       filled: true,
-      fillColor: Colors.white.withOpacity(0.5),
+      fillColor: Colors.white.withValues(alpha: 0.5),
     );
   }
 
@@ -1155,9 +1547,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeColor: GlassTheme.accentPurple,
+        activeThumbColor: GlassTheme.accentPurple,
         inactiveThumbColor: GlassTheme.textTertiary,
-        inactiveTrackColor: Colors.black.withOpacity(0.08),
+        inactiveTrackColor: Colors.black.withValues(alpha: 0.08),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
     );
@@ -1165,7 +1557,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _divider() {
     return Divider(
-        height: 1, indent: 52, color: Colors.black.withOpacity(0.06));
+        height: 1, indent: 52, color: Colors.black.withValues(alpha: 0.06));
   }
 
   void _showSpeedPicker() {
@@ -1244,13 +1636,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withOpacity(0.85),
-                    Colors.white.withOpacity(0.55),
+                    Colors.white.withValues(alpha: 0.85),
+                    Colors.white.withValues(alpha: 0.55),
                   ],
                 ),
                 border: Border(
                   top: BorderSide(
-                      color: Colors.black.withOpacity(0.06), width: 0.5),
+                      color: Colors.black.withValues(alpha: 0.06), width: 0.5),
                 ),
               ),
               child: Column(
@@ -1263,7 +1655,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       height: 4,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(2),
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                       ),
                     ),
                   ),
@@ -1293,7 +1685,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     max: max,
                     divisions: divisions,
                     activeColor: GlassTheme.accentPurple,
-                    inactiveColor: Colors.black.withOpacity(0.08),
+                    inactiveColor: Colors.black.withValues(alpha: 0.08),
                     onChanged: (v) {
                       setSheetState(() => value = v);
                       onChanged(v);
@@ -1341,12 +1733,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.8),
-                Colors.white.withOpacity(0.5),
+                Colors.white.withValues(alpha: 0.8),
+                Colors.white.withValues(alpha: 0.5),
               ],
             ),
             border: Border(
-              top: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5),
+              top: BorderSide(color: Colors.black.withValues(alpha: 0.06), width: 0.5),
             ),
           ),
           child: Column(
@@ -1359,7 +1751,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   height: 4,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(2),
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                   ),
                 ),
               ),

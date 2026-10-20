@@ -56,9 +56,12 @@ class PlaylistDetailPage extends ConsumerWidget {
         child: Column(
           children: [
             // ── 顶栏 ──
+            // 这是「返回栏」形态（返回箭头 + 标题 + 标签），不是主 tab 页的
+            // 大标题规格，所以保持紧凑。但 +4 贴状态栏太紧，IconButton 的
+            // 视觉重心会偏上，统一到 +8 与其它带返回栏的页面观感一致。
             Padding(
               padding: EdgeInsets.fromLTRB(
-                  4, MediaQuery.of(context).padding.top + 4, 12, 4),
+                  4, MediaQuery.of(context).padding.top + 8, 12, 8),
               child: Row(
                 children: [
                   IconButton(
@@ -90,7 +93,7 @@ class PlaylistDetailPage extends ConsumerWidget {
                                     horizontal: 6, vertical: 1),
                                 decoration: BoxDecoration(
                                   color: GlassTheme.accentPurple
-                                      .withOpacity(0.12),
+                                      .withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text('自动',

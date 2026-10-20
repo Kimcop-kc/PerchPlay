@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection' show ListQueue;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -96,6 +97,22 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
 
   /// 播放器当前实际位置（追赶判断用，由播放页低频同步）。
   int _playerPositionMs = -1;
+
+  /// 静默删除临时音频文件（失败忽略）。
+  static void _deleteQuietly(String path) {
+    try {
+      final f = File(path);
+      if (f.existsSync()) f.deleteSync();
+    } catch (_) {}
+  }
+
+  /// 清空预抽缓冲区并删掉里面未使用的 wav。
+  void _dropPrefetch() {
+    while (_prefetch.isNotEmpty) {
+      final seg = _prefetch.removeFirst();
+      if (seg.wavPath != null) _deleteQuietly(seg.wavPath!);
+    }
+  }
 
   /// 代际号：start/seek/stop 时 +1，旧异步任务以此作废。
   int _generation = 0;
@@ -211,6 +228,8 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _generation++;
     _tickTimer?.cancel();
     _busy = false;
+    // seek 后旧的预抽音频时间戳全部失效，清掉避免错位/泄漏
+    _prefetching = false;
     _cursorMs = (ms ~/ _segmentMs) * _segmentMs;
     _playerPositionMs = ms;
     // 只清掉「游标之后」的条目（它们是旧位置生成的、时间戳仍有效但
@@ -218,6 +237,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     final kept = state.entries
         .where((e) => e.end.inMilliseconds <= _cursorMs)
         .toList();
+    _dropPrefetch();
     state = state.copyWith(
       entries: kept,
       status: LiveSubtitleStatus.transcribing,
@@ -280,6 +300,9 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _tickTimer = null;
     _videoPath = null;
     _cursorMs = 0;
+    _prefetching = false;
+    // 停掉时把预抽但未使用的临时音频删干净，避免缓存目录膨胀
+    _dropPrefetch();
     // 注意：**不要**在这里把 _busy 直接设 false。
     //
     // 若此刻真有一个转写任务在跑（抽音/推理/翻译中），它还在占用
@@ -447,11 +470,24 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
 
   static const int _segmentMs = 5000; // 每次抽 5 秒（与字幕时间轴严格一致）
 
+  /// 预抽队列：抽音（MediaExtractor/MediaCodec，纯原生）比转写快得多，
+  /// 让它跑在转写前面，能把每段的「抽音耗时」从关键路径上抹掉。
+  ///
+  /// 之前是严格串行：抽第 N 段 → 转写第 N 段 → 抽第 N+1 段 …
+  /// 每段都要等一次原生解码（几百 ms 到 1s+），两段之间就有肉眼可见的停顿。
+  /// 现在抽音只维护一个「最多 [_prefetchDepth] 段」的小缓冲，
+  /// 转写完成时下一段音频通常已经就绪。
+  final ListQueue<_PendingSegment> _prefetch = ListQueue<_PendingSegment>();
+  static const int _prefetchDepth = 2;
+
+  /// 预抽是否正在进行（避免同一时刻并发多次抽音）
+  bool _prefetching = false;
+
   void _scheduleNext() {
     if (!_running || _paused) return;
     _tickTimer?.cancel();
-    // 给播放/解码留一点喘息：每 2 秒检查一次要不要抽下一段
-    _tickTimer = Timer(const Duration(seconds: 2), _maybeProcessNext);
+    // 给播放/解码留一点喘息：每 1 秒检查一次（比原来 2s 更跟手）
+    _tickTimer = Timer(const Duration(seconds: 1), _maybeProcessNext);
   }
 
   Future<void> _maybeProcessNext() async {
@@ -459,8 +495,60 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
       _scheduleNext();
       return;
     }
+    // 先补缓冲区（不阻塞转写）
+    _kickPrefetch();
     await _processNextSegment();
     _scheduleNext();
+  }
+
+  /// 尽快把预抽缓冲区填满（不 await，失败静默）。
+  ///
+  /// 关键：发起预抽时**立刻把占位条目入队**，而不是等抽完再入队。
+  /// 否则 `_prefetch.length` 在异步完成前不会变，连续两次调用会算出
+  /// 同一个 startMs，把同一段抽两遍、还打乱后续的时间轴对应关系。
+  void _kickPrefetch() {
+    if (_prefetching || !_running || _paused) return;
+    final videoPath = _videoPath;
+    if (videoPath == null) return;
+    if (_prefetch.length >= _prefetchDepth) return;
+
+    _prefetching = true;
+    final gen = _generation;
+    // 占位要先入队，保证下一次计算的 startMs 正确
+    final startMs = _cursorMs + _prefetch.length * _segmentMs;
+    final endMs = startMs + _segmentMs;
+    final slot = _PendingSegment(
+      startMs: startMs,
+      endMs: endMs,
+      wavPath: null, // 抽完再填
+    );
+    _prefetch.add(slot);
+
+    NativeBridgeService.instance
+        .extractAudioSegment(
+      videoPath: videoPath,
+      startMs: startMs,
+      durationMs: _segmentMs,
+    )
+        .then((wav) {
+      // 代际已变（stop/seek）→ 这段作废，清理占位与文件
+      if (gen != _generation || !_running) {
+        _prefetch.remove(slot);
+        if (wav != null) _deleteQuietly(wav);
+        return;
+      }
+      if (wav == null) {
+        // 抽失败（片尾/读不到）：移除占位，别让后续段错位
+        _prefetch.remove(slot);
+        return;
+      }
+      slot.wavPath = wav;
+    }).catchError((Object e) {
+      debugPrint('[LiveSubtitle] 预抽失败: $e');
+      _prefetch.remove(slot);
+    }).whenComplete(() {
+      _prefetching = false;
+    });
   }
 
   Future<void> _processNextSegment() async {
@@ -477,7 +565,31 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     String? wavPath;
 
     try {
-      wavPath = await NativeBridgeService.instance.extractAudioSegment(
+      // 优先用预抽好的（startMs 必须对得上；seek 后可能失配）
+      //
+      // 注意可能拿到占位条目（wavPath 仍为 null = 还在抽）：
+      // 那种情况丢弃占位、回退到现场抽，不能干等。
+      _PendingSegment? ready;
+      while (_prefetch.isNotEmpty) {
+        final head = _prefetch.first;
+        if (head.startMs != startMs) {
+          // 时间轴对不上（通常是 seek 后残留），整条丢掉
+          _prefetch.removeFirst();
+          if (head.wavPath != null) _deleteQuietly(head.wavPath!);
+          continue;
+        }
+        if (head.wavPath == null) {
+          // 还在抽：等它完成没意义（已经在主循环里），丢弃占位回退现场抽
+          _prefetch.removeFirst();
+          break;
+        }
+        ready = _prefetch.removeFirst();
+        break;
+      }
+      wavPath = ready?.wavPath;
+
+      // 缓冲区没命中 → 现场抽
+      wavPath ??= await NativeBridgeService.instance.extractAudioSegment(
         videoPath: videoPath,
         startMs: startMs,
         // 严格按段边界抽取，不额外多抽。
@@ -661,3 +773,19 @@ final liveSubtitleProvider =
     StateNotifierProvider<LiveSubtitleNotifier, LiveSubtitleState>(
       (ref) => LiveSubtitleNotifier(),
     );
+
+/// 预抽好的一段音频（还没转写）。
+///
+/// [wavPath] 是可变的：发起预抽时先占位入队（wavPath=null），
+/// 抽完再填进去。这样并发/连续触发时不会算出重复的 startMs。
+class _PendingSegment {
+  final int startMs;
+  final int endMs;
+  String? wavPath;
+
+  _PendingSegment({
+    required this.startMs,
+    required this.endMs,
+    this.wavPath,
+  });
+}

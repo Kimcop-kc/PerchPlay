@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,6 +10,7 @@ import '../../services/ai/ai_model_registry.dart';
 import '../../services/ai/model_downloader.dart';
 import '../../services/ai/model_importer.dart';
 import '../../services/device_info_service.dart';
+import '../../widgets/common/app_page_header.dart';
 
 /// AI 模型管理页面。
 ///
@@ -248,7 +248,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 hintStyle: const TextStyle(
                     color: GlassTheme.textTertiary, fontSize: 14),
                 filled: true,
-                fillColor: Colors.black.withOpacity(0.05),
+                fillColor: Colors.black.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
                   borderRadius:
                       BorderRadius.circular(GlassTheme.radiusSm),
@@ -387,13 +387,13 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              GlassTheme.accentPurple.withOpacity(0.12),
-              GlassTheme.accentTeal.withOpacity(0.08),
+              GlassTheme.accentPurple.withValues(alpha: 0.12),
+              GlassTheme.accentTeal.withValues(alpha: 0.08),
             ],
           ),
           borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
           border: Border.all(
-            color: GlassTheme.accentPurple.withOpacity(0.2),
+            color: GlassTheme.accentPurple.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -455,7 +455,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: GlassTheme.accentPurple.withOpacity(0.1),
+            color: GlassTheme.accentPurple.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(role,
@@ -496,7 +496,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 LinearProgressIndicator(
                   value: p > 0 ? p : null,
                   minHeight: 4,
-                  backgroundColor: GlassTheme.accentPurple.withOpacity(0.1),
+                  backgroundColor: GlassTheme.accentPurple.withValues(alpha: 0.1),
                   valueColor: const AlwaysStoppedAnimation(
                       GlassTheme.accentPurple),
                 ),
@@ -565,7 +565,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
             width: 3,
             height: 14,
             decoration: BoxDecoration(
-              color: GlassTheme.accentPurple.withOpacity(0.4),
+              color: GlassTheme.accentPurple.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -586,69 +586,60 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   }
 
   Widget _buildHeader() {
-    final topPad = MediaQuery.of(context).padding.top + 24;
     final isImporting = _importingModelId != null;
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPad, 20, 12),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: const Icon(Icons.arrow_back_ios,
-                  size: 20, color: GlassTheme.textSecondary),
+    // 与所有页面统一：同一个留白/字号规格。
+    // 这是独立路由页（有返回箭头），所以传 leading。
+    return AppPageHeader(
+      title: 'AI 模型管理',
+      subtitle: '离线语音识别与翻译',
+      leading: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: const Icon(Icons.arrow_back_ios,
+            size: 20, color: GlassTheme.textSecondary),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isImporting)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: GlassTheme.accentPurple)),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text('AI 模型管理',
-                  style: TextStyle(
-                      color: GlassTheme.textPrimary,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800)),
-            ),
-            if (isImporting)
-              const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: GlassTheme.accentPurple)),
+          _buildGlobalStatus(),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: isImporting ? null : _startImport,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: GlassTheme.accentPurple.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
               ),
-            _buildGlobalStatus(),
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: isImporting ? null : _startImport,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: GlassTheme.accentPurple.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.folder_open,
-                        size: 14,
-                        color: isImporting
-                            ? GlassTheme.textTertiary
-                            : GlassTheme.accentPurple),
-                    const SizedBox(width: 4),
-                    Text('导入',
-                        style: TextStyle(
-                            color: isImporting
-                                ? GlassTheme.textTertiary
-                                : GlassTheme.accentPurple,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.folder_open,
+                      size: 14,
+                      color: isImporting
+                          ? GlassTheme.textTertiary
+                          : GlassTheme.accentPurple),
+                  const SizedBox(width: 4),
+                  Text('导入',
+                      style: TextStyle(
+                          color: isImporting
+                              ? GlassTheme.textTertiary
+                              : GlassTheme.accentPurple,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -685,7 +676,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     final ramLabel = ramGB > 0 ? '本机 ${ramGB.toStringAsFixed(1)} GB' : '本机 RAM 未知';
 
     return Card(
-      color: Colors.white.withOpacity(0.6),
+      color: Colors.white.withValues(alpha: 0.6),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusMd)),
@@ -785,7 +776,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                     child: LinearProgressIndicator(
                       value: p,
                       minHeight: 4,
-                      backgroundColor: GlassTheme.accentPurple.withOpacity(0.1),
+                      backgroundColor: GlassTheme.accentPurple.withValues(alpha: 0.1),
                       valueColor: const AlwaysStoppedAnimation(
                           GlassTheme.accentPurple),
                     ),
@@ -837,7 +828,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                       color: (tooHeavy
                               ? GlassTheme.accentPink
                               : GlassTheme.accentTeal)
-                          .withOpacity(0.08),
+                          .withValues(alpha: 0.08),
                       borderRadius:
                           BorderRadius.circular(GlassTheme.radiusSm),
                     ),
@@ -886,7 +877,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
 
   Widget _buildUserModelCard(String modelId) {
     return Card(
-      color: Colors.white.withOpacity(0.6),
+      color: Colors.white.withValues(alpha: 0.6),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusMd)),
@@ -898,7 +889,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                  color: GlassTheme.accentPurple.withOpacity(0.1),
+                  color: GlassTheme.accentPurple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.folder_outlined,
                   size: 18, color: GlassTheme.accentPurple),
@@ -1012,7 +1003,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-          color: GlassTheme.accentPurple.withOpacity(0.1),
+          color: GlassTheme.accentPurple.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10)),
       child: Icon(icon, size: 18, color: GlassTheme.accentPurple),
     );
@@ -1032,7 +1023,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(4)),
       child: Text(label,
           style: TextStyle(
@@ -1101,7 +1092,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(label,

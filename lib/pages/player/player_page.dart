@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+// 只引入 AudioTrack：media_kit 里的 PlayerState 与本项目的
+// player_provider.dart 里的 PlayerState 重名，全量 import 会 ambiguous。
+import 'package:media_kit/media_kit.dart' show AudioTrack;
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -18,6 +21,7 @@ import '../../models/cast_device_model.dart';
 import '../../models/subtitle_model.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/ui_settings_provider.dart';
 import '../../providers/cast_provider.dart';
 import '../../providers/live_subtitle_provider.dart';
 import '../../services/ai/batch_subtitle_service.dart';
@@ -243,6 +247,27 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   bool _hasSecondaryOverlay(PlayerState state) =>
       state.secondaryEntries != null && state.secondaryEntries!.isNotEmpty;
 
+  // ─────────── 字幕外观（来自设置，运行时即时生效）───────────
+
+  AppSettingsService get _settings => AppSettingsService.instance;
+
+  /// 字幕字号：0 = 跟随屏幕大小自适应（旧行为），否则用用户设定值。
+  double _subtitleFontSize(bool isLarge) {
+    final v = _settings.subtitleFontSize;
+    if (v > 0) return isLarge ? v + 2 : v;
+    return isLarge ? 18 : 16;
+  }
+
+  /// 字幕距底部距离。position: 0 = 贴底，越大越靠上。
+  ///
+  /// 用「屏幕高度 × 系数」而不是像素值，保证不同分辨率下手感一致。
+  /// position 上限 0.5 → 最多抬高约 42% 屏高（不会飘到画面正中）。
+  double _subtitleBottom(bool isLarge) {
+    final base = isLarge ? 20.0 : 12.0;
+    final screenH = MediaQuery.of(context).size.height;
+    return base + _settings.subtitlePosition * screenH * 0.85;
+  }
+
   /// 手势拖动进度：实时带动底部进度条
   void _onSeekPreview(int targetMs) {
     if (!mounted) return;
@@ -316,6 +341,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   @override
   Widget build(BuildContext context) {
+    // 监听「ASS 原生渲染」开关：切换后必须立刻重建，
+    // 因为自绘浮层要跟着显示/隐藏（否则双字幕）。
+    ref.watch(subtitleNativeAssTickProvider);
+
     // 只订阅「结构性」字段：position / 字幕行号这类高频变化的字段
     // 由进度条、时间文字、字幕浮层等叶子节点各自 select 订阅。
     // 否则播放中整页会以每秒数次重建（发热、掉帧的主因之一）。
@@ -422,38 +451,50 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 longPressSpeed: AppSettingsService.instance.longPressSpeed,
               ),
             ),
-            // 主字幕：统一用 mpv 吐出的 `currentSubtitleLines` 自绘浮层。
-            // 内嵌/外挂都走同一来源，贴视频最底部，样式统一。
-            // mpv 的默认字幕渲染已通过 Video(controls: NoVideoControls) 关闭。
-            if (state.currentSubtitleLines.isNotEmpty)
+            // 主字幕：默认由 Flutter 自绘浮层渲染（样式统一可调）。
+            //
+            // 但如果用户在设置里开了「ASS 原生渲染」，主字幕交给 mpv/libass
+            // 画（特效完整），此时浮层**必须不画**，否则又会出现双字幕。
+            if (!_settings.subtitleNativeAss &&
+                state.currentSubtitleLines.isNotEmpty)
               Positioned(
-                bottom: isLarge ? 20 : 12,
+                bottom: _subtitleBottom(isLarge),
                 left: isLarge ? 40 : 20,
                 right: isLarge ? 40 : 20,
                 child: SubtitleOverlay(
                   lines: state.currentSubtitleLines,
-                  fontSize: isLarge ? 18 : 16,
+                  fontSize: _subtitleFontSize(isLarge),
+                  bgOpacity: _settings.subtitleBgOpacity,
+                  textColor: Color(_settings.subtitleTextColorValue),
+                  stroke: _settings.subtitleStroke,
+                  secondaryScale: _settings.subtitleSecondaryScale,
+                  secondaryDim: _settings.subtitleSecondaryDim,
+                  maxCharsPerLine: isLarge ? 34 : 22,
                 ),
               ),
             // 第二字幕（外挂自绘，可与主字幕同屏）
             if (_hasSecondaryOverlay(state))
               _LiveSubtitle(
                 builder: (context, live) => Positioned(
-                  bottom: isLarge ? 72 : 52,
+                  bottom: _subtitleBottom(isLarge) + (isLarge ? 52 : 40),
                   left: isLarge ? 60 : 36,
                   right: isLarge ? 60 : 36,
                   child: SubtitleOverlay(
                     entries: live.secondaryEntries!,
                     activeIndex: live.secondarySubtitleIndex,
-                    fontSize: isLarge ? 15 : 13.5,
+                    fontSize: _subtitleFontSize(isLarge) * 0.85,
                     compact: true,
+                    bgOpacity: _settings.subtitleBgOpacity,
+                    textColor: Color(_settings.subtitleTextColorValue),
+                    stroke: _settings.subtitleStroke,
+                    maxCharsPerLine: isLarge ? 34 : 22,
                   ),
                 ),
               ),
-            // 实时 AI 字幕（边播边转写）：浮在最上层，贴底显示
+            // 实时 AI 字幕（边播边转写）：浮在最上层
             _LiveAiSubtitle(
               builder: (context, liveState, positionMs) => Positioned(
-                bottom: isLarge ? 100 : 76,
+                bottom: _subtitleBottom(isLarge) + (isLarge ? 80 : 62),
                 left: isLarge ? 48 : 24,
                 right: isLarge ? 48 : 24,
                 child: liveState.entries.isEmpty
@@ -518,7 +559,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
               ),
             ),
             child: Row(
@@ -532,15 +573,26 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ),
                 // 只显示文件名，详细参数放在「详情」弹窗里
                 Expanded(
-                  child: Text(
-                    state.currentVideo?.name ?? widget.videoTitle,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isLarge ? 18 : 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          state.currentVideo?.name ?? widget.videoTitle,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isLarge ? 18 : 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // HDR / 杜比视界角标：识别到就显示，紧贴文件名右侧
+                      if (_hdrBadgeText(state) != null) ...[
+                        const SizedBox(width: 8),
+                        _buildHdrBadge(state),
+                      ],
+                    ],
                   ),
                 ),
                 IconButton(
@@ -935,7 +987,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               Text(
                 '点右侧 ⇅ 可把字幕设为「第二字幕」，与主字幕同屏显示（如中英对照）',
                 style: TextStyle(
-                  color: GlassTheme.textTertiary.withOpacity(0.95),
+                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
                   fontSize: 11.5,
                   height: 1.4,
                 ),
@@ -947,10 +999,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 margin: const EdgeInsets.only(top: 8, bottom: 8),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: GlassTheme.accentPurple.withOpacity(0.04),
+                  color: GlassTheme.accentPurple.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
                   border: Border.all(
-                    color: GlassTheme.accentPurple.withOpacity(0.12),
+                    color: GlassTheme.accentPurple.withValues(alpha: 0.12),
                   ),
                 ),
                 child: Column(
@@ -1008,7 +1060,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                           ),
                           trailing: Switch(
                             value: live.running,
-                            activeColor: GlassTheme.accentTeal,
+                            activeThumbColor: GlassTheme.accentTeal,
                             onChanged: (_) {
                               Navigator.pop(ctx);
                               _toggleLiveSubtitle();
@@ -1153,7 +1205,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                   value: progress,
                                   minHeight: 6,
                                   backgroundColor: GlassTheme.accentPurple
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   valueColor: const AlwaysStoppedAnimation(
                                     GlassTheme.accentPurple,
                                   ),
@@ -1416,6 +1468,144 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
+  /// 音轨切换面板：多音轨时点按钮弹出。
+  ///
+  /// 与字幕面板一致的玻璃底部弹窗样式，逐条列出音轨，
+  /// 当前选中项高亮，点击即切换。
+  void _showAudioTrackSheet() {
+    final st = ref.read(playerProvider);
+    final notifier = ref.read(playerProvider.notifier);
+    final tracks = st.audioTracks;
+    if (tracks.isEmpty) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          24 + MediaQuery.of(ctx).viewPadding.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '音轨',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${tracks.length} 条音轨，点选即切换',
+              style: TextStyle(
+                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final t in tracks)
+                    _audioTrackTile(t, st, notifier),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 单条音轨项。
+  Widget _audioTrackTile(
+    AudioTrack t,
+    PlayerState st,
+    PlayerNotifier notifier,
+  ) {
+    // 判断是否当前选中：优先 activeAudioTrackId，否则回退「默认音轨」
+    final isActive = st.activeAudioTrackId == t.id ||
+        (st.activeAudioTrackId == null && (t.isDefault ?? false));
+
+    final desc = _audioTrackSingleDesc(t);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: isActive
+            ? GlassTheme.accentPurple.withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+        border: Border.all(
+          color: isActive
+              ? GlassTheme.accentPurple.withValues(alpha: 0.4)
+              : Colors.black.withValues(alpha: 0.06),
+          width: 0.8,
+        ),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: Icon(
+          Icons.audiotrack_rounded,
+          size: 20,
+          color: isActive ? GlassTheme.accentPurple : GlassTheme.textTertiary,
+        ),
+        title: Text(
+          t.title?.isNotEmpty == true
+              ? t.title!
+              : (t.language?.isNotEmpty == true ? t.language! : '音轨'),
+          style: TextStyle(
+            color: GlassTheme.textPrimary,
+            fontSize: 14,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+        subtitle: desc.isNotEmpty
+            ? Text(desc,
+                style: const TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 11))
+            : null,
+        trailing: isActive
+            ? const Icon(Icons.check_rounded,
+                color: GlassTheme.accentPurple, size: 20)
+            : null,
+        onTap: () {
+          Navigator.pop(context);
+          notifier.selectAudioTrack(t);
+        },
+      ),
+    );
+  }
+
+  /// 单条音轨的描述（编码 / 声道 / 采样率）。
+  String _audioTrackSingleDesc(AudioTrack t) {
+    final parts = <String>[
+      if (t.codec?.isNotEmpty == true) t.codec!,
+      if (t.channelscount != null && t.channelscount! > 0)
+        '${t.channelscount}声道',
+      if (t.samplerate != null && t.samplerate! > 0)
+        '${(t.samplerate! / 1000).toStringAsFixed(1)}kHz',
+    ];
+    return parts.join(' · ');
+  }
+
   /// 字幕行的尾部操作：设为主字幕状态 + 设为第二字幕按钮
   Widget? _subTrailing({
     required bool isPrimary,
@@ -1472,7 +1662,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
@@ -1497,13 +1687,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: active
-              ? GlassTheme.accentTeal.withOpacity(0.15)
+              ? GlassTheme.accentTeal.withValues(alpha: 0.15)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: active
                 ? GlassTheme.accentTeal
-                : GlassTheme.textTertiary.withOpacity(0.4),
+                : GlassTheme.textTertiary.withValues(alpha: 0.4),
             width: 1,
           ),
         ),
@@ -1646,7 +1836,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
               ),
             ),
             child: _LivePosition(
@@ -1734,6 +1924,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                           foregroundColor: Colors.white,
                           onTap: _showSubtitleSheet,
                         ),
+                        // 音轨切换：仅多音轨时显示（单轨没得切，不占位置）
+                        if (state.audioTracks.length > 1)
+                          GlassButton(
+                            icon: Icons.audiotrack_rounded,
+                            compact: true,
+                            foregroundColor: Colors.white,
+                            onTap: _showAudioTrackSheet,
+                          ),
                         // 实时 AI 字幕（边播边转写）
                         _LiveAiSubtitleToggle(onTap: _toggleLiveSubtitle),
                         GlassButton(
@@ -1820,10 +2018,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.75),
+                    color: Colors.black.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       width: 1,
                     ),
                   ),
@@ -1877,13 +2075,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: isActive
-                                    ? GlassTheme.accentTeal.withOpacity(0.85)
-                                    : Colors.white.withOpacity(0.08),
+                                    ? GlassTheme.accentTeal.withValues(alpha: 0.85)
+                                    : Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
                                 border: isActive
                                     ? null
                                     : Border.all(
-                                        color: Colors.white.withOpacity(0.2),
+                                        color: Colors.white.withValues(alpha: 0.2),
                                         width: 1,
                                       ),
                               ),
@@ -2002,6 +2200,41 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (cp.contains('2020')) return 'BT.2020 色域';
     if (cp.contains('709')) return 'BT.709 (SDR)';
     return primaries;
+  }
+
+  /// 角标文案：杜比视界 > HDR10 > HLG，SDR 返回 null（不显示角标）。
+  String? _hdrBadgeText(PlayerState state) {
+    if (state.dolbyVision) return '杜比视界';
+    final t = state.hdrType;
+    if (t == 'HDR10') return 'HDR10';
+    if (t == 'HLG') return 'HLG';
+    return null;
+  }
+
+  /// HDR / 杜比视界角标（顶栏文件名旁）。
+  ///
+  /// 统一白色小字 + 半透明黑底，低调不遮挡画面。
+  Widget _buildHdrBadge(PlayerState state) {
+    final label = _hdrBadgeText(state);
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.5),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+          height: 1.1,
+        ),
+      ),
+    );
   }
 }
 
@@ -2132,27 +2365,22 @@ Widget _buildAiSubtitleText(
     }
   }
 
-  return Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: isLarge ? 16 : 12,
-      vertical: isLarge ? 7 : 5,
-    ),
-    decoration: BoxDecoration(
-      color: Colors.black.withOpacity(0.6),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      label,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: isLarge ? 18 : 16,
-        fontWeight: FontWeight.w500,
-        shadows: const [
-          Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1)),
-        ],
-      ),
-    ),
+  // 统一复用 SubtitleOverlay：黑底只包文字、智能断行、双语主次分明、
+  // 淡入淡出等能力都与主字幕保持一致，避免两套渲染跑偏。
+  final s = AppSettingsService.instance;
+  final base = s.subtitleFontSize > 0
+      ? (isLarge ? s.subtitleFontSize + 2 : s.subtitleFontSize)
+      : (isLarge ? 18.0 : 16.0);
+
+  return SubtitleOverlay(
+    lines: label.split('\n'),
+    fontSize: base,
+    bgOpacity: s.subtitleBgOpacity,
+    textColor: Color(s.subtitleTextColorValue),
+    stroke: s.subtitleStroke,
+    secondaryScale: s.subtitleSecondaryScale,
+    secondaryDim: s.subtitleSecondaryDim,
+    maxCharsPerLine: isLarge ? 34 : 22,
   );
 }
 

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
@@ -8,6 +7,7 @@ import '../../providers/cast_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/common/app_page_header.dart';
 
 /// 投屏页面 — iOS 27 玻璃质感
 class CastPage extends ConsumerStatefulWidget {
@@ -80,10 +80,10 @@ class _CastPageState extends ConsumerState<CastPage>
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: GlassTheme.accentPink.withOpacity(0.12),
+        color: GlassTheme.accentPink.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
         border: Border.all(
-            color: GlassTheme.accentPink.withOpacity(0.3), width: 0.5),
+            color: GlassTheme.accentPink.withValues(alpha: 0.3), width: 0.5),
       ),
       child: Row(
         children: [
@@ -146,17 +146,12 @@ class _CastPageState extends ConsumerState<CastPage>
   }
 
   Widget _buildTabletTitle() {
-    final topPad = MediaQuery.of(context).padding.top + 20;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, topPad, 20, 8),
-      child: const Align(
-        alignment: Alignment.centerLeft,
-        child: Text('投屏',
-            style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 26,
-                fontWeight: FontWeight.w800)),
-      ),
+    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    return const AppPageHeader(
+      title: '投屏',
+      subtitle: '搜索并连接局域网设备',
+      asSliver: false,
+      childGap: 8,
     );
   }
 
@@ -177,7 +172,7 @@ class _CastPageState extends ConsumerState<CastPage>
                 Icons.sensors_rounded,
                 color: state.isDiscovering
                     ? GlassTheme.accentPurple
-                        .withOpacity(0.4 + _pulseController.value * 0.6)
+                        .withValues(alpha: 0.4 + _pulseController.value * 0.6)
                     : GlassTheme.textTertiary,
                 size: 20,
               ),
@@ -348,12 +343,12 @@ class _CastPageState extends ConsumerState<CastPage>
                   colors: [
                     (isActive
                             ? GlassTheme.accentPurple
-                            : Colors.black.withOpacity(0.08))
-                        .withOpacity(0.2),
+                            : Colors.black.withValues(alpha: 0.08))
+                        .withValues(alpha: 0.2),
                     (isActive
                             ? GlassTheme.accentPurple
-                            : Colors.black.withOpacity(0.04))
-                        .withOpacity(0.06),
+                            : Colors.black.withValues(alpha: 0.04))
+                        .withValues(alpha: 0.06),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
@@ -398,8 +393,8 @@ class _CastPageState extends ConsumerState<CastPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      GlassTheme.accentPurple.withOpacity(0.2),
-                      GlassTheme.accentTeal.withOpacity(0.1),
+                      GlassTheme.accentPurple.withValues(alpha: 0.2),
+                      GlassTheme.accentTeal.withValues(alpha: 0.1),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
@@ -435,17 +430,17 @@ class _CastPageState extends ConsumerState<CastPage>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  GlassTheme.accentPurple.withOpacity(0.2),
-                  GlassTheme.accentTeal.withOpacity(0.08),
+                  GlassTheme.accentPurple.withValues(alpha: 0.2),
+                  GlassTheme.accentTeal.withValues(alpha: 0.08),
                 ],
               ),
               border: Border.all(
-                color: GlassTheme.accentPurple.withOpacity(0.35),
+                color: GlassTheme.accentPurple.withValues(alpha: 0.35),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: GlassTheme.accentPurple.withOpacity(0.2),
+                  color: GlassTheme.accentPurple.withValues(alpha: 0.2),
                   blurRadius: 20,
                 ),
               ],
@@ -541,9 +536,9 @@ class _CastPageState extends ConsumerState<CastPage>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.18), color.withOpacity(0.06)],
+                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.06)],
               ),
-              border: Border.all(color: color.withOpacity(0.3), width: 1),
+              border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
             ),
             child: Icon(icon, color: color, size: 26),
           ),

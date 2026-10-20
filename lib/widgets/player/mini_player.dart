@@ -83,12 +83,12 @@ class MiniPlayerState extends State<MiniPlayer> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
               border: Border.all(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 width: 0.8,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
                 ),

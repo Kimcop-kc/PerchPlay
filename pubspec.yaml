@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.81+81
+version: 1.0.83+83
 homepage: https://github.com/Kimcop-kc/PerchPlay
 repository: https://github.com/Kimcop-kc/PerchPlay
 
@@ -67,6 +67,8 @@ dependencies:
   file_picker: ^13.1.0
   archive: ^4.5.2
   onnxruntime: ^1.4.1
+  dart_smb2: ^0.2.1
+  flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
   flutter_test:
@@ -78,6 +80,14 @@ dev_dependencies:
 dependency_overrides:
   onnxruntime:
     path: local_packages/onnxruntime
+
+# dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库。
+# 国内网络 / CI 环境可能拉不动，所以把 arm64 的 .so 放进仓库，
+# 让它优先用本地文件（SHA 与包内清单一致：d9af2446…）。
+hooks:
+  user_defines:
+    dart_smb2:
+      libsmb2: third_party/libsmb2
 
 flutter:
   uses-material-design: true

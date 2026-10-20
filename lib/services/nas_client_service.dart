@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:dart_smb2/dart_smb2.dart';
 import 'package:flutter/foundation.dart';
 import '../models/nas_connection_model.dart';
 
@@ -14,6 +15,10 @@ class NasClientService {
   NasConnection? get connection => _connection;
 
   HttpClient? _httpClient;
+
+  /// SMB2/3 连接池（基于 libsmb2，走 worker isolate，不阻塞 UI）
+  Smb2Pool? _smbPool;
+
   bool _connected = false;
   bool get isConnected => _connected;
 
@@ -21,8 +26,11 @@ class NasClientService {
 
   Future<bool> connect(NasConnection config) async {
     _connection = config;
-    _httpClient = HttpClient();
-    _httpClient!.connectionTimeout = const Duration(seconds: 10);
+    // SMB 不走 HttpClient，避免无谓的资源占用
+    if (config.protocol != NasProtocol.smb) {
+      _httpClient = HttpClient();
+      _httpClient!.connectionTimeout = const Duration(seconds: 10);
+    }
 
     try {
       switch (config.protocol) {
@@ -31,7 +39,7 @@ class NasClientService {
         case NasProtocol.ftp:
           return await _connectFtp();
         case NasProtocol.smb:
-          return false; // 未实现（见 _connectSmb 说明）
+          return await _connectSmb();
         case NasProtocol.nfs:
           return false; // NFS 需要 kernel 支持，不通过 Dart 实现
       }
@@ -41,16 +49,119 @@ class NasClientService {
     }
   }
 
-  Future<void> disconnect() {
+  Future<void> disconnect() async {
     _httpClient?.close();
     _httpClient = null;
+    try {
+      await _smbPool?.disconnect();
+    } catch (_) {}
+    _smbPool = null;
     _connection = null;
     _connected = false;
-    return Future.value();
+  }
+
+  // ──────────── SMB2/3 ────────────
+
+  /// SMB 连接。
+  ///
+  /// 用 [Smb2Pool] 而不是单连接客户端：它会在 worker isolate 里跑，
+  /// 目录遍历/读文件不会卡住 UI（大目录尤其明显）。
+  ///
+  /// 关键约定：
+  ///  - [NasConnection.shareName] 必填（SMB 必须先连到某个共享，如 `video`）
+  ///  - [NasConnection.domain] 可选，Windows 域/工作组填 `WORKGROUP`
+  Future<bool> _connectSmb() async {
+    final c = _connection!;
+    final share = c.shareName.trim();
+    if (share.isEmpty) {
+      debugPrint('[NAS] SMB 缺少共享名（shareName），无法连接');
+      _connected = false;
+      return false;
+    }
+    try {
+      await _smbPool?.disconnect();
+      // 注意：dart_smb2 的 connect 没有 port 参数（固定走 445），
+      // 非标准端口暂不支持。
+      _smbPool = await Smb2Pool.connect(
+        host: c.host,
+        share: share,
+        user: c.username.isEmpty ? null : c.username,
+        password: c.password.isEmpty ? null : c.password,
+        domain: c.domain.isEmpty ? null : c.domain,
+      );
+      // 真正确认可用：列一次根目录
+      await _smbPool!.listDirectory('');
+      _connected = true;
+      debugPrint('[NAS] SMB 已连接: ${c.host}/$share');
+      return true;
+    } catch (e) {
+      debugPrint('[NAS] SMB 连接失败: $e');
+      _smbPool = null;
+      _connected = false;
+      return false;
+    }
+  }
+
+  /// 列出 SMB 目录。
+  ///
+  /// 路径以 `/` 开头（与 WebDAV 保持一致），内部转成 SMB 的相对路径。
+  Future<List<NasFileItem>> _listSmb(String path) async {
+    final pool = _smbPool;
+    if (pool == null) return [];
+    // '/a/b' → 'a/b'；'/' → ''
+    var rel = path.trim();
+    if (rel.startsWith('/')) rel = rel.substring(1);
+    if (rel.endsWith('/')) rel = rel.substring(0, rel.length - 1);
+
+    final entries = await pool.listDirectory(rel);
+    final items = <NasFileItem>[];
+    for (final e in entries) {
+      // 跳过 . / .. （部分服务端会返回）
+      if (e.name == '.' || e.name == '..') continue;
+      final childPath =
+          rel.isEmpty ? '/${e.name}' : '/$rel/${e.name}';
+      final st = e.stat;
+      items.add(NasFileItem(
+        name: e.name,
+        path: childPath,
+        isDirectory: e.isDirectory,
+        size: e.isDirectory ? 0 : st.size,
+        modifiedTime: st.modified,
+      ));
+    }
+    return items;
+  }
+
+  /// 读取 SMB 文件全部内容（小文件用，如字幕/封面）。
+  Future<Uint8List?> readSmbFile(String path) async {
+    final pool = _smbPool;
+    if (pool == null) return null;
+    var rel = path.trim();
+    if (rel.startsWith('/')) rel = rel.substring(1);
+    try {
+      return await pool.readFile(rel);
+    } catch (e) {
+      debugPrint('[NAS] SMB 读文件失败: $e');
+      return null;
+    }
+  }
+
+  /// 下载 SMB 文件到本地（视频播放前缓存用）。
+  Future<bool> downloadSmbFile(String remotePath, String localPath) async {
+    final pool = _smbPool;
+    if (pool == null) return false;
+    var rel = remotePath.trim();
+    if (rel.startsWith('/')) rel = rel.substring(1);
+    try {
+      await pool.downloadToFile(rel, localPath);
+      return true;
+    } catch (e) {
+      debugPrint('[NAS] SMB 下载失败: $e');
+      return false;
+    }
   }
 
   // ──────────── WebDAV ────────────
-
   Future<bool> _connectWebDav() async {
     final c = _connection!;
     final scheme = c.port == 443 ? 'https' : 'http';
@@ -115,8 +226,9 @@ class NasClientService {
         case NasProtocol.ftp:
           return await _listFtp(path);
         case NasProtocol.smb:
+          return await _listSmb(path);
         case NasProtocol.nfs:
-          // SMB/NFS 未实现，不再用 WebDAV 顶替（会静默返回错误结果）
+          // NFS 需要 kernel 支持，不通过 Dart 实现
           return [];
       }
     } catch (e) {

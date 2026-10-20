@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// iOS 27 玻璃质感主题
@@ -55,12 +54,12 @@ class GlassTheme {
   // ────────── 阴影 ──────────
   static List<BoxShadow> glassShadow(Color tint) => [
         BoxShadow(
-          color: tint.withOpacity(0.12),
+          color: tint.withValues(alpha: 0.12),
           blurRadius: 20,
           offset: const Offset(0, 8),
         ),
         BoxShadow(
-          color: tint.withOpacity(0.04),
+          color: tint.withValues(alpha: 0.04),
           blurRadius: 6,
           offset: const Offset(0, 2),
         ),
@@ -68,7 +67,7 @@ class GlassTheme {
 
   static List<BoxShadow> softShadow() => [
         BoxShadow(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           blurRadius: 30,
           offset: const Offset(0, 10),
         ),
@@ -162,7 +161,7 @@ class GlassTheme {
       borderRadius: BorderRadius.circular(radius),
       border: showBorder
           ? Border.all(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               width: 0.5,
             )
           : null,
@@ -170,8 +169,8 @@ class GlassTheme {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Colors.white.withOpacity(opacity + 0.02),
-          Colors.white.withOpacity(opacity),
+          Colors.white.withValues(alpha: opacity + 0.02),
+          Colors.white.withValues(alpha: opacity),
         ],
       ),
       boxShadow: showShadow ? glassShadow(shadowTint) : null,

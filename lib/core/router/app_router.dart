@@ -29,6 +29,22 @@ class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/home',
     navigatorKey: _rootNavigatorKey,
+
+    /// 兜底：任何没匹配上的 location 都回首页，而不是抛 GoException。
+    ///
+    /// 真实场景：从手机「文件管理 / 相册」用「其他应用打开」视频时，
+    /// Android 会用 `content://com.android.fileexplorer.myprovider/...`
+    /// 作为 Intent 的 data，Flutter 引擎把它当成初始路由，
+    /// GoRouter 找不到就崩在 `GoException: no routes for location`。
+    ///
+    /// 真正的打开逻辑走原生 MethodChannel（见 NativeBridgeService 的
+    /// takeLaunchVideoUri / registerLaunchUriHandler），
+    /// 这里只需要保证「不炸」并且落到首页。
+    onException: (context, state, router) {
+      debugPrint('[Router] 未匹配的 location: ${state.uri}，回首页');
+      router.go('/home');
+    },
+
     routes: [
       // Shell 路由 — 底栏导航
       ShellRoute(

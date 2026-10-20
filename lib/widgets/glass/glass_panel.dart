@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import 'safe_glass.dart';
@@ -53,8 +52,8 @@ class GlassPanel extends StatelessWidget {
                 border: showBorder
                     ? Border.all(
                         color: isColoredTint
-                            ? tintColor.withOpacity(0.35)
-                            : Colors.white.withOpacity(0.35),
+                            ? tintColor.withValues(alpha: 0.35)
+                            : Colors.white.withValues(alpha: 0.35),
                         width: 0.8,
                       )
                     : null,
@@ -62,13 +61,13 @@ class GlassPanel extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withOpacity(0.55),
-                    Colors.white.withOpacity(0.22),
+                    Colors.white.withValues(alpha: 0.55),
+                    Colors.white.withValues(alpha: 0.22),
                   ],
                 ),
                 boxShadow: showShadow ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
+                    color: Colors.black.withValues(alpha: 0.12),
                     blurRadius: 28,
                     offset: const Offset(0, 12),
                   ),
@@ -87,8 +86,8 @@ class GlassPanel extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              tintColor.withOpacity(0.20),
-                              Colors.white.withOpacity(0.02),
+                              tintColor.withValues(alpha: 0.20),
+                              Colors.white.withValues(alpha: 0.02),
                             ],
                           )
                         : GlassTheme.liquidSheen,
@@ -106,8 +105,8 @@ class GlassPanel extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.center,
                       colors: [
-                        Colors.white.withOpacity(0.55),
-                        Colors.white.withOpacity(0.0),
+                        Colors.white.withValues(alpha: 0.55),
+                        Colors.white.withValues(alpha: 0.0),
                       ],
                       stops: const [0.0, 0.35],
                     ),
@@ -125,8 +124,8 @@ class GlassPanel extends StatelessWidget {
                       begin: Alignment.bottomCenter,
                       end: Alignment.center,
                       colors: [
-                        Colors.white.withOpacity(0.18),
-                        Colors.white.withOpacity(0.0),
+                        Colors.white.withValues(alpha: 0.18),
+                        Colors.white.withValues(alpha: 0.0),
                       ],
                       stops: const [0.0, 0.3],
                     ),

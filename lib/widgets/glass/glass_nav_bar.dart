@@ -156,8 +156,13 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
                               child: Transform(
                                 alignment: Alignment.center,
                                 transform: Matrix4.identity()
-                                  ..scale(1.0 + 0.05 * math.sin(math.pi * t),
-                                      1.0 - 0.04 * math.sin(math.pi * t)),
+                                  // scale() 已弃用，改用 scaleByDouble(x, y, z, w)
+                                  ..scaleByDouble(
+                                    1.0 + 0.05 * math.sin(math.pi * t),
+                                    1.0 - 0.04 * math.sin(math.pi * t),
+                                    1.0,
+                                    1.0,
+                                  ),
                                 child: _LensBubble(
                                   width: _bubbleW,
                                   height: _bubbleH,
@@ -228,17 +233,17 @@ class _GlassTrack extends StatelessWidget {
                 // 外观与开关无关：关闭只去掉实时模糊，白色叠加/描边/投影
                 // 保持一致，避免"关掉就换了个样子"
                 colors: [
-                  Colors.white.withOpacity(0.55),
-                  Colors.white.withOpacity(0.35),
+                  Colors.white.withValues(alpha: 0.55),
+                  Colors.white.withValues(alpha: 0.35),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withOpacity(0.60),
+                color: Colors.white.withValues(alpha: 0.60),
                 width: 0.7,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
+                  color: Colors.black.withValues(alpha: 0.10),
                   blurRadius: 18,
                   offset: const Offset(0, 6),
                 ),
@@ -260,8 +265,8 @@ class _GlassTrack extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.white.withOpacity(0.40),
-                          Colors.white.withOpacity(0.0),
+                          Colors.white.withValues(alpha: 0.40),
+                          Colors.white.withValues(alpha: 0.0),
                         ],
                       ),
                     ),
@@ -300,27 +305,27 @@ class _LensBubble extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withOpacity(0.85),
-            Colors.white.withOpacity(0.55),
-            Colors.white.withOpacity(0.30),
+            Colors.white.withValues(alpha: 0.85),
+            Colors.white.withValues(alpha: 0.55),
+            Colors.white.withValues(alpha: 0.30),
           ],
           stops: const [0.0, 0.45, 1.0],
         ),
         // 白色描边：玻璃边缘高光
         border: Border.all(
           width: 1.0,
-          color: Colors.white.withOpacity(0.85),
+          color: Colors.white.withValues(alpha: 0.85),
         ),
         boxShadow: [
           // 投影 — 玻璃浮起
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
+            color: Colors.black.withValues(alpha: 0.16),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
           // 顶部内发光
           BoxShadow(
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
             blurRadius: 6,
             offset: const Offset(0, -2),
           ),
@@ -343,8 +348,8 @@ class _LensBubble extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.85),
-                      Colors.white.withOpacity(0.0),
+                      Colors.white.withValues(alpha: 0.85),
+                      Colors.white.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -364,8 +369,8 @@ class _LensBubble extends StatelessWidget {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      Colors.white.withOpacity(0.30),
-                      Colors.white.withOpacity(0.0),
+                      Colors.white.withValues(alpha: 0.30),
+                      Colors.white.withValues(alpha: 0.0),
                     ],
                   ),
                 ),

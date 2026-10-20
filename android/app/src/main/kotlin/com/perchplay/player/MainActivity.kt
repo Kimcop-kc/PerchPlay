@@ -9,9 +9,11 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import android.util.Rational
@@ -27,6 +29,163 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.vidflow/native"
     private val PIP_CHANNEL = "com.vidflow/pip"
+
+    /// 从「文件管理器 / 相册」等外部 App 打开视频时带进来的 URI。
+    ///
+    /// 时序问题：`configureFlutterEngine` 早于 `onNewIntent`，而 Dart 侧要等
+    /// 引擎起来才能收消息。所以这里先缓存，等 Dart 主动来取（`getLaunchUri`），
+    /// 之后再用 `openVideoUri` 反向推送后续的 Intent。
+    private var pendingVideoUri: String? = null
+
+    /// Flutter 侧准备好的通道（Dart 调 `readyForLaunchUri` 后才有值）
+    private var pendingChannel: MethodChannel? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 冷启动：从外部 App「用其他应用打开」进来的视频
+        pendingVideoUri = extractVideoUri(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // 热启动：App 已在后台，又被外部 App 唤起
+        val uri = extractVideoUri(intent)
+        if (uri != null) {
+            pendingVideoUri = uri
+            // Dart 侧已经就绪就直接推过去
+            pendingChannel?.invokeMethod("openVideoUri", uri)
+        }
+    }
+
+    /**
+     * 从 Intent 中取出视频 URI。
+     *
+     * 只接受 `ACTION_VIEW` 且 data 是 content:// 或 file:// 的情况，
+     * 避免把普通启动（MAIN/LAUNCHER）误判成打开文件。
+     */
+    private fun extractVideoUri(intent: Intent?): String? {
+        if (intent == null) return null
+        if (intent.action != Intent.ACTION_VIEW) return null
+        val data = intent.data ?: return null
+        val scheme = data.scheme ?: return null
+        if (scheme != "content" && scheme != "file") return null
+        return data.toString()
+    }
+
+    /**
+     * content:// → 可播放的路径。
+     *
+     * MediaStore 的 content URI 直接交给 mpv 是不能播的，需要：
+     *  1. 先尝试从 MediaStore 的 _DATA 列拿真实文件路径（最快，零拷贝）
+     *  2. 拿不到（Android 10+ 分区存储常见）就把内容复制到应用缓存目录
+     *     再返回缓存文件路径
+     */
+    private fun resolveUriToPath(uriString: String): String? {
+        return try {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme == "file") return uri.path
+
+            // 1) 直接查 _DATA
+            try {
+                val proj = arrayOf(MediaStore.MediaColumns.DATA)
+                contentResolver.query(uri, proj, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
+                        if (idx >= 0) {
+                            val p = c.getString(idx)
+                            if (!p.isNullOrEmpty() && File(p).exists()) return p
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+
+            // 2) 复制到缓存
+            val name = queryDisplayName(uri) ?: "imported_${System.currentTimeMillis()}.mp4"
+            val safe = name.replace(Regex("[^A-Za-z0-9._\\-\\u4e00-\\u9fff]"), "_")
+            val outDir = File(cacheDir, "opened").apply { mkdirs() }
+            // 每次复制前顺手清理旧文件：从文件管理器打开的视频会被整份复制
+            // 到缓存（几百 MB ~ 几 GB），不清理会迅速吃满存储。
+            cleanOldOpened(outDir)
+            val outFile = File(outDir, safe)
+            // 同名且大小一致就复用，避免重复拷贝几百 MB
+            contentResolver.openInputStream(uri)?.use { input ->
+                val expect = querySize(uri)
+                if (outFile.exists() && expect > 0 && outFile.length() == expect) {
+                    return outFile.absolutePath
+                }
+                outFile.outputStream().use { output -> input.copyTo(output, 1024 * 256) }
+            } ?: return null
+            outFile.absolutePath
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "resolveUriToPath failed: $e")
+            null
+        }
+    }
+
+    /**
+     * 清理「从外部 App 打开」产生的缓存副本。
+     *
+     * 策略：
+     *  - 删除 3 天前的文件（用户早就不会再用）
+     *  - 若目录总大小超过 2GB，按最后修改时间从旧到新删到低于上限
+     *
+     * 不能立刻删刚复制的那份 —— 播放器可能正在读它。
+     */
+    private fun cleanOldOpened(dir: File) {
+        try {
+            val files = dir.listFiles()?.filter { it.isFile } ?: return
+            if (files.isEmpty()) return
+
+            val now = System.currentTimeMillis()
+            val maxAge = 3L * 24 * 60 * 60 * 1000
+            val maxTotal = 2L * 1024 * 1024 * 1024 // 2GB
+
+            // 1) 太旧的直接删
+            var alive = ArrayList<File>()
+            for (f in files) {
+                if (now - f.lastModified() > maxAge) {
+                    f.delete()
+                } else {
+                    alive.add(f)
+                }
+            }
+
+            // 2) 总量超限 → 由旧到新删
+            var total = alive.sumOf { it.length() }
+            if (total <= maxTotal) return
+            alive.sortBy { it.lastModified() }
+            for (f in alive) {
+                if (total <= maxTotal) break
+                val len = f.length()
+                if (f.delete()) total -= len
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? = try {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) c.getString(idx) else null
+            } else null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun querySize(uri: Uri): Long = try {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val idx = c.getColumnIndex(OpenableColumns.SIZE)
+                if (idx >= 0) c.getLong(idx) else 0L
+            } else 0L
+        } ?: 0L
+    } catch (_: Exception) {
+        0L
+    }
 
     /// 抽音频的串行线程池：单线程保证同一时刻只有一段在解码。
     /// 实时字幕本来就是「上一段转写完才抽下一段」的串行语义，单线程足够，
@@ -97,6 +256,47 @@ class MainActivity : FlutterActivity() {
                     "requestAutoStart" -> {
                         openAutoStartSettings()
                         result.success(true)
+                    }
+
+                    // ── 外部 App 打开视频（文件管理器 / 相册「用其他应用打开」）──
+                    //
+                    // Dart 启动后调用一次：拿到冷启动时挂着的 URI（并清空）。
+                    // 返回 null 表示这次是正常启动（桌面图标点进来的）。
+                    "getLaunchVideoUri" -> {
+                        val u = pendingVideoUri
+                        pendingVideoUri = null
+                        result.success(u)
+                    }
+
+                    // Dart 侧注册回调通道，之后热启动的 Intent 会通过
+                    // channel.invokeMethod("openVideoUri", ...) 主动推过来。
+                    //
+                    // 时序兜底：如果 onNewIntent 在 Dart 注册之前就触发了，
+                    // 那时 pendingChannel 还是 null、URI 只存在 pendingVideoUri 里；
+                    // 而冷启动路径的 getLaunchVideoUri 已经取过一次（可能为空）。
+                    // 这里补推一次，避免"热启动打开视频没反应"。
+                    "readyForLaunchUri" -> {
+                        pendingChannel =
+                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+                        val u = pendingVideoUri
+                        if (u != null) {
+                            pendingVideoUri = null
+                            pendingChannel?.invokeMethod("openVideoUri", u)
+                        }
+                        result.success(true)
+                    }
+
+                    // 把 content:// 解析成可播放的本地路径（必要时拷贝到缓存）
+                    "resolveVideoUri" -> {
+                        val uri = call.argument<String>("uri")
+                        if (uri == null) {
+                            result.success(null)
+                        } else {
+                            Thread {
+                                val path = resolveUriToPath(uri)
+                                runOnUiThread { result.success(path) }
+                            }.start()
+                        }
                     }
 
                     // ── 打开应用设置 ──

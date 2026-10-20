@@ -15,6 +15,7 @@ import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
+import '../services/library_prune_service.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -50,6 +51,9 @@ class PlayerState {
   final String? videoCodec;
   final double? videoFps;
   final List<AudioTrack> audioTracks;
+
+  /// 当前选中的音轨 id（`no` = 静音，`auto` = 默认）。null = 尚未明确选择。
+  final String? activeAudioTrackId;
 
   /// HDR / 色彩信息（来自 mpv video-params，识别 HDR10 / 杜比视界 / SDR）
   final String? colorPrimaries; // 色域：bt.2020 / bt.709 / ...
@@ -96,6 +100,7 @@ class PlayerState {
     this.videoCodec,
     this.videoFps,
     this.audioTracks = const [],
+    this.activeAudioTrackId,
     this.colorPrimaries,
     this.transferFunction,
     this.sigPeak,
@@ -131,6 +136,7 @@ class PlayerState {
     String? videoCodec,
     double? videoFps,
     List<AudioTrack>? audioTracks,
+    String? activeAudioTrackId,
     String? colorPrimaries,
     String? transferFunction,
     double? sigPeak,
@@ -182,6 +188,9 @@ class PlayerState {
       audioTracks: clearMediaInfo
           ? const []
           : (audioTracks ?? this.audioTracks),
+      activeAudioTrackId: clearMediaInfo
+          ? null
+          : (activeAudioTrackId ?? this.activeAudioTrackId),
       colorPrimaries: clearMediaInfo
           ? null
           : (colorPrimaries ?? this.colorPrimaries),
@@ -207,15 +216,14 @@ class PlayerState {
 
   /// 推断 HDR 类型（供 UI 展示）。
   ///
-  /// 判断依据（mpv video-params）：
-  ///  - 传递函数 pq + 色域 bt.2020 → HDR10（或杜比视界回退的 HDR10 基础层）
-  ///  - 传递函数 hlg → HLG（广播 HDR）
-  ///  - 否则 → SDR
-  ///
-  /// 注意：libmpv 对 Dolby Vision 的支持有限（Profile 5 单层可 tone-map 播放，
-  /// Profile 7/8 双层通常回退 HDR10 基础层），无法从 video-params 直接区分
-  /// 「真杜比」与「HDR10」，故这里统一识别为 HDR10，UI 层面不误导用户。
+  /// 判断依据（按优先级）：
+  ///  1. **杜比视界**：视频编码 codec 以 `dv` 开头（dvhe / dvh1 / dav1），
+  ///     这是 mpv 能给的、最可靠的杜比信号；文件名兜底（见 [dolbyVision]）
+  ///  2. 传递函数 pq + 色域 bt.2020 → HDR10（也可能是杜比回退的 HDR10 基础层）
+  ///  3. 传递函数 hlg → HLG（广播 HDR）
+  ///  4. 否则 → null（SDR 或未知）
   String? get hdrType {
+    if (dolbyVision) return '杜比视界';
     final tf = (transferFunction ?? '').toLowerCase();
     final cp = (colorPrimaries ?? '').toLowerCase();
     if (tf.contains('pq') || cp.contains('2020')) {
@@ -225,6 +233,32 @@ class PlayerState {
     }
     if (tf.contains('hlg')) return 'HLG';
     return null; // SDR 或未知
+  }
+
+  /// 是否为杜比视界。
+  ///
+  /// 两层判断：
+  ///  1. **codec**：videoCodec 以 `dv` 开头（dvhe / dvh1 / dav1）——最可靠
+  ///  2. **文件名**：含 "dolby" / "vision" / "dovi" / "杜比" / "dv" 等关键字
+  ///     （对齐 NovaPlayer 的 `_detectInitialHdrFromName`，libmpv 拿不到
+  ///     完整杜比元数据时的兜底）
+  bool get dolbyVision {
+    final codec = (videoCodec ?? '').toLowerCase();
+    // dvhe / dvh1 是 HEVC 封装的杜比视界，dav1 是 AV1 封装的杜比视界
+    if (codec.startsWith('dvhe') ||
+        codec.startsWith('dvh1') ||
+        codec.startsWith('dav1')) {
+      return true;
+    }
+    final name = (currentVideo?.name ?? currentVideo?.path ?? '').toLowerCase();
+    if (name.contains('dolby vision') ||
+        name.contains('dolbyvision') ||
+        name.contains('.dovi') ||
+        name.contains('杜比') ||
+        name.contains('dolby')) {
+      return true;
+    }
+    return false;
   }
 }
 
@@ -280,23 +314,29 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
       await platform.setProperty('framedrop', 'vo');
 
-      // ── 统一字幕渲染：关闭 mpv 自己画「主字幕」（关键）──
+      // ── 字幕渲染模式 ──
       //
-      // 为什么必须在这里关：media_kit 初始化时 `sub-visibility` 默认是
-      // `yes`（libass 开启）。而本项目的**主字幕统一由 Flutter 自绘浮层**
-      // 渲染（读 `stream.subtitle` 推来的 `currentSubtitleLines`）。
-      // 若不关掉 mpv 的渲染，就会出现「mpv 画一份 + 浮层画一份」的
-      // **双字幕**——片源自带内嵌字幕时尤其明显（那条路径不经过用户手动
-      // 选轨，之前漏了关闭）。
+      // 两种模式互斥，由「设置 → 字幕样式 → ASS 原生渲染」控制：
       //
-      // 注意：这里**只关主字幕**。第二内嵌字幕仍由 mpv 的 `secondary-sid`
-      // 渲染（浮层拿不到 second 轨的文本），由 setSecondaryEmbedded /
-      // setSecondaryExternal 自己控制 `secondary-sub-visibility`，
-      // 两条渲染路径各自只画一层，不会叠。
+      //  A) 自绘浮层（默认，nativeAss=false）
+      //     mpv 只推文本不画（sub-visibility=no），Flutter 读
+      //     `stream.subtitle` 自己渲染。好处：样式统一可调、黑底可控；
+      //     代价：ASS 的卡拉OK/旋转/矢量绘图等特效丢失，只留文本。
       //
-      // `sub-visibility=no` 只影响「画」，`sub-text` 属性与 `stream.subtitle`
-      // 流仍会正常推送当前文本，浮层照常拿到内容。
-      await platform.setProperty('sub-visibility', 'no');
+      //  B) mpv/libass 原生渲染（nativeAss=true）
+      //     sub-visibility=yes，由 mpv 用 libass 完整绘制，ASS 特效原样呈现。
+      //     代价：样式由字幕文件决定，字幕外观设置对它无效；且必须保证
+      //     自绘浮层同时**不画**，否则又变成双字幕。
+      //
+      // 注意第二内嵌字幕始终由 mpv 的 secondary-sid 渲染，
+      // 由 setSecondaryEmbedded / setSecondaryExternal 单独控制
+      // secondary-sub-visibility，与本开关无关，不会叠。
+      final nativeAss = AppSettingsService.instance.subtitleNativeAss;
+      await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
+      // 原生模式下让 libass 完全按字幕文件来（不强制覆盖样式），
+      // 否则 ASS 的字体/位置会被 mpv 默认值改掉。
+      await platform.setProperty(
+          'sub-ass-override', nativeAss ? 'no' : 'yes');
 
       // ── HDR 色调映射（对 SDR 视频无副作用）──
       // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
@@ -316,6 +356,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
   Player get player => state.player;
+
+  /// 重新应用字幕渲染模式（切换「ASS 原生渲染」开关后调用，立即生效）。
+  ///
+  /// 只动字幕相关的两个属性，不重跑整套 HDR 参数，避免闪一下画面。
+  Future<void> reapplySubtitleMode() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+      final nativeAss = AppSettingsService.instance.subtitleNativeAss;
+      await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
+      await platform.setProperty(
+          'sub-ass-override', nativeAss ? 'no' : 'yes');
+      debugPrint('[Player] 字幕渲染模式: ${nativeAss ? "mpv/libass 原生" : "Flutter 自绘"}');
+    } catch (e) {
+      debugPrint('[Player] 切换字幕渲染模式失败: $e');
+    }
+  }
 
   /// 绑定播放页创建的 VideoController（保留兼容）
   void attachVideoController(VideoController controller) {
@@ -440,9 +497,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 历史里插入多条相同记录
       if (state.isCompleted) return;
       state = state.copyWith(isCompleted: true);
-      // 播完清零进度并记入历史，下次从头播放
+      // 播完清零进度并记入历史，下次从头播放。
+      // 网络源（云盘/NAS/直链）不写库：它们的 id 是 URL，写进去会污染影库。
       final v = state.currentVideo;
-      if (v != null) {
+      if (v != null && !LibraryPruneService.isRemotePath(v.path)) {
         _db.updatePlayPosition(
           v.id,
           0,
@@ -470,6 +528,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _persistProgress() async {
     final video = state.currentVideo;
     if (video == null) return;
+    // 云盘 / NAS / 投屏这类网络源不写进度：
+    //  1) 它们的 id 就是 URL（或临时串），插进 videos 表会污染影库与观看历史；
+    //  2) 云盘直链有时效（几小时就失效），存下来也永远续播不了。
+    if (LibraryPruneService.isRemotePath(video.path)) return;
     final ms = state.position.inMilliseconds;
     if (ms <= 0) return;
     final durMs = state.duration.inMilliseconds;
@@ -610,6 +672,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (token != _loadToken) return;
     if (state.activeSubtitle != null || state.activeTrackId != null) return;
 
+    // 网络源（云盘 / NAS / 直链）没有本地目录可扫，跳过外挂字幕匹配。
+    // 内嵌字幕仍会通过 tracks 流正常出现，不受影响。
+    if (LibraryPruneService.isRemotePath(videoPath)) return;
+
     // 先等轨道：记忆里可能存的是内嵌轨 id，判断"有没有内嵌字幕"也靠它
     await _waitForTracks();
     if (token != _loadToken) return;
@@ -716,7 +782,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final b = brightness.clamp(0.0, 1.0);
     state = state.copyWith(brightness: b);
     try {
-      await ScreenBrightness().setScreenBrightness(b);
+      await ScreenBrightness().setApplicationScreenBrightness(b);
     } catch (e) {
       // ignore: avoid_print
       print('[Brightness] 设置系统亮度失败: $e');
@@ -783,6 +849,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _applyEmbeddedSubtitle(track);
     // 内嵌轨也要记：不记的话下次打开会被"自动挑外挂"或片源默认轨道盖掉
     await _rememberEmbeddedChoice(track);
+  }
+
+  /// 切换音轨。
+  ///
+  /// 与字幕切换对齐：`setAudioTrack` 之后记录当前选中 id，供 UI 高亮。
+  Future<void> selectAudioTrack(AudioTrack track) async {
+    try {
+      await state.player.setAudioTrack(track);
+    } catch (e) {
+      debugPrint('[Audio] 切换音轨失败: $e');
+    }
+    state = state.copyWith(activeAudioTrackId: track.id);
   }
 
   /// 选中内嵌字幕轨（不写记忆：自动恢复和用户手动选择共用）

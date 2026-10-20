@@ -69,7 +69,7 @@ class CoverThumb extends ConsumerWidget {
   }
 
   Widget _placeholder() => Container(
-        color: Colors.black.withOpacity(0.08),
+        color: Colors.black.withValues(alpha: 0.08),
         child: Center(
           child: Icon(Icons.movie_rounded,
               color: GlassTheme.textTertiary, size: iconSize),

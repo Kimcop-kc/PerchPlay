@@ -188,15 +188,15 @@ class _KeyboardShortcutHandlerState
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Colors.white.withOpacity(0.3),
-              const Color(0xFF6C5CE7).withOpacity(0.8),
-              Colors.white.withOpacity(0.3),
+              Colors.white.withValues(alpha: 0.3),
+              const Color(0xFF6C5CE7).withValues(alpha: 0.8),
+              Colors.white.withValues(alpha: 0.3),
             ],
           ),
           borderRadius: BorderRadius.circular(2),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF6C5CE7).withOpacity(0.4),
+              color: const Color(0xFF6C5CE7).withValues(alpha: 0.4),
               blurRadius: 8,
               spreadRadius: 1,
             ),

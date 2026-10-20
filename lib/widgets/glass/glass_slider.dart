@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import 'safe_glass.dart';
@@ -96,12 +95,12 @@ class _GlassSliderState extends State<GlassSlider> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black.withOpacity(0.10),
-                              Colors.white.withOpacity(0.30),
+                              Colors.black.withValues(alpha: 0.10),
+                              Colors.white.withValues(alpha: 0.30),
                             ],
                           ),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.35),
+                            color: Colors.white.withValues(alpha: 0.35),
                             width: 0.5,
                           ),
                         ),
@@ -126,12 +125,12 @@ class _GlassSliderState extends State<GlassSlider> {
                           gradient: LinearGradient(
                             colors: [
                               widget.activeColor,
-                              widget.activeColor.withOpacity(0.7),
+                              widget.activeColor.withValues(alpha: 0.7),
                             ],
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: widget.activeColor.withOpacity(0.5),
+                              color: widget.activeColor.withValues(alpha: 0.5),
                               blurRadius: _dragging ? 12 : 6,
                             ),
                           ],
@@ -165,7 +164,7 @@ class _GlassSliderState extends State<GlassSlider> {
                             boxShadow: [
                               BoxShadow(
                                 color: widget.activeColor
-                                    .withOpacity(_dragging ? 0.6 : 0.35),
+                                    .withValues(alpha: _dragging ? 0.6 : 0.35),
                                 blurRadius: _dragging ? 14 : 8,
                                 spreadRadius: _dragging ? 2 : 0,
                               ),
