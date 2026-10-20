@@ -335,28 +335,22 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ],
             Row(
               children: [
-                Icon(
-                  _showFolders ? Icons.folder_rounded : Icons.movie_rounded,
-                  size: compact ? 16 : 18,
-                  color: GlassTheme.textTertiary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  // 有筛选/搜索时显示"命中数 / 总数"，避免误以为影库变小了
-                  _showFolders
-                      ? '文件夹浏览'
-                      : (shownCount > 0 && shownCount < totalCount)
-                          ? '$shownCount / $totalCount 个视频'
-                          : '全部视频',
-                  style: TextStyle(
-                    color: GlassTheme.textSecondary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: compact ? 12 : 13,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(width: 12),
+                // 「全部视频 / 文件夹」切换器固定在最左边。
+                // 不再在前面放图标 +「全部视频」文字 —— 切换器自身已含
+                // 这两个标签，叠在一起会出现两个「全部视频」。
                 _buildViewSwitcher(),
+                const SizedBox(width: 12),
+                // 仅在有搜索/筛选时补一个命中计数，避免误以为影库变小了
+                if (!_showFolders && shownCount > 0 && shownCount < totalCount)
+                  Text(
+                    '$shownCount / $totalCount',
+                    style: TextStyle(
+                      color: GlassTheme.textTertiary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: compact ? 12 : 13,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
                 if (!_showFolders) ...[
                   const Spacer(),
                   _buildSortMenu(),
