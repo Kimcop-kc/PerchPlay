@@ -289,9 +289,14 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  /// 文件夹视图：不再套外层首页 header（避免「切换器 + 搜索框」叠加成两套）。
-  /// FolderBrowserPage 自己渲染完整 header（含「全部视频/文件夹」切换器、
-  /// 搜索、排序、筛选、刷新），只通过回调切回「全部视频」视图。
+  /// 文件夹视图：整块替换为 FolderBrowserPage。
+  ///
+  /// FolderBrowserPage 自身是完整页面（自带 Scaffold 与完整顶栏，含
+  /// 「全部视频/文件夹」切换器、搜索、排序、筛选、刷新），所以这里**不能**
+  /// 再套一层首页 header —— 否则会出现双层顶栏 + 双层滚动，
+  /// 切换过去布局错乱、滚动条打架。
+  ///
+  /// 只通过 onSwitchToVideos 回调切回「全部视频」视图。
   Widget _buildFolderLayout() {
     return FolderBrowserPage(
       onSwitchToVideos: () => setState(() => _showFolders = false),
@@ -330,10 +335,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             ],
             Row(
               children: [
-                // 视图切换器：唯一的「全部视频 / 文件夹」切换入口
+                // 「全部视频 / 文件夹」切换器固定在最左边。
+                // 不再在前面放图标 +「全部视频」文字 —— 切换器自身已含
+                // 这两个标签，叠在一起会出现两个「全部视频」。
                 _buildViewSwitcher(),
                 const SizedBox(width: 12),
-                // 只显示影库的实时计数（避免「全部视频」字样与切换器重复）
+                // 仅在有搜索/筛选时补一个命中计数，避免误以为影库变小了
                 if (!_showFolders && shownCount > 0 && shownCount < totalCount)
                   Text(
                     '$shownCount / $totalCount',
@@ -1159,7 +1166,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                   ),
                 ),
               ),
-            // 本地文件夹入口（切到首页的文件夹视图）
+            // 本地文件夹入口
             Semantics(
               button: true,
               label: '浏览本地文件夹',
@@ -1169,7 +1176,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                 width: double.infinity,
                 height: 48,
                 foregroundColor: GlassTheme.accentPurple,
-                onTap: () => setState(() => _showFolders = true),
+                onTap: () => context.pushNamed('folders'),
               ),
             ),
             const SizedBox(height: 12),
