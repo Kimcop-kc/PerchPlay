@@ -194,8 +194,11 @@ jobs:
         run: |
           cd build/app/outputs/flutter-apk
           V="${GITHUB_REF_NAME:-dev}"
+          # tag 形如 v1.0.79-standard，直接拼会得到 standard-standard；
+          # 先剥掉 -standard 后缀再加一次，保证只出现一个 standard。
+          VBASE="${V%-standard}"
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            [ -f "app-$abi-release.apk" ] && mv "app-$abi-release.apk" "PerchPlay-${V}-standard-$abi.apk"
+            [ -f "app-$abi-release.apk" ] && mv "app-$abi-release.apk" "PerchPlay-${VBASE}-standard-$abi.apk"
           done
           ls -la *.apk
 
