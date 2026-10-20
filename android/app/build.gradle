@@ -50,6 +50,29 @@ android {
         targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
+
+        // 只保留 64 位（arm64-v8a）。
+        //
+        // 踩坑记录（别再重复试这些弯路）：
+        //  1. `flutter build apk --target-platform android-arm64` 无效，
+        //     产物里仍含三架构 .so（121MB）。
+        //  2. 单在这里写 abiFilters 也会被 Flutter Gradle 插件覆盖
+        //     （产出 161MB，含三个 ABI）。所以下面另有 afterEvaluate 兜底。
+        //  3. `splits.abi` 与 `ndk.abiFilters` **不能共存**，Gradle 直接报
+        //     "Conflicting configuration ... cannot be present when splits
+        //      abi filters are set"，即使两者取值相同也不行。二选一。
+        ndk {
+            abiFilters.clear()
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    // 兜底：Flutter 的 Gradle 插件会在 defaultConfig 之后重写 abiFilters，
+    // 把 armeabi-v7a / x86_64 加回来。这里在 evaluate 结束后再强制收窄一次，
+    // 保证最终打包只含 arm64-v8a。
+    afterEvaluate { project ->
+        project.android.defaultConfig.ndk.abiFilters.clear()
+        project.android.defaultConfig.ndk.abiFilters.add('arm64-v8a')
     }
 
     signingConfigs {

@@ -92,12 +92,12 @@ jobs:
             "${{ secrets.ANDROID_KEY_ALIAS }}" > android/key.properties
           echo "✓ 发布签名已配置"
 
-      # 只构建 64 位（arm64-v8a）：
-      #  - 现在几乎所有在用手机都是 arm64，32 位 armeabi-v7a 只服务极老设备
-      #  - 模拟器用的 x86_64 对普通用户无意义
-      #  - 少两个包 = 构建更快、Release 更干净、用户不用猜该下哪个
+      # 只构建 64 位：
+      # 真正的架构收窄写在 android/app/build.gradle 的 ndk.abiFilters
+      # （外加 afterEvaluate 兜底），这里用普通 build 就够了。
+      # 实测 --target-platform android-arm64 并不能裁掉其它架构的 .so。
       - name: 构建 APK（仅 arm64-v8a）
-        run: flutter build apk --release --target-platform android-arm64
+        run: flutter build apk --release
 
       - name: 校验签名
         run: |
@@ -185,8 +185,9 @@ jobs:
           echo "✓ 发布签名已配置"
 
       # 只构建 64 位（arm64-v8a），与旗舰版保持一致
+      # 架构收窄在 android/app/build.gradle 的 ndk.abiFilters
       - name: 构建 APK（仅 arm64-v8a）
-        run: flutter build apk --release --target-platform android-arm64
+        run: flutter build apk --release
 
       - name: 校验签名
         run: |
