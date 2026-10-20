@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.81+81
+version: 1.0.83+83
 homepage: https://github.com/Kimcop-kc/PerchPlay
 repository: https://github.com/Kimcop-kc/PerchPlay
 
@@ -51,6 +51,8 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.5.1
   crypto: ^3.0.3
+  # API Key 等敏感信息的本地 AES 加密存储（纯 Dart，无原生依赖）
+  encrypt: ^5.0.3
   # 注：旧 SDK 时代锁 collection 1.18.0，升级 Flutter 3.47 后放开为 caret 由 pub 解析
   collection: ^1.18.0
   # TMDB 刮削 & 海报缓存
@@ -58,11 +60,29 @@ dependencies:
   cached_network_image: ^3.4.0
   shimmer: ^3.0.0
   image: ^4.12.0
+  # SMB 网络共享（dart_smb2/libsmb2）
+  dart_smb2: ^0.2.1
+  # 云盘 WebView 登录
+  flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: 4.0.0
+
+# flutter_inappwebview_android 1.1.3 用了 AGP 9 已移除的
+# getDefaultProguardFile('proguard-android.txt')，本地 fork 改成 optimize 版本。
+dependency_overrides:
+  flutter_inappwebview_android:
+    path: local_packages/flutter_inappwebview_android
+
+# dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库。
+# 国内网络 / CI 环境可能拉不动，所以把 .so 放进仓库，
+# 让它优先用本地文件。
+hooks:
+  user_defines:
+    dart_smb2:
+      libsmb2: third_party/libsmb2
 
 flutter:
   uses-material-design: true

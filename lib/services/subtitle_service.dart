@@ -136,31 +136,83 @@ class SubtitleService {
     final entries = <SubtitleEntry>[];
     int index = 0;
 
+    // 先解析 [Script Info] 的 PlayResY 与 [V4+ Styles] 的对齐方式，
+    // 用于还原字幕的垂直位置（ASS 用 MarginV + Alignment 表达）。
+    final header = _AssHeader.parse(content);
+
     for (final raw in content.split('\n')) {
       final line = raw.trim();
       if (!line.startsWith('Dialogue:')) continue;
-      final parts = line.substring('Dialogue:'.length).split(',');
+      // 用 limit 拆分：第 10 个字段之后的内容可能含逗号（字幕正文）
+      final body = line.substring('Dialogue:'.length);
+      final parts = body.split(',');
       if (parts.length < 10) continue;
       final start = _parseAssTime(parts[1].trim());
       final end = _parseAssTime(parts[2].trim());
+      final styleName = parts[3].trim();
       var text = parts.sublist(9).join(',');
-      // 去掉 {\...} 样式标记与换行符
-      text = text
-          .replaceAll(RegExp(r'\{[^}]*\}'), '')
-          .replaceAll(r'\N', ' ')
-          .replaceAll(r'\n', ' ')
-          .replaceAll(r'\h', ' ')
-          .trim();
+
+      // 行内覆盖标签：\pos(x,y) 优先；否则看 {\anN}
+      double? vpos;
+      int? align;
+      final posMatch = RegExp(r'\\pos\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)')
+          .firstMatch(text);
+      if (posMatch != null) {
+        final y = double.tryParse(posMatch.group(2) ?? '');
+        if (y != null && header.playResY > 0) {
+          vpos = (y / header.playResY).clamp(0.0, 1.0);
+        }
+      }
+      final anMatch = RegExp(r'\\an([1-9])').firstMatch(text);
+      if (anMatch != null) align = int.tryParse(anMatch.group(1) ?? '');
+
+      // 去标签：保留换行语义
+      text = _cleanAssText(text);
       if (text.isEmpty) continue;
+
+      // 样式表里定义的对齐/边距（没有行内覆盖时使用）
+      if (align == null || vpos == null) {
+        final st = header.styles[styleName];
+        if (st != null) {
+          align ??= st.alignment;
+          if (vpos == null && header.playResY > 0 && st.marginV > 0) {
+            // MarginV 是从对齐边算起的距离，粗略换算成画面比例
+            vpos = (1.0 - (st.marginV / header.playResY)).clamp(0.0, 1.0);
+          }
+        }
+      }
+
       index++;
       entries.add(SubtitleEntry(
         index: index,
         start: start,
         end: end,
         text: text,
+        verticalPos: vpos,
+        alignment: align,
       ));
     }
     return entries;
+  }
+
+  /// 清洗 ASS 正文：
+  ///  - 去掉 `{...}` 覆盖标签（如 {\an8}{\c&H00FF00&}）
+  ///  - `\N` / `\n` 转为真实换行（保留作者的断行意图）
+  ///  - `\h` 转为不换行空格
+  ///  - 合并多余空白
+  static String _cleanAssText(String raw) {
+    var s = raw
+        .replaceAll(RegExp(r'\{[^}]*\}'), '')
+        .replaceAll(r'\N', '\n')
+        .replaceAll(r'\n', '\n')
+        .replaceAll(r'\h', ' ');
+    // 逐行清理：去掉首尾空白，过滤空行
+    final lines = s
+        .split('\n')
+        .map((l) => l.replaceAll(RegExp(r'[ \t]+'), ' ').trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    return lines.join('\n');
   }
 
   /// "0:00:01.00" / "0:00:01.000"
@@ -277,4 +329,74 @@ class SubtitleService {
       );
     }
   }
+}
+
+/// ASS/SSA 文件的头部信息（PlayRes + 样式表）。
+///
+/// 只取「还原位置」必需的字段：
+/// - PlayResY：画布高度，用于把像素坐标换算成画面比例
+/// - Style.Alignment / MarginV：默认对齐边与底边距
+class _AssHeader {
+  final int playResY;
+
+  /// 样式名 → (alignment, marginV)
+  final Map<String, _AssStyle> styles;
+
+  const _AssHeader({required this.playResY, required this.styles});
+
+  static _AssHeader parse(String content) {
+    var playResY = 0;
+    final styles = <String, _AssStyle>{};
+
+    for (final raw in content.split('\n')) {
+      final line = raw.trim();
+
+      if (line.startsWith('PlayResY:')) {
+        playResY = int.tryParse(line.substring(9).trim()) ?? 0;
+        continue;
+      }
+
+      // Format: Marked,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+      if (line.startsWith('Format:') && line.contains('MarginV')) {
+        continue; // Dialogue 的 Format 行，样式表另有 Format
+      }
+
+      // Styles 的 Format 行：Name,...,Alignment,MarginL,MarginR,MarginV,...
+      if (line.startsWith('Format:') && line.contains('Alignment')) {
+        // 记录列索引，后面 Style: 行按它取值
+        _styleFormat = line
+            .substring(7)
+            .split(',')
+            .map((e) => e.trim())
+            .toList();
+        continue;
+      }
+
+      if (line.startsWith('Style:') && _styleFormat != null) {
+        final vals = line.substring(6).split(',');
+        int idx(String key) => _styleFormat!.indexOf(key);
+        final name = vals.isNotEmpty ? vals[0].trim() : 'Default';
+        final aIdx = idx('Alignment');
+        final mvIdx = idx('MarginV');
+        final align = (aIdx >= 0 && aIdx < vals.length)
+            ? (int.tryParse(vals[aIdx].trim()) ?? 2)
+            : 2;
+        final mv = (mvIdx >= 0 && mvIdx < vals.length)
+            ? (int.tryParse(vals[mvIdx].trim()) ?? 0)
+            : 0;
+        styles[name] = _AssStyle(alignment: align, marginV: mv);
+      }
+    }
+
+    return _AssHeader(playResY: playResY, styles: styles);
+  }
+
+  /// Styles 段落的列顺序（静态临时，仅解析期间使用）
+  static List<String>? _styleFormat;
+}
+
+class _AssStyle {
+  final int alignment;
+  final int marginV;
+  const _AssStyle({required this.alignment, required this.marginV});
 }

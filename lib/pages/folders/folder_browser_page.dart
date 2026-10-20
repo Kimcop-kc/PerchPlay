@@ -249,7 +249,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           Text(
             '你的本地影库',
             style: TextStyle(
-              color: GlassTheme.accentPurple.withOpacity(0.6),
+              color: GlassTheme.accentPurple.withValues(alpha: 0.6),
               fontSize: 14,
               fontWeight: FontWeight.w400,
             ),
@@ -307,10 +307,10 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.04),
+        color: Colors.black.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
         border: Border.all(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           width: 0.5,
         ),
       ),
@@ -689,7 +689,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                     : (isVideo ? Icons.play_circle_rounded : Icons.insert_drive_file_rounded),
                 size: 40,
                 color: isDir
-                    ? GlassTheme.accentTeal.withOpacity(0.8)
+                    ? GlassTheme.accentTeal.withValues(alpha: 0.8)
                     : (isVideo ? GlassTheme.accentPurple : GlassTheme.textTertiary),
               ),
               const SizedBox(height: 8),

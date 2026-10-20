@@ -42,7 +42,7 @@ class ScrapedPoster extends StatelessWidget {
         return Container(
           width: width,
           height: height,
-          color: Colors.black.withOpacity(0.05),
+          color: Colors.black.withValues(alpha: 0.05),
           child: const Center(
             child: SizedBox(
               width: 16,
@@ -110,7 +110,7 @@ class ScrapeInfoSection extends ConsumerWidget {
                 : Container(
                     width: 76,
                     height: 114,
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     child: const Icon(Icons.movie_rounded,
                         color: GlassTheme.textTertiary),
                   ),
@@ -173,7 +173,7 @@ class ScrapeInfoSection extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: GlassTheme.accentPurple.withOpacity(0.10),
+        color: GlassTheme.accentPurple.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
       ),
       child: Text(text,
@@ -394,7 +394,7 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
                   : Container(
                       width: 48,
                       height: 72,
-                      color: Colors.black.withOpacity(0.06),
+                      color: Colors.black.withValues(alpha: 0.06),
                       child: const Icon(Icons.movie_rounded,
                           size: 20, color: GlassTheme.textTertiary),
                     ),

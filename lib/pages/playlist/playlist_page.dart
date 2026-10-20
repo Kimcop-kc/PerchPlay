@@ -10,6 +10,7 @@ import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/common/app_page_header.dart';
 import '../../widgets/video/cover_thumb.dart';
 
 class PlaylistPage extends ConsumerStatefulWidget {
@@ -241,44 +242,38 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   }
 
   Widget _buildHeader(int count) {
-    final topPad = MediaQuery.of(context).padding.top + 24;
     // 有被删掉的自动列表时给出恢复入口（否则用户会以为功能坏了）
     final canRestore =
         AppSettingsService.instance.hiddenAutoPlaylists.isNotEmpty;
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPad, 20, 16),
-        child: Row(
-          children: [
-            const Text('播放列表',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800)),
-            const Spacer(),
-            if (canRestore) ...[
-              GlassButton.outlined(
-                icon: Icons.restore_rounded,
-                label: '恢复自动列表',
-                height: 36,
-                foregroundColor: GlassTheme.textSecondary,
-                onTap: () => ref
-                    .read(playlistProvider.notifier)
-                    .restoreAutoPlaylists(
-                        ref.read(videoListProvider).valueOrNull ??
-                            const <VideoModel>[]),
-              ),
-              const SizedBox(width: 8),
-            ],
+    // 与大标题同排的按钮用紧凑尺寸，避免把 36px 标题行撑高
+    return AppPageHeader(
+      title: '播放列表',
+      subtitle: count > 0 ? '$count 个列表' : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (canRestore) ...[
             GlassButton.outlined(
-              icon: Icons.add_rounded,
-              label: '新建',
+              icon: Icons.restore_rounded,
+              label: '恢复自动列表',
               height: 36,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: () => _showCreatePlaylistDialog(),
+              foregroundColor: GlassTheme.textSecondary,
+              onTap: () => ref
+                  .read(playlistProvider.notifier)
+                  .restoreAutoPlaylists(
+                      ref.read(videoListProvider).valueOrNull ??
+                          const <VideoModel>[]),
             ),
+            const SizedBox(width: 8),
           ],
-        ),
+          GlassButton.outlined(
+            icon: Icons.add_rounded,
+            label: '新建',
+            height: 36,
+            foregroundColor: GlassTheme.accentTeal,
+            onTap: () => _showCreatePlaylistDialog(),
+          ),
+        ],
       ),
     );
   }
@@ -327,7 +322,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             hintText: '输入列表名称',
             hintStyle: TextStyle(color: GlassTheme.textTertiary),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.black.withOpacity(0.2)),
+              borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.2)),
             ),
             focusedBorder: const UnderlineInputBorder(
               borderSide: BorderSide(color: GlassTheme.accentTeal),
@@ -371,7 +366,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: GlassTheme.accentTeal.withOpacity(0.12),
+        color: GlassTheme.accentTeal.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -390,7 +385,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(label, style: TextStyle(color: color, fontSize: 10)),

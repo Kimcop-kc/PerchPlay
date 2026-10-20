@@ -6,6 +6,7 @@ import '../../providers/library_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/common/app_page_header.dart';
 
 class HistoryPage extends ConsumerWidget {
   const HistoryPage({super.key});
@@ -67,7 +68,7 @@ class HistoryPage extends ConsumerWidget {
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(
                                         GlassTheme.radiusXs),
-                                    color: Colors.black.withOpacity(0.06),
+                                    color: Colors.black.withValues(alpha: 0.06),
                                   ),
                                   child: const Icon(Icons.play_circle_rounded,
                                       size: 28, color: GlassTheme.textTertiary),
@@ -109,7 +110,7 @@ class HistoryPage extends ConsumerWidget {
                                           decoration: BoxDecoration(
                                             borderRadius:
                                                 BorderRadius.circular(2),
-                                            color: Colors.black.withOpacity(0.06),
+                                            color: Colors.black.withValues(alpha: 0.06),
                                           ),
                                           child: FractionallySizedBox(
                                             alignment: Alignment.centerLeft,
@@ -167,30 +168,10 @@ class HistoryPage extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, int count) {
-    final topPad = MediaQuery.of(context).padding.top + 24;
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPad, 20, 16),
-        child: Row(
-          children: [
-            const Text('观看历史',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(width: 10),
-            GlassPanel(
-              radius: GlassTheme.radiusXs,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              child: Text('$count',
-                  style: const TextStyle(
-                      color: GlassTheme.accentPurple,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700)),
-            ),
-          ],
-        ),
-      ),
+    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    return AppPageHeader(
+      title: '观看历史',
+      subtitle: count > 0 ? '$count 条记录' : null,
     );
   }
 

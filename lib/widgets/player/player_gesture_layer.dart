@@ -253,7 +253,7 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           color: Colors.black54,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: Colors.white.withOpacity(0.25), width: 1.5),
+              color: Colors.white.withValues(alpha: 0.25), width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

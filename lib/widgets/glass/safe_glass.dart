@@ -89,7 +89,7 @@ class SafeGlassPanel extends StatelessWidget {
     if (SafeBackdropFilter.supportsBackdropBlur) {
       bgColor = Colors.transparent;
     } else {
-      bgColor = tintColor.withOpacity(opacity * 4);
+      bgColor = tintColor.withValues(alpha: opacity * 4);
     }
 
     Widget panel = Container(
@@ -101,7 +101,7 @@ class SafeGlassPanel extends StatelessWidget {
         color: bgColor,
         border: showBorder
             ? Border.all(
-                color: Colors.white.withOpacity(0.07),
+                color: Colors.white.withValues(alpha: 0.07),
                 width: 0.5,
               )
             : null,
@@ -109,14 +109,14 @@ class SafeGlassPanel extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            tintColor.withOpacity(0.08),
-            tintColor.withOpacity(0.02),
+            tintColor.withValues(alpha: 0.08),
+            tintColor.withValues(alpha: 0.02),
           ],
         ),
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.25),
+                  color: Colors.black.withValues(alpha: 0.25),
                   blurRadius: 28,
                   offset: const Offset(0, 12),
                 ),

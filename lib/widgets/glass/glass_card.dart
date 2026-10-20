@@ -109,8 +109,8 @@ class _GlassCardState extends State<GlassCard>
                                 BorderRadius.circular(widget.radius),
                             border: Border.all(
                               color: widget.selected
-                                  ? GlassTheme.accentPurple.withOpacity(0.5)
-                                  : Colors.white.withOpacity(
+                                  ? GlassTheme.accentPurple.withValues(alpha: 0.5)
+                                  : Colors.white.withValues(alpha: 
                                       0.35 + _hoverController.value * 0.15),
                               width: widget.selected ? 1.2 : 0.8,
                             ),
@@ -118,9 +118,9 @@ class _GlassCardState extends State<GlassCard>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.white.withOpacity(
+                                Colors.white.withValues(alpha: 
                                     0.50 + _hoverController.value * 0.10),
-                                Colors.white.withOpacity(
+                                Colors.white.withValues(alpha: 
                                     0.18 + _hoverController.value * 0.06),
                               ],
                             ),
@@ -128,8 +128,8 @@ class _GlassCardState extends State<GlassCard>
                               BoxShadow(
                                 color: widget.selected
                                     ? GlassTheme.accentPurple
-                                        .withOpacity(0.18)
-                                    : Colors.black.withOpacity(0.10),
+                                        .withValues(alpha: 0.18)
+                                    : Colors.black.withValues(alpha: 0.10),
                                 blurRadius: widget.selected ? 24 : 16,
                                 offset: const Offset(0, 6),
                               ),

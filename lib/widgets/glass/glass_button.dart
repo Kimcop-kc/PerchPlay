@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 
@@ -154,7 +153,7 @@ class _GlassButtonState extends State<GlassButton>
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF9B7EF0).withOpacity(_pressed ? 0.2 : 0.35),
+            color: const Color(0xFF9B7EF0).withValues(alpha: _pressed ? 0.2 : 0.35),
             blurRadius: _pressed ? 10 : 18,
             offset: Offset(0, (_pressed ? 2.0 : 6.0)),
           ),
@@ -166,20 +165,20 @@ class _GlassButtonState extends State<GlassButton>
       return BoxDecoration(
         borderRadius: BorderRadius.circular(widget.radius),
         border: Border.all(
-          color: Colors.white.withOpacity(_pressed ? 0.55 : 0.4),
+          color: Colors.white.withValues(alpha: _pressed ? 0.55 : 0.4),
           width: 0.8,
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white.withOpacity(_pressed ? 0.7 : 0.5),
-            Colors.white.withOpacity(_pressed ? 0.35 : 0.22),
+            Colors.white.withValues(alpha: _pressed ? 0.7 : 0.5),
+            Colors.white.withValues(alpha: _pressed ? 0.35 : 0.22),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -190,7 +189,7 @@ class _GlassButtonState extends State<GlassButton>
     // ghost
     return BoxDecoration(
       borderRadius: BorderRadius.circular(widget.radius),
-      color: _pressed ? Colors.black.withOpacity(0.06) : Colors.transparent,
+      color: _pressed ? Colors.black.withValues(alpha: 0.06) : Colors.transparent,
     );
   }
 }

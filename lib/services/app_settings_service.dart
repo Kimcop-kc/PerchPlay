@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/playlist_model.dart';
 import '../models/video_model.dart';
+import 'key_encryption.dart';
 import 'library_hidden_service.dart';
 import 'media_grouping_service.dart';
 import 'subtitle_matcher.dart';
@@ -27,6 +28,21 @@ class AppSettingsService {
   static const _kTmdbApiKey = 'settings.tmdbApiKey';
   static const _kLibrarySort = 'settings.librarySort';
   static const _kLibraryFilter = 'settings.libraryFilter';
+  static const _kTranslateBackend = 'settings.translateBackend';
+  static const _kLlmApiKey = 'settings.llmApiKey';
+  static const _kLlmBaseUrl = 'settings.llmBaseUrl';
+  static const _kLlmModel = 'settings.llmModel';
+  static const _kTranslateTargetLang = 'settings.translateTargetLang';
+
+  // 字幕外观
+  static const _kSubtitleFontSize = 'settings.subtitle.fontSize';
+  static const _kSubtitleBgOpacity = 'settings.subtitle.bgOpacity';
+  static const _kSubtitleTextColor = 'settings.subtitle.textColor';
+  static const _kSubtitleStroke = 'settings.subtitle.stroke';
+  static const _kSubtitlePosition = 'settings.subtitle.position';
+  static const _kSubtitleSecondaryScale = 'settings.subtitle.secondaryScale';
+  static const _kSubtitleSecondaryDim = 'settings.subtitle.secondaryDim';
+  static const _kSubtitleNativeAss = 'settings.subtitle.nativeAss';
 
   double _defaultSpeed = 1.0;
 
@@ -77,6 +93,70 @@ class AppSettingsService {
   /// 影库列表的筛选方式（LibraryFilter.id，默认全部）
   String _libraryFilter = 'all';
   String get libraryFilter => _libraryFilter;
+
+  // ─────────── 字幕外观（全部可在设置里调）───────────
+
+  /// 字幕字号（逻辑像素，14~30）。0 = 跟随屏幕自适应（旧行为）。
+  double _subtitleFontSize = 0;
+  double get subtitleFontSize => _subtitleFontSize;
+
+  /// 字幕黑底不透明度（0 = 无黑底，1 = 全黑）。默认 0.62。
+  double _subtitleBgOpacity = 0.62;
+  double get subtitleBgOpacity => _subtitleBgOpacity;
+
+  /// 字幕文字颜色（ARGB int）。默认白色。
+  ///
+  /// 用 int 而不是 Color：本服务是纯数据层，不引入 Flutter UI 依赖。
+  int _subtitleTextColor = 0xFFFFFFFF;
+  int get subtitleTextColorValue => _subtitleTextColor;
+
+  /// 是否给字幕文字加描边阴影（复杂画面上更清晰）。
+  bool _subtitleStroke = true;
+  bool get subtitleStroke => _subtitleStroke;
+
+  /// 字幕垂直位置：0.0 = 贴底，1.0 = 屏幕中部偏上。默认 0.12。
+  double _subtitlePosition = 0.12;
+  double get subtitlePosition => _subtitlePosition;
+
+  /// 双语字幕时，译文相对原文的字号比例（0.5~1.0）。默认 0.82。
+  double _subtitleSecondaryScale = 0.82;
+  double get subtitleSecondaryScale => _subtitleSecondaryScale;
+
+  /// 双语字幕时译文是否用灰色（弱化，突出原文）。
+  bool _subtitleSecondaryDim = true;
+  bool get subtitleSecondaryDim => _subtitleSecondaryDim;
+
+  /// 是否用 mpv/libass 原生渲染字幕（ASS 特效完整）。
+  ///
+  /// false（默认）= Flutter 自绘浮层：样式统一可控、黑底可调，但 ASS 的
+  ///                 卡拉OK、旋转、矢量绘图等特效会丢失，只保留文本。
+  /// true          = mpv 原生渲染：ASS 特效完整，但样式由字幕文件决定，
+  ///                 上面那些字幕外观设置对它无效。
+  ///
+  /// 只对 **ASS/SSA 外挂字幕** 有实际差异；SRT 之类没有特效，两种模式
+  /// 视觉上几乎一致。
+  bool _subtitleNativeAss = false;
+  bool get subtitleNativeAss => _subtitleNativeAss;
+
+  /// 翻译后端：google（免费）/ llm（自配 Key）/ local（本地 Opus-MT）
+  String _translateBackend = 'google';
+  String get translateBackend => _translateBackend;
+
+  /// LLM 翻译 API Key（选「LLM 自配 Key」时生效，留空则无法调用）
+  String _llmApiKey = '';
+  String get llmApiKey => _llmApiKey;
+
+  /// LLM 翻译接口地址（OpenAI 兼容的 chat/completions 地址）
+  String _llmBaseUrl = 'https://api.deepseek.com/v1/chat/completions';
+  String get llmBaseUrl => _llmBaseUrl;
+
+  /// LLM 模型名
+  String _llmModel = 'deepseek-chat';
+  String get llmModel => _llmModel;
+
+  /// 翻译目标语言
+  String _translateTargetLang = 'en';
+  String get translateTargetLang => _translateTargetLang;
 
   /// 每个视频「上次选了什么字幕」（外挂文件 / 内嵌轨 / 关掉，三态）
   ///
@@ -176,6 +256,22 @@ class AppSettingsService {
         _glassBlur = true;
         await prefs.remove(_kGlassBlur); // 清掉旧键，避免继续误导
       }
+
+      // 字幕外观
+      _subtitleFontSize =
+          (prefs.getDouble(_kSubtitleFontSize) ?? 0).clamp(0, 30);
+      _subtitleBgOpacity =
+          (prefs.getDouble(_kSubtitleBgOpacity) ?? 0.62).clamp(0.0, 1.0);
+      _subtitleTextColor =
+          prefs.getInt(_kSubtitleTextColor) ?? 0xFFFFFFFF;
+      _subtitleStroke = prefs.getBool(_kSubtitleStroke) ?? true;
+      _subtitlePosition =
+          (prefs.getDouble(_kSubtitlePosition) ?? 0.12).clamp(0.0, 0.6);
+      _subtitleSecondaryScale =
+          (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
+      _subtitleSecondaryDim =
+          prefs.getBool(_kSubtitleSecondaryDim) ?? true;
+      _subtitleNativeAss = prefs.getBool(_kSubtitleNativeAss) ?? false;
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
@@ -189,6 +285,16 @@ class AppSettingsService {
       _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
       _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
       _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
+      _translateBackend = prefs.getString(_kTranslateBackend) ?? 'google';
+      // 敏感信息：落盘的是 AES 密文，这里解密回明文；失败（老版本明文/数据损坏）则当空
+      _llmApiKey = KeyEncryption.decrypt(
+            prefs.getString(_kLlmApiKey) ?? '',
+          ) ??
+          '';
+      _llmBaseUrl = prefs.getString(_kLlmBaseUrl) ??
+          'https://api.deepseek.com/v1/chat/completions';
+      _llmModel = prefs.getString(_kLlmModel) ?? 'deepseek-chat';
+      _translateTargetLang = prefs.getString(_kTranslateTargetLang) ?? 'en';
       _subtitleMemory = _decodeSubtitleMemory(
           prefs.getStringList(_kSubtitleMemory) ?? const <String>[]);
     } catch (_) {
@@ -512,11 +618,118 @@ class AppSettingsService {
     } catch (_) {}
   }
 
+  // ─────────── 字幕外观 setter ───────────
+
+  Future<void> setSubtitleFontSize(double v) async {
+    _subtitleFontSize = v.clamp(0, 30);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleFontSize, _subtitleFontSize);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleBgOpacity(double v) async {
+    _subtitleBgOpacity = v.clamp(0.0, 1.0);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleBgOpacity, _subtitleBgOpacity);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleTextColor(int argb) async {
+    _subtitleTextColor = argb;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSubtitleTextColor, _subtitleTextColor);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleStroke(bool v) async {
+    _subtitleStroke = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleStroke, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitlePosition(double v) async {
+    _subtitlePosition = v.clamp(0.0, 0.6);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitlePosition, _subtitlePosition);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleSecondaryScale(double v) async {
+    _subtitleSecondaryScale = v.clamp(0.5, 1.0);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleSecondaryScale, _subtitleSecondaryScale);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleSecondaryDim(bool v) async {
+    _subtitleSecondaryDim = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleSecondaryDim, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleNativeAss(bool v) async {
+    _subtitleNativeAss = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleNativeAss, v);
+    } catch (_) {}
+  }
+
   Future<void> setTmdbApiKey(String value) async {
     _tmdbApiKey = value;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kTmdbApiKey, value);
+    } catch (_) {}
+  }
+
+  Future<void> setTranslateBackend(String value) async {
+    _translateBackend = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTranslateBackend, value);
+    } catch (_) {}
+  }
+
+  Future<void> setLlmApiKey(String value) async {
+    _llmApiKey = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // 敏感信息：AES 加密后再落盘，SharedPreferences 里不存明文
+      await prefs.setString(_kLlmApiKey, KeyEncryption.encrypt(value));
+    } catch (_) {}
+  }
+
+  Future<void> setLlmBaseUrl(String value) async {
+    _llmBaseUrl = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLlmBaseUrl, value);
+    } catch (_) {}
+  }
+
+  Future<void> setLlmModel(String value) async {
+    _llmModel = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLlmModel, value);
+    } catch (_) {}
+  }
+
+  Future<void> setTranslateTargetLang(String value) async {
+    _translateTargetLang = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTranslateTargetLang, value);
     } catch (_) {}
   }
 }

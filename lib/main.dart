@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -75,11 +77,75 @@ void main() async {
   // 启用边缘到边缘渲染（iOS 27 风格）
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
+  // ── 外部 App「用其他应用打开」进来的视频 ──
+  //
+  // 必须在 runApp 之前注册热启动回调，否则 App 在后台时被再次唤起会丢 URI。
+  // 冷启动的 URI 也要尽早取走（原生侧只给一次）。
+  await _setupExternalVideoOpen();
+
   runApp(
     const ProviderScope(
       child: VideoPlayerApp(),
     ),
   );
+}
+
+/// 待处理的「外部打开视频」URI（等路由就绪后再跳转）。
+String? _pendingExternalUri;
+
+/// 冷启动时取走 URI，并注册热启动回调。
+Future<void> _setupExternalVideoOpen() async {
+  final bridge = NativeBridgeService.instance;
+
+  // 热启动：App 已在后台，被文件管理器再次唤起
+  try {
+    await bridge.registerLaunchUriHandler((uri) {
+      debugPrint('[PerchPlay] 外部打开视频(热启动): $uri');
+      _openExternalVideo(uri);
+    });
+  } catch (e) {
+    debugPrint('[PerchPlay] 注册外部打开回调失败: $e');
+  }
+
+  // 冷启动：从桌面/文件管理器拉起的那一刻就带着视频
+  try {
+    final uri = await bridge.takeLaunchVideoUri();
+    if (uri != null && uri.isNotEmpty) {
+      debugPrint('[PerchPlay] 外部打开视频(冷启动): $uri');
+      _pendingExternalUri = uri;
+      // 等第一帧后再跳，确保 router 已挂载
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final u = _pendingExternalUri;
+        if (u != null) {
+          _pendingExternalUri = null;
+          _openExternalVideo(u);
+        }
+      });
+    }
+  } catch (e) {
+    debugPrint('[PerchPlay] 读取启动 URI 失败: $e');
+  }
+}
+
+/// 把外部 URI 解析成本地路径并直接进播放页。
+Future<void> _openExternalVideo(String uri) async {
+  try {
+    final path = await NativeBridgeService.instance.resolveVideoUri(uri);
+    if (path == null || path.isEmpty) {
+      debugPrint('[PerchPlay] 无法解析视频 URI: $uri');
+      return;
+    }
+    final name = path.split(Platform.pathSeparator).last;
+    AppRouter.router.pushNamed(
+      'player',
+      extra: <String, dynamic>{
+        'videoPath': path,
+        'videoTitle': name,
+      },
+    );
+  } catch (e) {
+    debugPrint('[PerchPlay] 打开外部视频失败: $e');
+  }
 }
 
 class VideoPlayerApp extends StatelessWidget {

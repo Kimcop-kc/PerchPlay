@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../pages/home/home_page.dart';
 import '../../pages/player/player_page.dart';
-import '../../pages/folders/folder_browser_page.dart';
 import '../../pages/playlist/playlist_page.dart';
 import '../../pages/playlist/playlist_detail_page.dart';
 import '../../pages/settings/settings_page.dart';
@@ -39,12 +38,6 @@ class AppRouter {
             name: 'library',
             pageBuilder: (context, state) =>
                 _tabPage(state, const LibraryView()),
-          ),
-          GoRoute(
-            path: '/folders',
-            name: 'folders',
-            pageBuilder: (context, state) =>
-                _tabPage(state, const FolderBrowserPage()),
           ),
           GoRoute(
             path: '/playlist',

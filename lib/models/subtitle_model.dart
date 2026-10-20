@@ -52,11 +52,20 @@ class SubtitleEntry {
   final Duration end;
   final String text;
 
+  /// ASS 专属：相对画面高度的垂直位置（0 = 顶部，1 = 底部）。
+  /// null = 用播放器的默认位置。
+  final double? verticalPos;
+
+  /// ASS 专属：对齐方式（1-9，numpad 布局，如 2 = 底部居中）。
+  final int? alignment;
+
   const SubtitleEntry({
     required this.index,
     required this.start,
     required this.end,
     required this.text,
+    this.verticalPos,
+    this.alignment,
   });
 
   @override

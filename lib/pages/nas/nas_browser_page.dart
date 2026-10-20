@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +10,8 @@ import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
+import '../../widgets/common/app_page_header.dart';
+import '../cloud/cloud_drive_page.dart';
 
 /// NAS 文件浏览器 — iOS 27 玻璃质感
 class NasBrowserPage extends ConsumerStatefulWidget {
@@ -22,6 +23,9 @@ class NasBrowserPage extends ConsumerStatefulWidget {
 
 class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   Timer? _autoDiscoverTimer;
+
+  /// 顶部「NAS / 云盘」切换。两者都是远程媒体库，合成一个 tab。
+  bool _showCloud = false;
 
   @override
   void initState() {
@@ -48,6 +52,24 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   Widget build(BuildContext context) {
     final nasState = ref.watch(nasProvider);
     final isLarge = AppBreakpoints.isLargeScreen(context);
+
+    // 云盘模式：整块换成云盘页（它自带完整 header 与列表），
+    // 这里只负责把顶部分段切换器叠上去，避免两套 header 叠加。
+    if (_showCloud) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: Column(
+            children: [
+              _buildTabletTitle(),
+              const Expanded(child: CloudDriveView()),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -78,10 +100,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: GlassTheme.accentPink.withOpacity(0.12),
+        color: GlassTheme.accentPink.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
         border: Border.all(
-            color: GlassTheme.accentPink.withOpacity(0.3), width: 0.5),
+            color: GlassTheme.accentPink.withValues(alpha: 0.3), width: 0.5),
       ),
       child: Row(
         children: [
@@ -142,7 +164,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             Text(
               '正在搜索局域网 NAS…',
               style: TextStyle(
-                  color: GlassTheme.textTertiary.withOpacity(0.9),
+                  color: GlassTheme.textTertiary.withValues(alpha: 0.9),
                   fontSize: 12),
             ),
           ],
@@ -154,10 +176,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       decoration: BoxDecoration(
-        color: GlassTheme.accentTeal.withOpacity(0.08),
+        color: GlassTheme.accentTeal.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
         border: Border.all(
-            color: GlassTheme.accentTeal.withOpacity(0.25), width: 0.6),
+            color: GlassTheme.accentTeal.withValues(alpha: 0.25), width: 0.6),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,25 +280,35 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   }
 
   Widget _buildTabletTitle() {
-    final topPad = MediaQuery.of(context).padding.top + 20;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, topPad, 20, 12),
-      child: Row(
+    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    return AppPageHeader(
+      title: '网络存储',
+      subtitle:
+          _showCloud ? '云盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
+      asSliver: false,
+      childGap: 12,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Expanded(
-            child: Text('NAS 文件',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800)),
-          ),
+          // 「NAS / 云盘」分段切换：两者都是「远程媒体库」，
+          // 合成一个 tab 免得底栏挤到 7 项、手机每项只剩约 50dp。
           GlassButton.outlined(
-            icon: Icons.add_link_rounded,
-            label: '添加',
+            icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
+            label: _showCloud ? 'NAS' : '云盘',
             height: 36,
-            foregroundColor: GlassTheme.accentTeal,
-            onTap: () => _showAddConnectionDialog(context),
+            foregroundColor: GlassTheme.accentPurple,
+            onTap: () => setState(() => _showCloud = !_showCloud),
           ),
+          if (!_showCloud) ...[
+            const SizedBox(width: 8),
+            GlassButton.outlined(
+              icon: Icons.add_link_rounded,
+              label: '添加',
+              height: 36,
+              foregroundColor: GlassTheme.accentTeal,
+              onTap: () => _showAddConnectionDialog(context),
+            ),
+          ],
         ],
       ),
     );
@@ -332,12 +364,12 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       colors: [
                         (isActive
                                 ? GlassTheme.accentTeal
-                                : Colors.black.withOpacity(0.08))
-                            .withOpacity(0.2),
+                                : Colors.black.withValues(alpha: 0.08))
+                            .withValues(alpha: 0.2),
                         (isActive
                                 ? GlassTheme.accentTeal
-                                : Colors.black.withOpacity(0.04))
-                            .withOpacity(0.06),
+                                : Colors.black.withValues(alpha: 0.04))
+                            .withValues(alpha: 0.06),
                       ],
                     ),
                     borderRadius:
@@ -552,11 +584,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     final nameCtrl = TextEditingController(
         text: presetHost != null ? 'NAS ${presetHost.split('.').last}' : '我的 NAS');
     final hostCtrl = TextEditingController(text: presetHost ?? '');
-    // 默认 WebDAV：SMB/NFS 未实现，别再让用户默认踩坑
+    // 默认仍选 WebDAV：群晖/威联通默认就开，且不需要填共享名；
+    // SMB 也支持了（dart_smb2 / libsmb2，SMB2/3），用户可自行切换。
     final portCtrl =
         TextEditingController(text: presetPort?.toString() ?? '5005');
     final usernameCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
+    final shareCtrl = TextEditingController();
     var protocol = presetProtocol ?? NasProtocol.webdav;
 
     showDialog(
@@ -575,16 +609,16 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withOpacity(0.8),
-                      Colors.white.withOpacity(0.5),
+                      Colors.white.withValues(alpha: 0.8),
+                      Colors.white.withValues(alpha: 0.5),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
                   border: Border.all(
-                      color: Colors.black.withOpacity(0.08), width: 0.5),
+                      color: Colors.black.withValues(alpha: 0.08), width: 0.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withValues(alpha: 0.4),
                       blurRadius: 32,
                       offset: const Offset(0, 16),
                     ),
@@ -613,9 +647,9 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                         runSpacing: 8,
                         children: NasProtocol.values.map((p) {
                           final selected = protocol == p;
-                          // SMB / NFS 尚未实现，明确标注，避免用户以为是设备问题
-                          final unsupported = p == NasProtocol.smb ||
-                              p == NasProtocol.nfs;
+                          // NFS 需要内核支持，Dart 层无法实现；
+                          // SMB 已通过 dart_smb2（libsmb2）支持 SMB2/3。
+                          final unsupported = p == NasProtocol.nfs;
                           return GlassButton(
                             label: unsupported
                                 ? '${p.name.toUpperCase()}（暂不支持）'
@@ -648,13 +682,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           );
                         }).toList(),
                       ),
-                      if (protocol == NasProtocol.smb ||
-                          protocol == NasProtocol.nfs)
+                      if (protocol == NasProtocol.nfs)
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            '该协议暂未实现。NAS 请改用 WebDAV（群晖/威联通都支持，'
-                            '在「控制面板 → 文件服务 → WebDAV」开启）或 FTP。',
+                            'NFS 需要系统内核支持，Android 上无法直连。'
+                            '请改用 SMB（群晖/威联通/Windows 共享都支持）'
+                            '或 WebDAV。',
                             style: TextStyle(
                                 color: GlassTheme.accentPink,
                                 fontSize: 11.5,
@@ -663,6 +697,22 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                         ),
                       const SizedBox(height: 14),
                       _dialogField('主机地址', hostCtrl),
+                      // SMB 必须先指定共享名（如 video / movies）
+                      if (protocol == NasProtocol.smb) ...[
+                        const SizedBox(height: 14),
+                        _dialogField('共享名（如 video）', shareCtrl),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Text(
+                            'SMB 必须填写共享文件夹名。端口固定 445，'
+                            'Windows 共享填工作组名（默认 WORKGROUP 可留空）。',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 11,
+                                height: 1.4),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       _dialogField('端口', portCtrl, isNumber: true),
                       const SizedBox(height: 14),
@@ -699,6 +749,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                       int.tryParse(portCtrl.text) ?? 445,
                                   username: usernameCtrl.text,
                                   password: passwordCtrl.text,
+                                  // SMB 必需：先连到具体共享
+                                  shareName: shareCtrl.text.trim(),
                                   savePassword: true,
                                 );
                                 ref
@@ -735,14 +787,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         labelText: label,
         labelStyle: TextStyle(color: GlassTheme.textTertiary, fontSize: 13),
         filled: true,
-        fillColor: Colors.black.withOpacity(0.04),
+        fillColor: Colors.black.withValues(alpha: 0.04),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
-          borderSide: BorderSide(color: Colors.black.withOpacity(0.06)),
+          borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),

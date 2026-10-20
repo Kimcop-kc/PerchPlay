@@ -9,3 +9,13 @@ import '../services/app_settings_service.dart';
 final glassBlurProvider = StateProvider<bool>(
   (ref) => AppSettingsService.instance.glassBlur,
 );
+
+/// 字幕外观/渲染模式的变更信号。
+///
+/// 字幕浮层读的是 [AppSettingsService]（同步 getter），改完设置不会自动
+/// 触发播放页重建 —— 表现得就像「设置不生效，得重新打开视频才行」。
+/// 用一个自增计数当信号，设置面板改完 → 计数 +1 → 播放页 watch 到就重建。
+final subtitleSettingsTickProvider = StateProvider<int>((ref) => 0);
+
+/// 兼容旧名（只用于 ASS 原生渲染的语义）。实际语义已泛化为「字幕设置变更」。
+final subtitleNativeAssTickProvider = subtitleSettingsTickProvider;

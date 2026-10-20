@@ -58,8 +58,8 @@ class _MobileGlassScaffold extends ConsumerWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentPurple.withOpacity(0.28),
-                      GlassTheme.accentPurple.withOpacity(0.08),
+                      GlassTheme.accentPurple.withValues(alpha: 0.28),
+                      GlassTheme.accentPurple.withValues(alpha: 0.08),
                       Colors.transparent,
                     ],
                     stops: const [0.0, 0.55, 1.0],
@@ -77,7 +77,7 @@ class _MobileGlassScaffold extends ConsumerWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentTeal.withOpacity(0.22),
+                      GlassTheme.accentTeal.withValues(alpha: 0.22),
                       Colors.transparent,
                     ],
                   ),
@@ -94,7 +94,7 @@ class _MobileGlassScaffold extends ConsumerWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentPink.withOpacity(0.14),
+                      GlassTheme.accentPink.withValues(alpha: 0.14),
                       Colors.transparent,
                     ],
                   ),
@@ -111,7 +111,7 @@ class _MobileGlassScaffold extends ConsumerWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      GlassTheme.accentTeal.withOpacity(0.20),
+                      GlassTheme.accentTeal.withValues(alpha: 0.20),
                       Colors.transparent,
                     ],
                   ),
@@ -203,11 +203,13 @@ class _NavConfig {
 
   static const List<_NavItemConfig> all = [
     _NavItemConfig(icon: Icons.home_rounded, label: '首页', route: '/home'),
-    _NavItemConfig(icon: Icons.folder_rounded, label: '文件夹', route: '/folders'),
+    // 不再有「文件夹」tab：首页标题行的「全部视频 / 文件夹」切换器
+    // 已经能进文件夹视图，底栏再放一个就是重复入口。
     _NavItemConfig(icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
     _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
-    // 投屏不再占底栏：改为在视频播放页内直接搜索/连接设备
-    _NavItemConfig(icon: Icons.dns_rounded, label: 'NAS', route: '/nas'),
+    // NAS 与云盘合并为「存储」：两者都是远程媒体库，
+    // 分开会让底栏到 7 项，手机每项只剩约 50dp、文字挤在一起。
+    _NavItemConfig(icon: Icons.dns_rounded, label: '存储', route: '/nas'),
     settings,
   ];
 

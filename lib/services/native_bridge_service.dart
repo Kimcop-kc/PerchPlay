@@ -14,6 +14,50 @@ class NativeBridgeService {
 
   // ──────────── ROM 检测 ────────────
 
+  /// 外部 App「用其他应用打开」进来的视频 URI（冷启动时有效）。
+  ///
+  /// 调用一次即清空（原生侧不会重复给同一个 URI）。
+  /// 返回 `content://...` 或 `file://...`，null = 正常启动。
+  Future<String?> takeLaunchVideoUri() async {
+    try {
+      return await _channel.invokeMethod<String>('getLaunchVideoUri');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 注册热启动回调：App 在后台时被外部 App 再次唤起。
+  ///
+  /// 必须在 Dart 侧尽早调用（main() 里），否则热启动的 URI 会丢。
+  Future<void> registerLaunchUriHandler(
+    void Function(String uri) onOpen,
+  ) async {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'openVideoUri') {
+        final uri = call.arguments as String?;
+        if (uri != null && uri.isNotEmpty) onOpen(uri);
+      }
+      return null;
+    });
+    try {
+      await _channel.invokeMethod('readyForLaunchUri');
+    } catch (_) {}
+  }
+
+  /// 把 content:// URI 解析成可播放的本地路径。
+  ///
+  /// 原生侧会先尝试 MediaStore 的 _DATA 列（零拷贝），拿不到才复制到
+  /// 应用缓存目录。返回 null 表示无法解析。
+  Future<String?> resolveVideoUri(String uri) async {
+    try {
+      return await _channel.invokeMethod<String>('resolveVideoUri', {
+        'uri': uri,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String> getRomBrand() async {
     try {
       return await _channel.invokeMethod('getRomBrand') ?? 'Unknown';
@@ -244,6 +288,33 @@ class NativeBridgeService {
     try {
       await _channel.invokeMethod('releaseMulticastLock');
     } catch (_) {}
+  }
+
+  // ──────────── 音频抽取（实时 AI 字幕） ────────────
+
+  /// 从视频文件里抽出 [startMs]~[startMs+durationMs] 一段音频，
+  /// 转成 16kHz 单声道 PCM16，返回临时 WAV 文件路径。
+  ///
+  /// 为什么做成「只抽一段」而不是「抽整条」：
+  /// 实时字幕是随播放推进,一段一段抽的（前 5~8 秒没字幕，之后越追越完整）。
+  /// 一次只抽一小段，内存和延迟都可控，也能在暂停/seek 后即时停止。
+  ///
+  /// 返回 null 表示该平台/该文件不支持抽取（iOS 尚未实现，见原生层注释）。
+  Future<String?> extractAudioSegment({
+    required String videoPath,
+    required int startMs,
+    required int durationMs,
+  }) async {
+    if (kIsWeb) return null;
+    try {
+      return await _channel.invokeMethod<String>('extractAudioSegment', {
+        'path': videoPath,
+        'startMs': startMs,
+        'durationMs': durationMs,
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   // ──────────── 画中画 ────────────
