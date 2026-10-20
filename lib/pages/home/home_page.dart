@@ -224,7 +224,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
     // 文件夹视图不依赖影库：整块替换内容区，标题行保留分段切换便于切回
     if (_showFolders) {
-      return _buildFolderLayout(hp);
+      return _buildFolderLayout();
     }
 
     final libraryAsync = ref.watch(libraryProvider);
@@ -289,23 +289,17 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
-  /// 文件夹视图：标题行保留「全部视频 / 文件夹」分段切换，内容区替换为
-  /// FolderBrowserPage。它自身是完整页面（自带 Scaffold 与顶栏），这里去掉
-  /// 顶部状态栏内边距，避免与首页标题行重复留白。
-  Widget _buildFolderLayout(double hp) {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        _buildHeader(hp),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: const FolderBrowserPage(),
-          ),
-        ),
-      ],
+  /// 文件夹视图：整块替换为 FolderBrowserPage。
+  ///
+  /// FolderBrowserPage 自身是完整页面（自带 Scaffold 与完整顶栏，含
+  /// 「全部视频/文件夹」切换器、搜索、排序、筛选、刷新），所以这里**不能**
+  /// 再套一层首页 header —— 否则会出现双层顶栏 + 双层滚动，
+  /// 切换过去布局错乱、滚动条打架。
+  ///
+  /// 只通过 onSwitchToVideos 回调切回「全部视频」视图。
+  Widget _buildFolderLayout() {
+    return FolderBrowserPage(
+      onSwitchToVideos: () => setState(() => _showFolders = false),
     );
   }
 
