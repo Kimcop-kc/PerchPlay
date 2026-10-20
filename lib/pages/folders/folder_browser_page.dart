@@ -255,9 +255,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 第一行：切换器 +（返回）+ 右侧视图切换。
-          // 结构与「全部视频」页保持一致：左侧切换器，中间 Spacer 撑开，
-          // 右侧操作按钮。不再显示「内部存储」这类冗余路径文字。
+          // 第一行：切换器 +（返回）+ 右端 排序/筛选/刷新 + 视图切换。
+          // 排序/筛选/刷新提到本行右端 —— 之前它们单独占第三行，
+          // 导致文件夹视图比「全部视频」多一行、内容整体下移。
           Row(
             children: [
               _buildViewSwitcher(),
@@ -272,6 +272,16 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 ),
               ],
               const Spacer(),
+              _buildSortMenu(),
+              _buildFilterMenu(),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                color: GlassTheme.textTertiary,
+                tooltip: '刷新',
+                onPressed: () => _navigate(_currentPath.isNotEmpty
+                    ? _currentPath
+                    : _rootPath),
+              ),
               GlassButton(
                 icon: _gridView
                     ? Icons.view_list_rounded
@@ -286,23 +296,6 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           const SizedBox(height: 10),
           // 第二行：搜索框独占一行（与首页完全一致）
           _buildSearchField(),
-          const SizedBox(height: 6),
-          // 第三行：排序 / 筛选 / 刷新右对齐（与首页一致）
-          Row(
-            children: [
-              const Spacer(),
-              _buildSortMenu(),
-              _buildFilterMenu(),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                color: GlassTheme.textTertiary,
-                tooltip: '刷新',
-                onPressed: () => _navigate(_currentPath.isNotEmpty
-                    ? _currentPath
-                    : _rootPath),
-              ),
-            ],
-          ),
         ],
       ),
     );
