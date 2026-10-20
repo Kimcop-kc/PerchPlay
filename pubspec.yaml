@@ -77,9 +77,13 @@ dev_dependencies:
 
 # 本地 patch：onnxruntime 1.4.1 写死 compileSdk 33，但 Flutter 3.47 的传递依赖
 #（androidx.exifinterface）要求 ≥34。官方尚未发布修复版，故本地改 compileSdk 36。
+# flutter_inappwebview_android 1.1.3 用了 AGP 9 已移除的
+# getDefaultProguardFile('proguard-android.txt')，本地 fork 改成 optimize 版本。
 dependency_overrides:
   onnxruntime:
     path: local_packages/onnxruntime
+  flutter_inappwebview_android:
+    path: local_packages/flutter_inappwebview_android
 
 # dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库。
 # 国内网络 / CI 环境可能拉不动，所以把 arm64 的 .so 放进仓库，
