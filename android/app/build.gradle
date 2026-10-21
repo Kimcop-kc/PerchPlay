@@ -93,17 +93,6 @@ android {
                     : signingConfigs.debug
         }
     }
-
-    // sherpa_onnx 和 onnxruntime 各自打包了一份 libonnxruntime.so，
-    // AGP 9 的严格检查会报「2 files found with path」冲突。取同一份即可
-    // （两者都是同一个 onnxruntime 库），排除 sherpa 内置的那份避免冲突。
-    packagingOptions {
-        pickFirst 'lib/arm64-v8a/libonnxruntime.so'
-        pickFirst 'lib/armeabi-v7a/libonnxruntime.so'
-        pickFirst 'lib/x86_64/libonnxruntime.so'
-        pickFirst 'lib/x86/libonnxruntime.so'
-        pickFirst '**/libonnxruntime.so'
-    }
 }
 
 dependencies {
