@@ -9,13 +9,11 @@ import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 ///
 /// 负责统计应用各类缓存 / 数据占用的磁盘空间，供设置页展示与清理。
 /// 覆盖项对应目录约定：
-/// - AI 模型：`<documents>/ai_models`（见 model_downloader.dart 的 modelsDir）
-/// - AI 字幕缓存：`<documents>/ai_subtitles`（见 batch_subtitle_service.dart）
 /// - 缩略图缓存：`<support>/thumbnails`（见 thumbnail_service.dart）
 /// - 临时文件：`getTemporaryDirectory()` 整目录
 /// - 应用数据库：`<databases>/vidflow.db`（见 database_service.dart）
 ///
-/// 本类只负责「算大小 / 删文件」，不弹窗、不做二次确认；AI 模型的二次确认由调用方处理。
+/// 本类只负责「算大小 / 删文件」，不弹窗、不做二次确认。
 class StorageManager {
   StorageManager._();
 
@@ -23,12 +21,6 @@ class StorageManager {
   static final StorageManager instance = StorageManager._();
 
   // ── 缓存项 id 常量（供设置页 / 清理逻辑引用，避免硬编码字符串） ──
-
-  /// AI 本地模型。
-  static const String idAiModels = 'ai_models';
-
-  /// AI 全片离线字幕缓存。
-  static const String idAiSubtitles = 'ai_subtitles';
 
   /// 视频缩略图缓存。
   static const String idThumbnails = 'thumbnails';
@@ -47,20 +39,15 @@ class StorageManager {
   /// 目录不存在、单个文件读取失败等情况一律按 0 / 静默跳过处理，不抛异常，
   /// 保证设置页随时可以安全调用。
   Future<List<StorageItem>> scan() async {
-    // 并发解析三个基础目录（path_provider 调用互相独立）
-    final docs = await getApplicationDocumentsDirectory();
+    // 并发解析基础目录（path_provider 调用互相独立）
     final support = await getApplicationSupportDirectory();
     final temp = await getTemporaryDirectory();
 
-    final aiModelsPath = '${docs.path}${Platform.pathSeparator}ai_models';
-    final aiSubtitlesPath = '${docs.path}${Platform.pathSeparator}ai_subtitles';
     final thumbnailsPath = '${support.path}${Platform.pathSeparator}thumbnails';
     final dbPath = await _databasePath();
 
     // 并发算大小，减少串行等待
     final sizes = await Future.wait(<Future<int>>[
-      _dirSize(Directory(aiModelsPath)),
-      _dirSize(Directory(aiSubtitlesPath)),
       _dirSize(Directory(thumbnailsPath)),
       _dirSize(Directory(temp.path)),
       _dbSize(dbPath),
@@ -68,26 +55,10 @@ class StorageManager {
 
     return <StorageItem>[
       StorageItem(
-        id: idAiModels,
-        label: 'AI 模型',
-        path: aiModelsPath,
-        sizeBytes: sizes[0],
-        canClear: true,
-        description: '本地语音识别模型文件，清理后需重新下载才能离线转写。',
-      ),
-      StorageItem(
-        id: idAiSubtitles,
-        label: 'AI 字幕缓存',
-        path: aiSubtitlesPath,
-        sizeBytes: sizes[1],
-        canClear: true,
-        description: '全片离线生成的字幕缓存（.srt），清理后下次可重新生成。',
-      ),
-      StorageItem(
         id: idThumbnails,
         label: '缩略图缓存',
         path: thumbnailsPath,
-        sizeBytes: sizes[2],
+        sizeBytes: sizes[0],
         canClear: true,
         description: '视频封面缩略图，清理后浏览影库时会自动重新生成。',
       ),
@@ -95,7 +66,7 @@ class StorageManager {
         id: idTemp,
         label: '临时文件',
         path: temp.path,
-        sizeBytes: sizes[3],
+        sizeBytes: sizes[1],
         canClear: true,
         description: '应用运行产生的临时文件，可安全清理。',
       ),
@@ -103,7 +74,7 @@ class StorageManager {
         id: idDatabase,
         label: '应用数据库',
         path: dbPath,
-        sizeBytes: sizes[4],
+        sizeBytes: sizes[2],
         canClear: false,
         description: '影库、播放列表与播放进度等数据，清理会导致数据丢失，不建议清理。',
       ),
@@ -113,8 +84,7 @@ class StorageManager {
   /// 清空对应缓存项的目录内容。
   ///
   /// - 只删除目录内的文件与子目录，保留目录本身；
-  /// - 不可清理项（应用数据库）直接忽略，不会误删；
-  /// - AI 模型的二次确认提示由调用方负责，本方法只执行删除。
+  /// - 不可清理项（应用数据库）直接忽略，不会误删。
   Future<void> clearItem(String id) async {
     if (id == idDatabase) return; // 不可清理项
     final path = await _pathFor(id);
@@ -209,12 +179,6 @@ class StorageManager {
   /// 根据 id 解析对应目录路径。
   Future<String> _pathFor(String id) async {
     switch (id) {
-      case idAiModels:
-        final docs = await getApplicationDocumentsDirectory();
-        return '${docs.path}${Platform.pathSeparator}ai_models';
-      case idAiSubtitles:
-        final docs = await getApplicationDocumentsDirectory();
-        return '${docs.path}${Platform.pathSeparator}ai_subtitles';
       case idThumbnails:
         final support = await getApplicationSupportDirectory();
         return '${support.path}${Platform.pathSeparator}thumbnails';

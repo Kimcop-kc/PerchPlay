@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import 'core/router/app_router.dart';
 import 'core/system/orientation_policy.dart';
 import 'core/theme/glass_theme.dart';
@@ -29,14 +28,6 @@ void main() async {
       runApp(_CrashScreen(details: details));
     }
   };
-
-  // sherpa-onnx native 库初始化（必须在使用任何 sherpa API 之前调用一次）
-  try {
-    await sherpa.initBindingsAsync();
-    debugPrint('[PerchPlay] sherpa-onnx bindings initialized');
-  } catch (e) {
-    debugPrint('[PerchPlay] sherpa-onnx init failed: $e');
-  }
 
   // media_kit native 初始化可能在某些设备上失败
   try {

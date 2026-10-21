@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.84+84
+version: 1.0.85+85
 homepage: https://github.com/Kimcop-kc/PerchPlay
 repository: https://github.com/Kimcop-kc/PerchPlay
 
@@ -51,8 +51,6 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.5.1
   crypto: ^3.0.3
-  # API Key 等敏感信息的本地 AES 加密存储（纯 Dart，无原生依赖）
-  encrypt: ^5.0.3
   # 注：旧 SDK 时代锁 collection 1.18.0，升级 Flutter 3.47 后放开为 caret 由 pub 解析
   collection: ^1.18.0
   # TMDB 刮削 & 海报缓存
@@ -60,13 +58,6 @@ dependencies:
   cached_network_image: ^3.4.0
   shimmer: ^3.0.0
   image: ^4.12.0
-  sherpa_onnx: ^1.13.8
-
-  # 模型导入：文件选择 + 解压（zip / tar / tar.gz / tar.bz2）
-  # 6.2.1 用旧 v1 embedding，与 Flutter 3.47/AGP 9 不兼容；升到 13.x（v2 embedding）
-  file_picker: ^13.1.0
-  archive: ^4.5.2
-  onnxruntime: ^1.4.1
   dart_smb2: ^0.2.1
   flutter_inappwebview: ^6.1.5
 
@@ -75,13 +66,9 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: 4.0.0
 
-# 本地 patch：onnxruntime 1.4.1 写死 compileSdk 33，但 Flutter 3.47 的传递依赖
-#（androidx.exifinterface）要求 ≥34。官方尚未发布修复版，故本地改 compileSdk 36。
 # flutter_inappwebview_android 1.1.3 用了 AGP 9 已移除的
 # getDefaultProguardFile('proguard-android.txt')，本地 fork 改成 optimize 版本。
 dependency_overrides:
-  onnxruntime:
-    path: local_packages/onnxruntime
   flutter_inappwebview_android:
     path: local_packages/flutter_inappwebview_android
 
