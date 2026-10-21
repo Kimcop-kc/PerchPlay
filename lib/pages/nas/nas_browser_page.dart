@@ -285,35 +285,19 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   }
 
   Widget _buildTabletTitle() {
-    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳。
+    // NAS/网盘切换按钮统一放最左侧（leading），标题与副标题靠右。
     return AppPageHeader(
       title: '串流',
       subtitle: _showCloud ? '网盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
       asSliver: false,
       childGap: 12,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 「NAS / 网盘」分段切换：两者都是「远程媒体库」，
-          // 合成一个 tab 免得底栏挤到 7 项、手机每项只剩约 50dp。
-          GlassButton.outlined(
-            icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
-            label: _showCloud ? 'NAS' : '网盘',
-            height: 36,
-            foregroundColor: GlassTheme.accentPurple,
-            onTap: () => setState(() => _showCloud = !_showCloud),
-          ),
-          if (!_showCloud) ...[
-            const SizedBox(width: 8),
-            GlassButton.outlined(
-              icon: Icons.add_link_rounded,
-              label: '添加',
-              height: 36,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: () => _showAddConnectionDialog(context),
-            ),
-          ],
-        ],
+      leading: GlassButton.outlined(
+        icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
+        label: _showCloud ? 'NAS' : '网盘',
+        height: 36,
+        foregroundColor: GlassTheme.accentPurple,
+        onTap: () => setState(() => _showCloud = !_showCloud),
       ),
     );
   }
@@ -323,9 +307,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   Widget _buildConnectionList(NasState state) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
-      itemCount: state.connections.length + 1, // +1 for add button on mobile
+      itemCount: state.connections.length + 1, // +1 为顶部「添加连接」按钮
       itemBuilder: (context, index) {
-        if (index == 0 && !AppBreakpoints.isLargeScreen(context)) {
+        // 顶部统一放「添加连接」按钮（手机/平板一致，标题栏不再放添加）
+        if (index == 0) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10, top: 8),
             child: GlassButton.outlined(
@@ -338,8 +323,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             ),
           );
         }
-        final connIndex =
-            AppBreakpoints.isLargeScreen(context) ? index : index - 1;
+        final connIndex = index - 1;
         if (connIndex >= state.connections.length)
           return const SizedBox.shrink();
 

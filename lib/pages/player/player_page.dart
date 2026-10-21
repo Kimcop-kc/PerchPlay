@@ -59,8 +59,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   bool _showSpeedSelector = false;
   bool _isFullscreen = false;
 
-  /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
-  double? _seekPreviewMs;
+  /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动。
+  ///
+  /// 用 ValueNotifier 而不是普通字段：拖动过程中每次预览更新只通知
+  /// 进度条/时间文字局部重建，**不触发整页 setState**，避免打断
+  /// 正在进行的手势（这就是之前"进度条只能滑几下"的根因）。
+  final ValueNotifier<double?> _seekPreviewMs = ValueNotifier<double?>(null);
 
   /// GlassSlider 正在拖动时置 true，用来禁止手势层同时触发的 seek。
   bool _sliderDragging = false;
@@ -125,6 +129,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void dispose() {
     _autoHideTimer?.cancel();
     _controlsAnim.dispose();
+    _seekPreviewMs.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _restoreIdleOrientation();
     try {
@@ -267,16 +272,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     return base + safeBottom + _settings.subtitlePosition * screenH * 0.85;
   }
 
-  /// 手势拖动进度：实时带动底部进度条
+  /// 手势拖动进度：实时带动底部进度条（局部通知，不整页重建）
   void _onSeekPreview(int targetMs) {
-    if (!mounted) return;
-    setState(() => _seekPreviewMs = targetMs.toDouble());
+    _seekPreviewMs.value = targetMs.toDouble();
   }
 
   /// 松手提交跳转
   void _onSeekCommit(int targetMs) {
     ref.read(playerProvider.notifier).seekTo(Duration(milliseconds: targetMs));
-    if (mounted) setState(() => _seekPreviewMs = null);
+    _seekPreviewMs.value = null;
   }
 
   /// 滑块开始拖动：通知手势层抑制横向 seek
@@ -290,8 +294,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (!mounted) return;
     setState(() {
       _sliderDragging = false;
-      _seekPreviewMs = null;
     });
+    _seekPreviewMs.value = null;
   }
 
   /// 长按画面开始 → 倍速播放
@@ -1378,63 +1382,80 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               builder: (context, live) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 进度条（手势拖动时跟随预览位置）
-                  if (live.duration > Duration.zero)
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-                      child: GlassSlider(
-                        value: _seekPreviewMs ??
-                            live.position.inMilliseconds.toDouble(),
-                        min: 0,
-                        max: live.duration.inMilliseconds.toDouble(),
-                        activeColor: GlassTheme.accentPink,
-                        height: 2,
-                        showThumb: _seekPreviewMs != null,
-                        // 直接拖进度条时也实时预览
-                        onChanged: (v) => _onSeekPreview(v.round()),
-                        onChangeEnd: (v) {
-                          _onSeekCommit(v.round());
-                        },
-                        onDragStart: _onSliderDragStart,
-                        onDragEnd: _onSliderDragEnd,
-                      ),
-                    ),
-                  SizedBox(height: 4 * scale),
-                  // 时间
-                  if (live.duration > Duration.zero)
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20 * scale),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // 进度条 + 时间：用 ValueListenableBuilder 订阅 seek 预览，
+                  // 拖动时只局部重建这两块，不整页 setState（避免打断手势）
+                  ValueListenableBuilder<double?>(
+                    valueListenable: _seekPreviewMs,
+                    builder: (context, seekPreview, _) {
+                      final previewMs = seekPreview;
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            _fmtDuration(
-                              Duration(
-                                milliseconds: (_seekPreviewMs ??
-                                        live.position.inMilliseconds.toDouble())
-                                    .round(),
+                          // 进度条（手势拖动时跟随预览位置）
+                          if (live.duration > Duration.zero)
+                            Padding(
+                              padding:
+                                  EdgeInsets.symmetric(horizontal: 16 * scale),
+                              child: GlassSlider(
+                                value: previewMs ??
+                                    live.position.inMilliseconds.toDouble(),
+                                min: 0,
+                                max: live.duration.inMilliseconds.toDouble(),
+                                activeColor: GlassTheme.accentPink,
+                                height: 2,
+                                showThumb: previewMs != null,
+                                // 直接拖进度条时也实时预览
+                                onChanged: (v) => _onSeekPreview(v.round()),
+                                onChangeEnd: (v) {
+                                  _onSeekCommit(v.round());
+                                },
+                                onDragStart: _onSliderDragStart,
+                                onDragEnd: _onSliderDragEnd,
                               ),
                             ),
-                            style: TextStyle(
-                              color: _seekPreviewMs != null
-                                  ? GlassTheme.accentPink
-                                  : Colors.white70,
-                              fontSize: 11 * scale,
-                              fontWeight: _seekPreviewMs != null
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
+                          SizedBox(height: 4 * scale),
+                          // 时间
+                          if (live.duration > Duration.zero)
+                            Padding(
+                              padding:
+                                  EdgeInsets.symmetric(horizontal: 20 * scale),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _fmtDuration(
+                                      Duration(
+                                        milliseconds: (previewMs ??
+                                                live.position.inMilliseconds
+                                                    .toDouble())
+                                            .round(),
+                                      ),
+                                    ),
+                                    style: TextStyle(
+                                      color: previewMs != null
+                                          ? GlassTheme.accentPink
+                                          : Colors.white70,
+                                      fontSize: 11 * scale,
+                                      fontWeight: previewMs != null
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                  ),
+                                  Text(
+                                    _fmtDuration(live.duration),
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 11 * scale,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Text(
-                            _fmtDuration(live.duration),
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 11 * scale,
-                            ),
-                          ),
                         ],
-                      ),
-                    ),
+                      );
+                    },
+                  ),
                   SizedBox(height: 6 * scale),
                   // 按钮行
                   Padding(

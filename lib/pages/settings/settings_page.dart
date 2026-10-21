@@ -186,6 +186,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               if (mounted) setState(() {});
             }),
           ),
+          // 硬件解码的说明小字，紧跟在其下方
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '遇到花屏 / 黑屏 / 无法播放时，可关闭硬件解码改用软件解码',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+          ),
           _divider(),
           _settingRow(
             Icons.screen_rotation_rounded,
@@ -195,14 +203,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     color: GlassTheme.accentPurple,
                     fontWeight: FontWeight.w600)),
             onTap: () => _showPlayerOrientationPicker(),
-          ),
-          _divider(),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              '遇到花屏 / 黑屏 / 无法播放时，可关闭硬件解码改用软件解码',
-              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
-            ),
           ),
         ],
       ),
@@ -825,427 +825,456 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           final previewSize = fontSize > 0 ? fontSize : 16.0;
 
-          return Container(
-            margin: EdgeInsets.only(
-              left: 12,
-              right: 12,
-              bottom: MediaQuery.of(context).padding.bottom + 12,
-            ),
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-            decoration: BoxDecoration(
-              color: GlassTheme.bg,
-              borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          // 与播放设置选择器（速度/倍速）统一：顶部圆角 + 毛玻璃 + 白色渐变 + 拖拽条
+          final bottomInset = MediaQuery.of(sheetCtx).padding.bottom + 96;
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(GlassTheme.radiusXl)),
+            child: SafeBackdropFilter(
+              blurSigma: 24,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.85),
+                      Colors.white.withValues(alpha: 0.55),
+                    ],
+                  ),
+                  border: Border(
+                    top: BorderSide(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        width: 0.5),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.text_fields_rounded,
-                            color: GlassTheme.accentPurple, size: 20),
-                        const SizedBox(width: 8),
-                        const Text('字幕样式',
-                            style: TextStyle(
-                                color: GlassTheme.textPrimary,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700)),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () {
-                            setSheetState(() {
-                              fontSize = 0;
-                              position = 0.12;
-                              bgOpacity = 0.62;
-                              textColor = 0xFFFFFFFF;
-                              stroke = true;
-                              secScale = 0.82;
-                              secDim = true;
-                              fontFamily = 'system';
-                              fontWeightIdx = 5;
-                              lineSpacing = 3;
-                              lineHeight = 1.35;
-                              bgRadius = 4;
-                              bgColor = 0xFF000000;
-                              showBg = true;
-                              align = 'center';
-                              useAssPos = true;
-                            });
+                        Center(
+                          child: Container(
+                            width: 32,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(2),
+                              color: Colors.black.withValues(alpha: 0.15),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.text_fields_rounded,
+                                color: GlassTheme.accentPurple, size: 20),
+                            const SizedBox(width: 8),
+                            const Text('字幕样式',
+                                style: TextStyle(
+                                    color: GlassTheme.textPrimary,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700)),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () {
+                                setSheetState(() {
+                                  fontSize = 0;
+                                  position = 0.12;
+                                  bgOpacity = 0.62;
+                                  textColor = 0xFFFFFFFF;
+                                  stroke = true;
+                                  secScale = 0.82;
+                                  secDim = true;
+                                  fontFamily = 'system';
+                                  fontWeightIdx = 5;
+                                  lineSpacing = 3;
+                                  lineHeight = 1.35;
+                                  bgRadius = 4;
+                                  bgColor = 0xFF000000;
+                                  showBg = true;
+                                  align = 'center';
+                                  useAssPos = true;
+                                });
+                                persist();
+                              },
+                              child: const Text('恢复默认',
+                                  style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // ── 实时预览 ──
+                        Container(
+                          height: 96,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment(
+                            0,
+                            // 预览里位置映射到 -1~1，便于直观感受
+                            position <= 0 ? 0.85 : (0.85 - position * 2.6),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _previewLine(
+                                '字幕预览效果',
+                                previewSize,
+                                Color(textColor),
+                                stroke,
+                                showBg ? bgOpacity : 0,
+                                fontFamily,
+                                fontWeightIdx,
+                                lineHeight,
+                                bgRadius,
+                                Color(bgColor),
+                              ),
+                              if (secScale > 0)
+                                _previewLine(
+                                  'Bilingual preview',
+                                  previewSize * secScale,
+                                  secDim
+                                      ? Color(textColor).withValues(alpha: 0.72)
+                                      : Color(textColor),
+                                  stroke,
+                                  showBg ? bgOpacity : 0,
+                                  fontFamily,
+                                  fontWeightIdx,
+                                  lineHeight,
+                                  bgRadius,
+                                  Color(bgColor),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        _sliderRow(
+                          '字号',
+                          fontSize <= 0 ? '自动' : fontSize.toStringAsFixed(0),
+                          fontSize <= 0 ? 16 : fontSize,
+                          14,
+                          30,
+                          (v) {
+                            setSheetState(() => fontSize = v);
                             persist();
                           },
-                          child: const Text('恢复默认',
-                              style: TextStyle(fontSize: 12)),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
+                        _sliderRow(
+                          '垂直位置',
+                          position <= 0.02
+                              ? '贴底'
+                              : '${(position * 100).round()}%',
+                          position,
+                          0,
+                          0.5,
+                          (v) {
+                            setSheetState(() => position = v);
+                            persist();
+                          },
+                        ),
+                        _sliderRow(
+                          '背景透明度',
+                          '${(bgOpacity * 100).round()}%',
+                          bgOpacity,
+                          0,
+                          1,
+                          (v) {
+                            setSheetState(() => bgOpacity = v);
+                            persist();
+                          },
+                        ),
+                        _sliderRow(
+                          '译文比例',
+                          '${(secScale * 100).round()}%',
+                          secScale,
+                          0.5,
+                          1.0,
+                          (v) {
+                            setSheetState(() => secScale = v);
+                            persist();
+                          },
+                        ),
 
-                    // ── 实时预览 ──
-                    Container(
-                      height: 96,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment(
-                        0,
-                        // 预览里位置映射到 -1~1，便于直观感受
-                        position <= 0 ? 0.85 : (0.85 - position * 2.6),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _previewLine(
-                            '字幕预览效果',
-                            previewSize,
-                            Color(textColor),
-                            stroke,
-                            showBg ? bgOpacity : 0,
-                            fontFamily,
-                            fontWeightIdx,
-                            lineHeight,
-                            bgRadius,
-                            Color(bgColor),
-                          ),
-                          if (secScale > 0)
-                            _previewLine(
-                              'Bilingual preview',
-                              previewSize * secScale,
-                              secDim
-                                  ? Color(textColor).withValues(alpha: 0.72)
-                                  : Color(textColor),
-                              stroke,
-                              showBg ? bgOpacity : 0,
-                              fontFamily,
-                              fontWeightIdx,
-                              lineHeight,
-                              bgRadius,
-                              Color(bgColor),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    _sliderRow(
-                      '字号',
-                      fontSize <= 0 ? '自动' : fontSize.toStringAsFixed(0),
-                      fontSize <= 0 ? 16 : fontSize,
-                      14,
-                      30,
-                      (v) {
-                        setSheetState(() => fontSize = v);
-                        persist();
-                      },
-                    ),
-                    _sliderRow(
-                      '垂直位置',
-                      position <= 0.02 ? '贴底' : '${(position * 100).round()}%',
-                      position,
-                      0,
-                      0.5,
-                      (v) {
-                        setSheetState(() => position = v);
-                        persist();
-                      },
-                    ),
-                    _sliderRow(
-                      '背景透明度',
-                      '${(bgOpacity * 100).round()}%',
-                      bgOpacity,
-                      0,
-                      1,
-                      (v) {
-                        setSheetState(() => bgOpacity = v);
-                        persist();
-                      },
-                    ),
-                    _sliderRow(
-                      '译文比例',
-                      '${(secScale * 100).round()}%',
-                      secScale,
-                      0.5,
-                      1.0,
-                      (v) {
-                        setSheetState(() => secScale = v);
-                        persist();
-                      },
-                    ),
-
-                    const SizedBox(height: 6),
-                    const Text('文字颜色',
-                        style: TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        for (final (argb, name, c) in colorOptions)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Tooltip(
-                              message: name,
-                              child: GestureDetector(
-                                onTap: () {
-                                  setSheetState(() => textColor = argb);
-                                  persist();
-                                },
-                                child: Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: c,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: textColor == argb
-                                          ? GlassTheme.accentPurple
-                                          : Colors.white24,
-                                      width: textColor == argb ? 3 : 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('文字描边',
-                          style: TextStyle(
-                              color: GlassTheme.textPrimary, fontSize: 14)),
-                      subtitle: const Text('复杂画面上更清晰',
-                          style: TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 11)),
-                      value: stroke,
-                      activeThumbColor: GlassTheme.accentPurple,
-                      onChanged: (v) {
-                        setSheetState(() => stroke = v);
-                        persist();
-                      },
-                    ),
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('译文弱化',
-                          style: TextStyle(
-                              color: GlassTheme.textPrimary, fontSize: 14)),
-                      subtitle: const Text('双语时译文用灰色，突出原文',
-                          style: TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 11)),
-                      value: secDim,
-                      activeThumbColor: GlassTheme.accentPurple,
-                      onChanged: (v) {
-                        setSheetState(() => secDim = v);
-                        persist();
-                      },
-                    ),
-
-                    const SizedBox(height: 10),
-                    const Text('字体',
-                        style: TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    // 字体族选择
-                    SizedBox(
-                      height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (final (key, label) in fontOptions)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(label,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontFamily:
-                                            key == 'system' ? null : key)),
-                                selected: fontFamily == key,
-                                onSelected: (_) {
-                                  setSheetState(() => fontFamily = key);
-                                  persist();
-                                },
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text('字重',
-                        style: TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        for (final (idx, label, w) in weightOptions)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(label,
-                                  style:
-                                      TextStyle(fontSize: 12, fontWeight: w)),
-                              selected: fontWeightIdx == idx,
-                              onSelected: (_) {
-                                setSheetState(() => fontWeightIdx = idx);
-                                persist();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    const Text('对齐',
-                        style: TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        for (final (key, label, icon) in alignOptions)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              avatar: Icon(icon, size: 16),
-                              label: Text(label,
-                                  style: const TextStyle(fontSize: 12)),
-                              selected: align == key,
-                              onSelected: (_) {
-                                setSheetState(() => align = key);
-                                persist();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-
-                    _sliderRow(
-                      '行间距',
-                      '${lineSpacing.toStringAsFixed(0)}',
-                      lineSpacing,
-                      0,
-                      12,
-                      (v) {
-                        setSheetState(() => lineSpacing = v);
-                        persist();
-                      },
-                    ),
-                    _sliderRow(
-                      '行高',
-                      lineHeight.toStringAsFixed(2),
-                      lineHeight,
-                      1.0,
-                      1.8,
-                      (v) {
-                        setSheetState(() => lineHeight = v);
-                        persist();
-                      },
-                    ),
-                    _sliderRow(
-                      '背景圆角',
-                      bgRadius.toStringAsFixed(0),
-                      bgRadius,
-                      0,
-                      12,
-                      (v) {
-                        setSheetState(() => bgRadius = v);
-                        persist();
-                      },
-                    ),
-
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('显示黑底',
-                          style: TextStyle(
-                              color: GlassTheme.textPrimary, fontSize: 14)),
-                      subtitle: const Text('关闭后字幕无背景色',
-                          style: TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 11)),
-                      value: showBg,
-                      activeThumbColor: GlassTheme.accentPurple,
-                      onChanged: (v) {
-                        setSheetState(() => showBg = v);
-                        persist();
-                      },
-                    ),
-                    if (showBg) ...[
-                      const SizedBox(height: 6),
-                      const Text('背景色',
-                          style: TextStyle(
-                              color: GlassTheme.textTertiary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          for (final (argb, name, c) in bgColorOptions)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: Tooltip(
-                                message: name,
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setSheetState(() => bgColor = argb);
-                                    persist();
-                                  },
-                                  child: Container(
-                                    width: 30,
-                                    height: 30,
-                                    decoration: BoxDecoration(
-                                      color: c,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: bgColor == argb
-                                            ? GlassTheme.accentPurple
-                                            : Colors.white24,
-                                        width: bgColor == argb ? 3 : 1,
+                        const SizedBox(height: 6),
+                        const Text('文字颜色',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            for (final (argb, name, c) in colorOptions)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Tooltip(
+                                  message: name,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setSheetState(() => textColor = argb);
+                                      persist();
+                                    },
+                                    child: Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: c,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: textColor == argb
+                                              ? GlassTheme.accentPurple
+                                              : Colors.white24,
+                                          width: textColor == argb ? 3 : 1,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('应用 ASS 定位',
-                          style: TextStyle(
-                              color: GlassTheme.textPrimary, fontSize: 14)),
-                      subtitle: const Text('按 ASS 字幕的垂直位置与对齐渲染',
-                          style: TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 11)),
-                      value: useAssPos,
-                      activeThumbColor: GlassTheme.accentPurple,
-                      onChanged: (v) {
-                        setSheetState(() => useAssPos = v);
-                        persist();
-                      },
-                    ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
 
-                    const SizedBox(height: 6),
-                    const Divider(height: 1, color: Colors.white12),
-                    const SizedBox(height: 6),
-                  ],
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('文字描边',
+                              style: TextStyle(
+                                  color: GlassTheme.textPrimary, fontSize: 14)),
+                          subtitle: const Text('复杂画面上更清晰',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 11)),
+                          value: stroke,
+                          activeThumbColor: GlassTheme.accentPurple,
+                          onChanged: (v) {
+                            setSheetState(() => stroke = v);
+                            persist();
+                          },
+                        ),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('译文弱化',
+                              style: TextStyle(
+                                  color: GlassTheme.textPrimary, fontSize: 14)),
+                          subtitle: const Text('双语时译文用灰色，突出原文',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 11)),
+                          value: secDim,
+                          activeThumbColor: GlassTheme.accentPurple,
+                          onChanged: (v) {
+                            setSheetState(() => secDim = v);
+                            persist();
+                          },
+                        ),
+
+                        const SizedBox(height: 10),
+                        const Text('字体',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        // 字体族选择
+                        SizedBox(
+                          height: 40,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              for (final (key, label) in fontOptions)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    label: Text(label,
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            fontFamily:
+                                                key == 'system' ? null : key)),
+                                    selected: fontFamily == key,
+                                    onSelected: (_) {
+                                      setSheetState(() => fontFamily = key);
+                                      persist();
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text('字重',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            for (final (idx, label, w) in weightOptions)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(label,
+                                      style: TextStyle(
+                                          fontSize: 12, fontWeight: w)),
+                                  selected: fontWeightIdx == idx,
+                                  onSelected: (_) {
+                                    setSheetState(() => fontWeightIdx = idx);
+                                    persist();
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        const Text('对齐',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            for (final (key, label, icon) in alignOptions)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  avatar: Icon(icon, size: 16),
+                                  label: Text(label,
+                                      style: const TextStyle(fontSize: 12)),
+                                  selected: align == key,
+                                  onSelected: (_) {
+                                    setSheetState(() => align = key);
+                                    persist();
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+
+                        _sliderRow(
+                          '行间距',
+                          '${lineSpacing.toStringAsFixed(0)}',
+                          lineSpacing,
+                          0,
+                          12,
+                          (v) {
+                            setSheetState(() => lineSpacing = v);
+                            persist();
+                          },
+                        ),
+                        _sliderRow(
+                          '行高',
+                          lineHeight.toStringAsFixed(2),
+                          lineHeight,
+                          1.0,
+                          1.8,
+                          (v) {
+                            setSheetState(() => lineHeight = v);
+                            persist();
+                          },
+                        ),
+                        _sliderRow(
+                          '背景圆角',
+                          bgRadius.toStringAsFixed(0),
+                          bgRadius,
+                          0,
+                          12,
+                          (v) {
+                            setSheetState(() => bgRadius = v);
+                            persist();
+                          },
+                        ),
+
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('显示黑底',
+                              style: TextStyle(
+                                  color: GlassTheme.textPrimary, fontSize: 14)),
+                          subtitle: const Text('关闭后字幕无背景色',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 11)),
+                          value: showBg,
+                          activeThumbColor: GlassTheme.accentPurple,
+                          onChanged: (v) {
+                            setSheetState(() => showBg = v);
+                            persist();
+                          },
+                        ),
+                        if (showBg) ...[
+                          const SizedBox(height: 6),
+                          const Text('背景色',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              for (final (argb, name, c) in bgColorOptions)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: Tooltip(
+                                    message: name,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setSheetState(() => bgColor = argb);
+                                        persist();
+                                      },
+                                      child: Container(
+                                        width: 30,
+                                        height: 30,
+                                        decoration: BoxDecoration(
+                                          color: c,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: bgColor == argb
+                                                ? GlassTheme.accentPurple
+                                                : Colors.white24,
+                                            width: bgColor == argb ? 3 : 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('应用 ASS 定位',
+                              style: TextStyle(
+                                  color: GlassTheme.textPrimary, fontSize: 14)),
+                          subtitle: const Text('按 ASS 字幕的垂直位置与对齐渲染',
+                              style: TextStyle(
+                                  color: GlassTheme.textTertiary,
+                                  fontSize: 11)),
+                          value: useAssPos,
+                          activeThumbColor: GlassTheme.accentPurple,
+                          onChanged: (v) {
+                            setSheetState(() => useAssPos = v);
+                            persist();
+                          },
+                        ),
+
+                        const SizedBox(height: 6),
+                        const Divider(height: 1, color: Colors.white12),
+                        const SizedBox(height: 6),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
