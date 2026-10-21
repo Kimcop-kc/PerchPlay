@@ -233,7 +233,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   double _subtitleBottom(bool isLarge) {
     final base = isLarge ? 20.0 : 12.0;
     final screenH = MediaQuery.of(context).size.height;
-    return base + _settings.subtitlePosition * screenH * 0.85;
+    // 叠加底部安全区（手势导航条/圆角屏），避免字幕被系统 UI 遮挡
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    return base + safeBottom + _settings.subtitlePosition * screenH * 0.85;
   }
 
   /// 手势拖动进度：实时带动底部进度条
@@ -424,46 +426,47 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 blockSeek: _sliderDragging,
               ),
             ),
-            // 主字幕：统一用 mpv 吐出的 `currentSubtitleLines` 自绘浮层。
-            // 内嵌/外挂都走同一来源，贴视频最底部，样式统一。
-            // mpv 的默认字幕渲染已通过 Video(controls: NoVideoControls) 关闭。
-            // ASS 原生渲染开关开启时，主字幕交给 mpv/libass，浮层不画。
-            if (!_settings.subtitleNativeAss &&
-                state.currentSubtitleLines.isNotEmpty)
-              Positioned(
-                bottom: _subtitleBottom(isLarge),
-                left: isLarge ? 40 : 20,
-                right: isLarge ? 40 : 20,
-                child: SubtitleOverlay(
-                  lines: state.currentSubtitleLines,
-                  fontSize: _subtitleFontSize(isLarge),
-                  bgOpacity: _settings.subtitleBgOpacity,
-                  textColor: Color(_settings.subtitleTextColorValue),
-                  stroke: _settings.subtitleStroke,
-                  secondaryScale: _settings.subtitleSecondaryScale,
-                  secondaryDim: _settings.subtitleSecondaryDim,
-                  maxCharsPerLine: isLarge ? 34 : 22,
-                ),
-              ),
-            // 第二字幕（外挂自绘，可与主字幕同屏）
-            if (_hasSecondaryOverlay(state))
-              _LiveSubtitle(
-                builder: (context, live) => Positioned(
-                  bottom: _subtitleBottom(isLarge) + (isLarge ? 52 : 40),
-                  left: isLarge ? 60 : 36,
-                  right: isLarge ? 60 : 36,
+            // ── 统一字幕渲染入口 ──
+            // 主字幕（mpv sub-text）+ 第二字幕（内嵌 secondary-sub-text 或
+            // 外挂 entries）合并到**同一个** SubtitleOverlay，全部由 Flutter
+            // 渲染。mpv/libass 只解析文本、不绘制，彻底消除双重绘制。
+            _LiveSubtitle(
+              builder: (context, live) {
+                final hasPrimary = live.currentSubtitleLines.isNotEmpty;
+                // 内嵌第二字幕：secondarySubtitleLines（mpv 文本）
+                final embeddedSecondary =
+                    live.secondarySubtitleLines.isNotEmpty;
+                // 外挂第二字幕：secondaryEntries（Dart 解析 + 命中）
+                final externalSecondary = _hasSecondaryOverlay(live);
+                final hasSecondary = embeddedSecondary || externalSecondary;
+
+                if (!hasPrimary && !hasSecondary) {
+                  return const SizedBox.shrink();
+                }
+
+                return Positioned(
+                  bottom: _subtitleBottom(isLarge),
+                  left: isLarge ? 40 : 20,
+                  right: isLarge ? 40 : 20,
                   child: SubtitleOverlay(
-                    entries: live.secondaryEntries!,
-                    activeIndex: live.secondarySubtitleIndex,
-                    fontSize: _subtitleFontSize(isLarge) * 0.85,
-                    compact: true,
+                    lines: hasPrimary ? live.currentSubtitleLines : const [],
+                    secondaryLines: embeddedSecondary
+                        ? live.secondarySubtitleLines
+                        : const [],
+                    entries:
+                        externalSecondary ? live.secondaryEntries! : const [],
+                    activeIndex:
+                        externalSecondary ? live.secondarySubtitleIndex : -1,
+                    fontSize: _subtitleFontSize(isLarge),
                     bgOpacity: _settings.subtitleBgOpacity,
                     textColor: Color(_settings.subtitleTextColorValue),
                     stroke: _settings.subtitleStroke,
-                    maxCharsPerLine: isLarge ? 34 : 22,
+                    secondaryScale: _settings.subtitleSecondaryScale,
+                    secondaryDim: _settings.subtitleSecondaryDim,
                   ),
-                ),
-              ),
+                );
+              },
+            ),
             // 弹出面板
             _buildPopupMenus(context, state),
             // 控制栏（玻璃动画）
@@ -1745,7 +1748,11 @@ class _LivePosition extends ConsumerWidget {
   }
 }
 
-/// 只订阅「当前字幕行」的字幕浮层包装
+/// 只订阅「当前字幕行 + 第二字幕命中下标」的字幕浮层包装。
+///
+/// 主字幕文本来自 `currentSubtitleLines`；第二字幕文本来自
+/// `secondarySubtitleLines`（内嵌第二字幕，mpv 文本）或 `secondaryEntries`
+/// 的命中下标（外挂第二字幕）。三者都订阅，保证任一变化都触发重建。
 class _LiveSubtitle extends ConsumerWidget {
   final Widget Function(BuildContext context, PlayerState live) builder;
   const _LiveSubtitle({required this.builder});
@@ -1754,7 +1761,16 @@ class _LiveSubtitle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(
       playerProvider.select(
-        (p) => (p.activeSubtitleIndex, p.secondarySubtitleIndex),
+        (p) => (
+          p.activeSubtitleIndex,
+          p.secondarySubtitleIndex,
+          // 按「对象身份」比较（List 未重写 ==），换文件会重建
+          p.secondaryEntries,
+          // 主字幕文本：mpv sub-text 每次推送新 List，这里直接比较内容
+          p.currentSubtitleLines,
+          // 内嵌第二字幕文本：mpv secondary-sub-text
+          p.secondarySubtitleLines,
+        ),
       ),
     );
     return builder(context, ref.read(playerProvider));

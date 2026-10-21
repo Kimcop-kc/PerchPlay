@@ -2,25 +2,36 @@ import 'package:flutter/material.dart';
 
 import '../../models/subtitle_model.dart';
 
-/// 字幕覆盖层。
+/// 字幕覆盖层（统一渲染入口）。
 ///
-/// 两种用法：
-/// - [entries] + [activeIndex]：旧的自绘浮层（第二字幕用，按条目命中显示）
-/// - [lines]：统一字幕渲染（主字幕用，直接渲染 mpv 吐出的多行文本）
+/// 三种输入，按优先级：
+/// 1. [lines] 与 [entries]/[activeIndex] **同时有效** → 双语：
+///    原文（[lines] 合并为一行）在上，译文（命中的 [entries] 条目）在下。
+/// 2. 仅 [lines] → 单语主字幕。
+/// 3. 仅 [entries] + [activeIndex] → 单语第二字幕。
 ///
-/// ## 外观完全由参数控制
-/// 字号 / 黑底透明度 / 文字颜色 / 描边 / 双语次行样式都可以从设置传入，
+/// ## 布局规则
+/// - 单语：最多 1 行；原文自带的换行符折叠为空格（不当作双语分隔符）。
+/// - 双语：固定 2 行 —— 原文一行、译文一行，共用一个 Column 容器、
+///   统一宽度与对齐；行间距由 [lineSpacing] 控制。
+/// - 超长文本：优先自适应缩小字号；缩到下限仍放不下则单行省略号，
+///   绝不因固定字符数规则意外增加行数。
+///
+/// ## 样式
+/// 字号 / 黑底透明度 / 文字颜色 / 描边 / 双语次行样式全部由外部传入，
 /// 默认值等价于「白色文字 + 62% 黑底 + 轻描边」。
-///
-/// ## 断行策略
-/// 优先用 [LayoutBuilder] 按可用宽度动态算每行字数（≈ CJK 字符宽 0.58×字号），
-/// 不再硬编码 22/34 字符。仅当外部显式传入 `maxCharsPerLine > 0` 时覆盖该值。
-class SubtitleOverlay extends StatefulWidget {
+class SubtitleOverlay extends StatelessWidget {
   final List<SubtitleEntry> entries;
   final int activeIndex;
 
-  /// 多行字幕文本（统一渲染用，优先于 entries）。
+  /// 多行字幕文本（mpv `sub-text` 或主字幕行）。
   final List<String> lines;
+
+  /// 第二字幕文本（mpv `secondary-sub-text`，内嵌第二字幕轨）。
+  ///
+  /// 与 [entries]/[activeIndex] 互斥：内嵌第二字幕的文本由 mpv 直接推送，
+  /// 无需 Dart 侧解析匹配。优先于 [entries]。
+  final List<String> secondaryLines;
 
   /// 字号。<= 0 表示由 [compact] 决定（保持旧的自适应行为）。
   final double fontSize;
@@ -43,14 +54,18 @@ class SubtitleOverlay extends StatefulWidget {
   /// 双语时译文是否弱化为灰色。
   final bool secondaryDim;
 
-  /// 每行最多显示的字数（超出按标点智能断行）。0 = 不限。
-  final int maxCharsPerLine;
+  /// 双语文两行之间的额外间距（逻辑像素）。
+  final double lineSpacing;
+
+  /// 自适应字号下限（相对 [fontSize] 的比例，0~1）。
+  final double minFontScale;
 
   const SubtitleOverlay({
     super.key,
     this.entries = const [],
     this.activeIndex = -1,
     this.lines = const [],
+    this.secondaryLines = const [],
     this.fontSize = 0,
     this.compact = false,
     this.bgOpacity = 0.62,
@@ -58,241 +73,183 @@ class SubtitleOverlay extends StatefulWidget {
     this.stroke = true,
     this.secondaryScale = 0.82,
     this.secondaryDim = true,
-    this.maxCharsPerLine = 0,
+    this.lineSpacing = 3,
+    this.minFontScale = 0.72,
   });
 
   @override
-  State<SubtitleOverlay> createState() => _SubtitleOverlayState();
-}
-
-class _SubtitleOverlayState extends State<SubtitleOverlay> {
-  /// 当前显示的内容标识（用于检测"换了一句"以触发淡入）。
-  String _shown = '';
-
-  /// 断行结果缓存。
-  ///
-  /// 字幕浮层跟着播放进度高频重建（每秒数次），而断行只跟「文本 + 字数上限」
-  /// 有关，跟时间无关。不做缓存的话每帧都要跑一遍 _smartWrap（O(n²) 的
-  /// 标点扫描），长句字幕会明显拖慢帧率。
-  List<_DisplayLine> _cacheLines = const [];
-  String _cacheText = '';
-  int _cacheMaxChars = -1;
-
-  @override
   Widget build(BuildContext context) {
-    String? text;
-    if (widget.lines.isNotEmpty) {
-      text = widget.lines.where((l) => l.trim().isNotEmpty).join('\n');
-    } else if (widget.activeIndex >= 0 &&
-        widget.activeIndex < widget.entries.length) {
-      text = widget.entries[widget.activeIndex].text;
-    }
+    // ── 确定原文与译文文本 ──
+    final String? primaryText = _normalizePrimary();
+    final String? secondaryText = _normalizeSecondary();
 
-    if (text == null || text.trim().isEmpty) {
-      if (_shown.isNotEmpty) _shown = '';
+    if (primaryText == null && secondaryText == null) {
       return const SizedBox.shrink();
     }
 
-    // 换句才触发淡入；同一句内容不变时不做动画，避免闪烁
-    if (_shown != text) _shown = text;
+    final double baseFontSize =
+        fontSize > 0 ? fontSize : (compact ? 13.5 : 16.0);
 
-    final double fontSize =
-        widget.fontSize > 0 ? widget.fontSize : (widget.compact ? 13.5 : 16.0);
+    // 双语（原文 + 译文同时存在）时译文用缩小样式；
+    // 只有译文（没有原文）时，译文就是唯一字幕，用正常样式。
+    final bool bilingual = primaryText != null && secondaryText != null;
+    final primaryStyle = _buildStyle(baseFontSize, isSecondary: false);
+    final secondaryStyle = _buildStyle(baseFontSize, isSecondary: bilingual);
 
-    // 字数上限：外部显式传入 >0 则用，否则根据屏幕宽度与字号自适应。
-    final int effectiveMaxChars;
-    if (widget.maxCharsPerLine > 0) {
-      effectiveMaxChars = widget.maxCharsPerLine;
-    } else {
-      // 0.58 ≈ CJK 字符平均宽/字号比；0.90 给左右留 5% 边距空间
-      final screenW = MediaQuery.sizeOf(context).width;
-      effectiveMaxChars =
-          ((screenW * 0.90) / (fontSize * 0.58)).floor().clamp(16, 80);
+    // 外层 Center 让内容按自身宽度居中（不被 Positioned 的 left+right 拉伸）。
+    // 黑底只包住文字，不横向撑满屏幕。
+    return Center(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (primaryText != null)
+                _buildLine(context, primaryText, primaryStyle, maxWidth),
+              if (bilingual) SizedBox(height: lineSpacing),
+              if (secondaryText != null)
+                _buildLine(context, secondaryText, secondaryStyle, maxWidth),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 主字幕文本：合并 [lines] 的非空行，内部换行折叠为空格。
+  String? _normalizePrimary() {
+    if (lines.isEmpty) return null;
+    final parts =
+        lines.map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
+  }
+
+  /// 译文文本：优先用 [secondaryLines]（内嵌第二字幕的 mpv 文本），
+  /// 否则取命中的 [entries] 条目文本（外挂第二字幕）。
+  String? _normalizeSecondary() {
+    if (secondaryLines.isNotEmpty) {
+      final parts = secondaryLines
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      if (parts.isNotEmpty) return parts.join(' ');
     }
+    if (activeIndex < 0 || activeIndex >= entries.length) return null;
+    final t = entries[activeIndex].text.trim();
+    return t.isEmpty ? null : t;
+  }
 
-    // 文本或字数上限变了才重新断行
-    if (_cacheText != text || _cacheMaxChars != effectiveMaxChars) {
-      _cacheText = text;
-      _cacheMaxChars = effectiveMaxChars;
-      _cacheLines = _buildDisplayLines(
-        text,
-        effectiveMaxChars,
-        fromMpvText: widget.lines.isNotEmpty,
-      );
-    }
-    final displayLines = _cacheLines;
-    if (displayLines.isEmpty) return const SizedBox.shrink();
-
-    final style = TextStyle(
-      color: widget.textColor,
-      fontSize: fontSize,
-      fontWeight: FontWeight.w500,
+  TextStyle _buildStyle(double size, {required bool isSecondary}) {
+    final base = TextStyle(
+      color: textColor,
+      fontSize: isSecondary ? size * secondaryScale : size,
+      fontWeight: isSecondary ? FontWeight.w400 : FontWeight.w500,
       height: 1.35,
-      shadows: widget.stroke
+      shadows: stroke
           ? const [
               Shadow(
-                  color: Colors.black87, blurRadius: 3, offset: Offset(1, 1)),
+                color: Colors.black87,
+                blurRadius: 3,
+                offset: Offset(1, 1),
+              ),
               Shadow(
-                  color: Colors.black87, blurRadius: 3, offset: Offset(-1, -1)),
+                color: Colors.black87,
+                blurRadius: 3,
+                offset: Offset(-1, -1),
+              ),
             ]
           : null,
     );
+    if (!isSecondary) return base;
+    return base.copyWith(
+      color: secondaryDim ? textColor.withValues(alpha: 0.72) : textColor,
+    );
+  }
 
-    final secondaryStyle = style.copyWith(
-      fontSize: fontSize * widget.secondaryScale,
-      fontWeight: FontWeight.w400,
-      color: widget.secondaryDim
-          ? widget.textColor.withValues(alpha: 0.72)
-          : widget.textColor,
+  /// 渲染一行：自适应字号 + 单行省略号。
+  Widget _buildLine(
+    BuildContext context,
+    String text,
+    TextStyle baseStyle,
+    double maxWidth,
+  ) {
+    // 把文本内部的换行/连续空白折叠成单个空格（字幕文本不应含排版换行）
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return const SizedBox.shrink();
+
+    // 字号基准直接取 baseStyle 的字号（译文已被 secondaryScale 缩小过）
+    final double baseFontSize = baseStyle.fontSize ?? 16.0;
+    final double minSize = baseFontSize * minFontScale;
+    final double fittedSize = _fitSingleLine(
+      normalized,
+      baseStyle,
+      baseFontSize,
+      minSize,
+      maxWidth,
     );
 
-    // 黑底只包住文字，不横向撑满屏幕。
-    //
-    // 外层 Center 让内容按自身宽度居中（不再被 Positioned 的
-    // left+right 拉伸）；每行独立带小圆角黑底，面积≈文字面积。
-    return Center(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 160),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        // 淡入淡出而不是滑动，避免字幕"跳"
-        transitionBuilder: (child, anim) =>
-            FadeTransition(opacity: anim, child: child),
-        child: Column(
-          key: ValueKey(_shown),
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (final dl in displayLines)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 1),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black
-                        .withValues(alpha: widget.bgOpacity.clamp(0.0, 1.0)),
-                    borderRadius: BorderRadius.circular(widget.compact ? 3 : 4),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: widget.compact ? 5 : 7,
-                      vertical: widget.compact ? 1.5 : 2.5,
-                    ),
-                    child: Text(
-                      dl.text,
-                      textAlign: TextAlign.center,
-                      style: dl.isSecondary ? secondaryStyle : style,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+    final style = baseStyle.copyWith(fontSize: fittedSize);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: bgOpacity.clamp(0.0, 1.0)),
+        borderRadius: BorderRadius.circular(compact ? 3 : 4),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 5 : 7,
+          vertical: compact ? 1.5 : 2.5,
+        ),
+        child: Text(
+          normalized,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: style,
         ),
       ),
     );
   }
-}
 
-/// 一行待显示文本（标记是否属于译文，以便用更小的字号/灰色）。
-class _DisplayLine {
-  final String text;
-  final bool isSecondary;
-  const _DisplayLine({required this.text, required this.isSecondary});
-}
+  /// 计算能在一行内放下 [text] 的最大字号（在 [base] 与 [min] 之间二分）。
+  ///
+  /// 放得下返回 [base]；放不下按比例缩小，缩到 [min] 仍放不下就返回 [min]，
+  /// 由 Text 的 `overflow: ellipsis` 做最终省略。
+  double _fitSingleLine(
+    String text,
+    TextStyle baseStyle,
+    double base,
+    double min,
+    double maxWidth,
+  ) {
+    if (maxWidth <= 0) return base;
 
-/// 把原始文本拆成待显示的若干行（原文 + 译文，并按上限智能断行）。
-///
-/// [fromMpvText]：若为 true 则所有行属于同一种语言（mpv sub-text 不区分原文/译文）；
-/// 此时 cap 1 行，且全部标记为 `isSecondary=false`。
-List<_DisplayLine> _buildDisplayLines(
-  String text,
-  int maxChars, {
-  bool fromMpvText = false,
-}) {
-  final rawLines = text.split('\n');
-  final out = <_DisplayLine>[];
-
-  // 单语：最多 1 行显示（默认单语字幕一行，过长加省略号）。
-  if (fromMpvText) {
-    for (final raw in rawLines) {
-      final t = raw.trim();
-      if (t.isEmpty) continue;
-      final chunks = maxChars > 0 ? _smartWrap(t, maxChars) : <String>[t];
-      out.addAll(chunks.map((c) => _DisplayLine(text: c, isSecondary: false)));
+    bool fits(double size) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: baseStyle.copyWith(fontSize: size)),
+        maxLines: 1,
+        textDirection: TextDirection.ltr,
+      )..layout();
+      return painter.width <= maxWidth;
     }
-    // 仅保留首行；有剩余内容时加省略号提醒用户当前字幕已被截断
-    if (out.length > 1) {
-      out.removeRange(1, out.length);
-      out.first = _DisplayLine(
-        text: '${out.first.text}…',
-        isSecondary: false,
-      );
-    }
-    return out;
-  }
 
-  // 双语模式（entries 路径）：固定两行——一行原文 + 一行译文。
-  // 过长内容优先智能折行后取首行并加省略号，避免任意拆成四五行。
-  for (var i = 0; i < rawLines.length; i++) {
-    final raw = rawLines[i].trim();
-    if (raw.isEmpty) continue;
-    final isSecondary = i > 0;
-    final chunks = maxChars > 0 ? _smartWrap(raw, maxChars) : <String>[raw];
-    for (final c in chunks) {
-      out.add(_DisplayLine(text: c, isSecondary: isSecondary));
-    }
-  }
-  final prim = out.where((l) => !l.isSecondary).toList();
-  final sec = out.where((l) => l.isSecondary).toList();
-  out.clear();
-  if (prim.isNotEmpty) {
-    out.add(prim.first);
-    if (prim.length > 1) {
-      out.first = _DisplayLine(
-        text: '${prim.first.text}…',
-        isSecondary: false,
-      );
-    }
-  }
-  if (sec.isNotEmpty) {
-    out.add(_DisplayLine(
-      text: sec.length > 1 ? '${sec.first.text}…' : sec.first.text,
-      isSecondary: true,
-    ));
-  }
-  return out;
-}
+    if (fits(base)) return base;
 
-/// 按字数上限对长句做**智能断行**。
-///
-/// 优先在标点（，。！？；、,.!?; ）处断开；没有标点时退化为按空格，
-/// 再不行才硬切，尽量不把词/短语劈开。
-List<String> _smartWrap(String text, int maxChars) {
-  if (maxChars <= 0 || text.length <= maxChars) return <String>[text];
-
-  const breakers = ['，', '。', '！', '？', '；', '、', ',', '.', '!', '?', ';'];
-  final out = <String>[];
-  var rest = text;
-
-  while (rest.length > maxChars) {
-    // 在 [0, maxChars] 里找最后一个标点
-    var cut = -1;
-    for (var i = maxChars - 1; i >= 0; i--) {
-      if (breakers.contains(rest[i])) {
-        cut = i + 1; // 标点留在本行末尾
-        break;
+    var lo = min;
+    var hi = base;
+    var best = min;
+    for (var i = 0; i < 8; i++) {
+      final mid = (lo + hi) / 2;
+      if (fits(mid)) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
       }
     }
-    // 没找到标点 → 找空格
-    if (cut <= 0) {
-      final sp = rest.lastIndexOf(' ', maxChars);
-      if (sp > 0) cut = sp + 1;
-    }
-    // 还没有 → 硬切
-    if (cut <= 0) cut = maxChars;
-
-    out.add(rest.substring(0, cut).trim());
-    rest = rest.substring(cut).trim();
+    return best;
   }
-  if (rest.isNotEmpty) out.add(rest);
-  return out;
 }

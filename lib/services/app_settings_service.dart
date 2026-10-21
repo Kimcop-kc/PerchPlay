@@ -36,7 +36,6 @@ class AppSettingsService {
   static const _kSubtitlePosition = 'settings.subtitle.position';
   static const _kSubtitleSecondaryScale = 'settings.subtitle.secondaryScale';
   static const _kSubtitleSecondaryDim = 'settings.subtitle.secondaryDim';
-  static const _kSubtitleNativeAss = 'settings.subtitle.nativeAss';
 
   double _defaultSpeed = 1.0;
 
@@ -120,17 +119,11 @@ class AppSettingsService {
   bool _subtitleSecondaryDim = true;
   bool get subtitleSecondaryDim => _subtitleSecondaryDim;
 
-  /// 是否用 mpv/libass 原生渲染字幕（ASS 特效完整）。
+  /// 【已废弃】字幕统一由 Flutter 渲染，mpv/libass 原生渲染已移除。
   ///
-  /// false（默认）= Flutter 自绘浮层：样式统一可控、黑底可调，但 ASS 的
-  ///                 卡拉OK、旋转、矢量绘图等特效会丢失，只保留文本。
-  /// true          = mpv 原生渲染：ASS 特效完整，但样式由字幕文件决定，
-  ///                 上面那些字幕外观设置对它无效。
-  ///
-  /// 只对 **ASS/SSA 外挂字幕** 有实际差异；SRT 之类没有特效，两种模式
-  /// 视觉上几乎一致。
-  bool _subtitleNativeAss = false;
-  bool get subtitleNativeAss => _subtitleNativeAss;
+  /// 保留此 getter 仅为兼容旧代码/旧设置键，恒返回 false。
+  /// 不再持久化，历史设置值自动忽略。
+  bool get subtitleNativeAss => false;
 
   /// 每个视频「上次选了什么字幕」（外挂文件 / 内嵌轨 / 关掉，三态）
   ///
@@ -244,7 +237,6 @@ class AppSettingsService {
       _subtitleSecondaryScale =
           (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
       _subtitleSecondaryDim = prefs.getBool(_kSubtitleSecondaryDim) ?? true;
-      _subtitleNativeAss = prefs.getBool(_kSubtitleNativeAss) ?? false;
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
@@ -637,14 +629,6 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleSecondaryDim, v);
-    } catch (_) {}
-  }
-
-  Future<void> setSubtitleNativeAss(bool v) async {
-    _subtitleNativeAss = v;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kSubtitleNativeAss, v);
     } catch (_) {}
   }
 

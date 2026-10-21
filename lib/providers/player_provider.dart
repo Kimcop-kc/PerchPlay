@@ -73,7 +73,17 @@ class PlayerState {
   /// 统一字幕渲染的**唯一事实来源**：无论内嵌还是外挂，mpv 都把当前应该
   /// 显示的字幕吐到这里，浮层只渲染这份文本，避免「mpv 画一份 + 自绘浮层
   /// 又画一份」的双重/错位 bug。
+  ///
+  /// 注意：这里只存 `stream.subtitle[0]`（mpv `sub-text`，主字幕）。
+  /// 第二字幕文本存 [secondarySubtitleLines]（mpv `secondary-sub-text`）。
   final List<String> currentSubtitleLines;
+
+  /// 当前 mpv 正在显示的第二字幕文本（来自 `stream.subtitle[1]`，
+  /// 对应 mpv 的 `secondary-sub-text` 属性）。
+  ///
+  /// 内嵌第二字幕（secondary-sid）与主字幕一样都能通过 mpv 属性拿到文本，
+  /// 因此可以统一走 Flutter 渲染，不必依赖 mpv 原生绘制第二字幕。
+  final List<String> secondarySubtitleLines;
 
   const PlayerState({
     required this.player,
@@ -109,6 +119,7 @@ class PlayerState {
     this.secondaryEntries,
     this.secondarySubtitleIndex = 0,
     this.currentSubtitleLines = const [],
+    this.secondarySubtitleLines = const [],
   });
 
   PlayerState copyWith({
@@ -145,6 +156,7 @@ class PlayerState {
     List<SubtitleEntry>? secondaryEntries,
     int? secondarySubtitleIndex,
     List<String>? currentSubtitleLines,
+    List<String>? secondarySubtitleLines,
     bool clearActiveSubtitle = false,
     bool clearTrackId = false,
     bool clearMediaInfo = false,
@@ -205,6 +217,8 @@ class PlayerState {
           ? 0
           : (secondarySubtitleIndex ?? this.secondarySubtitleIndex),
       currentSubtitleLines: currentSubtitleLines ?? this.currentSubtitleLines,
+      secondarySubtitleLines:
+          secondarySubtitleLines ?? this.secondarySubtitleLines,
     );
   }
 
@@ -308,28 +322,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
       await platform.setProperty('framedrop', 'vo');
 
-      // ── 字幕渲染模式 ──
+      // ── 字幕渲染：统一由 Flutter 自绘 ──
       //
-      // 两种模式互斥，由「设置 → 字幕样式 → ASS 原生渲染」控制：
-      //
-      //  A) 自绘浮层（默认，nativeAss=false）
-      //     mpv 只推文本不画（sub-visibility=no），Flutter 读
-      //     `stream.subtitle` 自己渲染。好处：样式统一可调、黑底可控；
-      //     代价：ASS 的卡拉OK/旋转/矢量绘图等特效丢失，只留文本。
-      //
-      //  B) mpv/libass 原生渲染（nativeAss=true）
-      //     sub-visibility=yes，由 mpv 用 libass 完整绘制，ASS 特效原样呈现。
-      //     代价：样式由字幕文件决定，字幕外观设置对它无效；且必须保证
-      //     自绘浮层同时**不画**，否则又变成双字幕。
-      //
-      // 注意第二内嵌字幕始终由 mpv 的 secondary-sid 渲染，
-      // 由 setSecondaryEmbedded / setSecondaryExternal 单独控制
-      // secondary-sub-visibility，与本开关无关，不会叠。
-      final nativeAss = AppSettingsService.instance.subtitleNativeAss;
-      await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
-      // 原生模式下让 libass 完全按字幕文件来（不强制覆盖样式），
-      // 否则 ASS 的字体/位置会被 mpv 默认值改掉。
-      await platform.setProperty('sub-ass-override', nativeAss ? 'no' : 'yes');
+      // mpv/libass 只负责**解析**字幕文本（sub-text / secondary-sub-text），
+      // 不再绘制任何字幕。`sub-visibility=no` 关闭 libass 渲染，但文本流照常
+      // 推送，Flutter 浮层据此渲染，保证所有字幕（含 ASS）样式统一、可控，
+      // 也彻底消除「mpv 画一份 + Flutter 画一份」的双重绘制。
+      await platform.setProperty('sub-visibility', 'no');
+      await platform.setProperty('secondary-sub-visibility', 'no');
 
       // ── HDR 色调映射（对 SDR 视频无副作用）──
       // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
@@ -350,18 +350,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
   Player get player => state.player;
 
-  /// 重新应用字幕渲染模式（切换「ASS 原生渲染」开关后调用，立即生效）。
+  /// 重新应用字幕渲染模式（保留兼容：字幕设置变更后确保 mpv 不绘制字幕）。
   ///
-  /// 只动字幕相关的两个属性，不重跑整套 HDR 参数，避免闪一下画面。
+  /// 所有字幕统一由 Flutter 渲染，这里只确保 mpv 的 libass 绘制保持关闭，
+  /// 让 sub-text / secondary-sub-text 文本流继续推送给 Flutter。
   Future<void> reapplySubtitleMode() async {
     try {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
-      final nativeAss = AppSettingsService.instance.subtitleNativeAss;
-      await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
-      await platform.setProperty('sub-ass-override', nativeAss ? 'no' : 'yes');
-      debugPrint(
-          '[Player] 字幕渲染模式: ${nativeAss ? "mpv/libass 原生" : "Flutter 自绘"}');
+      await platform.setProperty('sub-visibility', 'no');
+      await platform.setProperty('secondary-sub-visibility', 'no');
+      debugPrint('[Player] 字幕渲染模式: Flutter 自绘');
     } catch (e) {
       debugPrint('[Player] 切换字幕渲染模式失败: $e');
     }
@@ -488,11 +487,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     });
 
     // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
-    // 内嵌/外挂都走这个流，浮层只渲染这一份，避免双重绘制与位置错乱。
+    //
+    // `stream.subtitle` 返回**两个元素**：
+    //   [0] = 主字幕文本（mpv `sub-text`）
+    //   [1] = 第二字幕文本（mpv `secondary-sub-text`）
+    // 内嵌第二字幕（secondary-sid）的文本也能从 [1] 拿到，
+    // 因此主/次字幕都可以统一走 Flutter 渲染，不必依赖 mpv 原生绘制。
     state.player.stream.subtitle.listen((lines) {
       state = state.copyWith(
-        currentSubtitleLines:
-            lines.isEmpty ? const <String>[] : List<String>.from(lines),
+        currentSubtitleLines: _toLines(lines.isNotEmpty ? lines[0] : ''),
+        secondarySubtitleLines: _toLines(lines.length > 1 ? lines[1] : ''),
       );
     });
 
@@ -600,6 +604,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       videoWidth: 0,
       videoHeight: 0,
       availableSubtitles: const [],
+      // 换片时清空字幕显示状态，避免上一部的字幕残留到下一部
+      currentSubtitleLines: const [],
+      secondarySubtitleLines: const [],
+      activeSubtitleIndex: 0,
+      secondarySubtitleIndex: 0,
     );
     _lastSaveAt = DateTime.now();
     _lastPosEmitAt = null; // 重置节流，新视频位置立即生效
@@ -806,6 +815,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 如果这期间又有了新的 seek 请求，这次的结果作废
     if (token != _seekToken) return;
     state = state.copyWith(position: clamped);
+    // 立即按新位置刷新字幕命中下标（不等 position 流回推，避免旧字幕残留）
+    _updateActiveSubtitle();
   }
 
   /// 相对跳转
@@ -825,6 +836,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (_) {}
     if (token != _seekToken) return;
     state = state.copyWith(position: target);
+    // 立即按新位置刷新字幕命中下标
+    _updateActiveSubtitle();
   }
 
   /// 设置音量（0-1，控制 media_kit 播放器音量）
@@ -885,12 +898,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 关闭 mpv 的「默认字幕渲染」但保留 sub-text 流。
   ///
-  /// 统一字幕渲染策略：主字幕由自绘浮层画（用 `currentSubtitleLines`），
-  /// mpv 只负责解析出「当前该显示的字幕文本」，不再自己画 —— 否则会出现
-  /// 「mpv 画一份 + 浮层又画一份」的双重字幕（导入外挂字幕位置不对的根因）。
+  /// 统一字幕渲染策略：主/次字幕都由自绘浮层画，mpv 只负责解析出
+  /// 「当前该显示的字幕文本」（sub-text / secondary-sub-text），不再自己画。
   ///
-  /// sub-visibility=no 只关渲染，`stream.subtitle`（对应 mpv sub-text）依旧
-  /// 正常推送当前文本，浮层照常拿到内容。
+  /// sub-visibility=no 只关渲染，`stream.subtitle` 依旧正常推送当前文本。
   Future<void> _disableMpvSubtitleRendering() async {
     final platform = state.player.platform;
     if (platform is! NativePlayer) return;
@@ -944,6 +955,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       clearTrackId: true,
       clearActiveSubtitle: true,
       subtitleEntries: null,
+      activeSubtitleIndex: 0,
+      // 立即清空主字幕文本，不等 mpv sub-text 流回推空
+      currentSubtitleLines: const [],
     );
     // 关掉也是一种选择：记住它，否则下次打开又被同名自动加载挂上
     await _rememberSubtitleChoice(null);
@@ -1022,13 +1036,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   // ═══════════════ 第二字幕（中英同时显示） ═══════════════
 
-  /// 把某个内嵌轨设为第二字幕（交给 mpv 的 secondary-sid 渲染）
+  /// 把某个内嵌轨设为第二字幕。
+  ///
+  /// mpv 的 `secondary-sub-text` 属性会推送第二字幕文本（同主字幕的
+  /// `sub-text`），因此内嵌第二字幕也能统一走 Flutter 渲染，不再依赖
+  /// mpv/libass 原生绘制。
+  ///
+  /// 关键：`secondary-sid` 让 mpv 解析该轨并更新 `secondary-sub-text`；
+  /// `secondary-sub-visibility=no` 只关 libass 绘制，文本属性照常推送。
+  /// 这样第二字幕文本交给 Flutter 浮层，避免「mpv 画一份 + Flutter 画一份」。
   Future<void> setSecondaryEmbedded(SubtitleTrack track) async {
     final platform = state.player.platform;
     try {
       if (platform is NativePlayer) {
         await platform.setProperty('secondary-sid', track.id);
-        await platform.setProperty('secondary-sub-visibility', 'yes');
+        // 关掉 libass 第二字幕绘制，文本走 secondary-sub-text 由 Flutter 画
+        await platform.setProperty('secondary-sub-visibility', 'no');
       }
     } catch (e) {
       debugPrint('[Subtitle] 设置内嵌第二字幕失败: $e');
@@ -1036,6 +1059,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(
       secondaryTrackId: track.id,
       clearSecondarySubtitle: true,
+      secondarySubtitleLines: const [],
     );
     await _applySubtitleLayout();
   }
@@ -1055,6 +1079,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       secondarySubtitleIndex: 0,
       clearSecondaryTrackId: true,
     );
+    // 立即按当前播放位置刷新第二字幕命中下标（不等 position 流）
+    _updateActiveSubtitle();
     await _applySubtitleLayout();
   }
 
@@ -1070,18 +1096,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(
       clearSecondaryTrackId: true,
       clearSecondarySubtitle: true,
+      secondarySubtitleLines: const [],
     );
     await _applySubtitleLayout();
   }
 
-  /// 主字幕位置：外挂第二字幕用自绘浮层时，把 mpv 主字幕抬高避免重叠
+  /// 主字幕位置：外挂第二字幕与主字幕现在**合并到同一个 Flutter 浮层**，
+  /// 不再需要把 mpv 主字幕抬高。此方法保留仅为兼容内嵌第二字幕（secondary-sid）
+  /// 的场景 —— 那时主/次字幕都由 mpv/libass 自己布局，也不该手动改 sub-pos。
   Future<void> _applySubtitleLayout() async {
-    final platform = state.player.platform;
-    if (platform is! NativePlayer) return;
-    final hasOverlay = state.secondaryEntries?.isNotEmpty == true;
-    try {
-      await platform.setProperty('sub-pos', hasOverlay ? '88' : '100');
-    } catch (_) {}
+    // 统一渲染后不再手动调整 sub-pos，交给默认布局即可
   }
 
   Future<List<SubtitleEntry>?> _parseSubtitle(SubtitleModel subtitle) async {
@@ -1100,15 +1124,30 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     return null;
   }
 
+  /// 把 mpv 推的单个字幕文本转成行列表。
+  ///
+  /// mpv 的 `sub-text` / `secondary-sub-text` 是单字符串，可能含 `\n`
+  /// 换行（ASS 的 \N 或 SRT 多行）。这里拆成行、过滤空行。
+  static List<String> _toLines(String text) {
+    if (text.isEmpty) return const <String>[];
+    final lines =
+        text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty);
+    return List<String>.from(lines);
+  }
+
   void _updateActiveSubtitle() {
     final pos = state.position;
     final p = _entryIndexAt(state.subtitleEntries, pos);
-    if (p != null && p != state.activeSubtitleIndex) {
-      state = state.copyWith(activeSubtitleIndex: p);
+    // 命中条目变化才更新；不在任何区间时把下标清回 -1，
+    // 避免字幕过期后浮层仍显示上一条（旧状态残留）。
+    final nextP = p ?? -1;
+    if (nextP != state.activeSubtitleIndex) {
+      state = state.copyWith(activeSubtitleIndex: nextP);
     }
     final s = _entryIndexAt(state.secondaryEntries, pos);
-    if (s != null && s != state.secondarySubtitleIndex) {
-      state = state.copyWith(secondarySubtitleIndex: s);
+    final nextS = s ?? -1;
+    if (nextS != state.secondarySubtitleIndex) {
+      state = state.copyWith(secondarySubtitleIndex: nextS);
     }
   }
 

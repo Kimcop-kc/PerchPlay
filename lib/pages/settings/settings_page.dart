@@ -729,7 +729,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     bool stroke = s.subtitleStroke;
     double secScale = s.subtitleSecondaryScale;
     bool secDim = s.subtitleSecondaryDim;
-    bool nativeAss = s.subtitleNativeAss;
 
     const colorOptions = <(int, String, Color)>[
       (0xFFFFFFFF, '白色', Colors.white),
@@ -753,7 +752,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             s.setSubtitleStroke(stroke);
             s.setSubtitleSecondaryScale(secScale);
             s.setSubtitleSecondaryDim(secDim);
-            s.setSubtitleNativeAss(nativeAss);
             // 通知播放页重建：字幕浮层读的是同步 getter，
             // 不重建就会出现「改了设置但正在播的视频没反应」。
             try {
@@ -826,42 +824,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         // 预览里位置映射到 -1~1，便于直观感受
                         position <= 0 ? 0.85 : (0.85 - position * 2.6),
                       ),
-                      child: nativeAss
-                          // 原生模式下上面的样式参数不生效，别给用户错误暗示
-                          ? const Center(
-                              child: Text(
-                                '已启用 ASS 原生渲染\n字幕样式由字幕文件决定',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  height: 1.6,
-                                ),
-                              ),
-                            )
-                          : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _previewLine(
-                                  '字幕预览效果',
-                                  previewSize,
-                                  Color(textColor),
-                                  stroke,
-                                  bgOpacity,
-                                ),
-                                if (secScale > 0)
-                                  _previewLine(
-                                    'Bilingual preview',
-                                    previewSize * secScale,
-                                    secDim
-                                        ? Color(textColor)
-                                            .withValues(alpha: 0.72)
-                                        : Color(textColor),
-                                    stroke,
-                                    bgOpacity,
-                                  ),
-                              ],
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _previewLine(
+                            '字幕预览效果',
+                            previewSize,
+                            Color(textColor),
+                            stroke,
+                            bgOpacity,
+                          ),
+                          if (secScale > 0)
+                            _previewLine(
+                              'Bilingual preview',
+                              previewSize * secScale,
+                              secDim
+                                  ? Color(textColor).withValues(alpha: 0.72)
+                                  : Color(textColor),
+                              stroke,
+                              bgOpacity,
                             ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -986,39 +970,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 6),
                     const Divider(height: 1, color: Colors.white12),
                     const SizedBox(height: 6),
-
-                    // ── ASS 原生渲染 ──
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('ASS 原生渲染',
-                          style: TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                      subtitle: const Text(
-                        '用 mpv/libass 绘制字幕，保留卡拉OK、旋转、矢量绘图等\n'
-                        'ASS 特效。开启后上面的外观设置不生效（样式跟随字幕文件）。\n'
-                        '只对 ASS/SSA 字幕有区别，SRT 无影响。',
-                        style: TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 11,
-                            height: 1.5),
-                      ),
-                      isThreeLine: true,
-                      value: nativeAss,
-                      activeThumbColor: GlassTheme.accentPurple,
-                      onChanged: (v) {
-                        setSheetState(() => nativeAss = v);
-                        persist();
-                        // 正在播放时立即生效，不必等下一个视频
-                        try {
-                          ref
-                              .read(playerProvider.notifier)
-                              .reapplySubtitleMode();
-                        } catch (_) {}
-                      },
-                    ),
                   ],
                 ),
               ),
