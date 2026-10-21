@@ -19,3 +19,8 @@ final subtitleSettingsTickProvider = StateProvider<int>((ref) => 0);
 
 /// 兼容旧名（只用于 ASS 原生渲染的语义）。实际语义已泛化为「字幕设置变更」。
 final subtitleNativeAssTickProvider = subtitleSettingsTickProvider;
+
+/// 翻译设置（后端/LLM Key/目标语言）变更信号。
+///
+/// 翻译设置改了之后需要让正在运行的翻译器重新读配置，否则改完得重启视频才生效。
+final translateSettingsTickProvider = StateProvider<int>((ref) => 0);

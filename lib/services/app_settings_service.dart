@@ -209,7 +209,8 @@ class AppSettingsService {
       .toSet();
 
   /// 某个自动列表里被用户手动加入的视频 id
-  Set<String> autoAddedFor(String playlistId) => _idsFor(_autoAdded, playlistId);
+  Set<String> autoAddedFor(String playlistId) =>
+      _idsFor(_autoAdded, playlistId);
 
   /// 某个自动列表里被用户手动移除的视频 id
   Set<String> autoRemovedFor(String playlistId) =>
@@ -262,15 +263,13 @@ class AppSettingsService {
           (prefs.getDouble(_kSubtitleFontSize) ?? 0).clamp(0, 30);
       _subtitleBgOpacity =
           (prefs.getDouble(_kSubtitleBgOpacity) ?? 0.62).clamp(0.0, 1.0);
-      _subtitleTextColor =
-          prefs.getInt(_kSubtitleTextColor) ?? 0xFFFFFFFF;
+      _subtitleTextColor = prefs.getInt(_kSubtitleTextColor) ?? 0xFFFFFFFF;
       _subtitleStroke = prefs.getBool(_kSubtitleStroke) ?? true;
       _subtitlePosition =
           (prefs.getDouble(_kSubtitlePosition) ?? 0.12).clamp(0.0, 0.6);
       _subtitleSecondaryScale =
           (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
-      _subtitleSecondaryDim =
-          prefs.getBool(_kSubtitleSecondaryDim) ?? true;
+      _subtitleSecondaryDim = prefs.getBool(_kSubtitleSecondaryDim) ?? true;
       _subtitleNativeAss = prefs.getBool(_kSubtitleNativeAss) ?? false;
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
@@ -379,7 +378,8 @@ class AppSettingsService {
   ///
   /// 淘汰按最近使用来的：只在"手动改选"时更新时间的话，常看的片子会被
   /// 后来选过字幕的其它片子挤出上限，明明一直在看却丢了记忆。
-  Future<void> touchSubtitleMemory(SubtitleMemory memory) => _storeSubtitleMemory(
+  Future<void> touchSubtitleMemory(SubtitleMemory memory) =>
+      _storeSubtitleMemory(
         memory.touch(DateTime.now().millisecondsSinceEpoch),
       );
 

@@ -148,20 +148,26 @@ class SpeechIsolateService {
     _loaded = false;
   }
 
-  /// 后台转写 WAV，返回文本。
+  /// 后台转写 WAV，返回 (文本, 检测到的语言代码)。
   ///
-  /// 返回 '' 表示静音跳过；返回 null 表示模型未加载 / 文件读取失败。
-  Future<String?> transcribeFile(
+  /// 文本为 '' 表示静音跳过；文本为 null 表示模型未加载 / 文件读取失败。
+  /// 语言代码从 SenseVoice 的 `<|zh|>` 标签提取（如 'zh'/'en'/'ja'），
+  /// 非 SenseVoice 模型时为 null。
+  Future<(String?, String?)> transcribeFile(
     String wavPath, {
     double silenceThreshold = 0.01,
   }) async {
-    if (!_loaded) return null;
+    if (!_loaded) return (null, null);
     final r = await _send([
       'transcribe',
       wavPath,
       silenceThreshold,
     ], timeout: const Duration(seconds: 60));
-    return r as String?;
+    if (r is List && r.length >= 2) {
+      return (r[0] as String?, r[1] as String?);
+    }
+    // 兼容旧 worker（未更新前的回包为单个 String?）
+    return (r as String?, null);
   }
 
   /// 释放 worker isolate 与模型。

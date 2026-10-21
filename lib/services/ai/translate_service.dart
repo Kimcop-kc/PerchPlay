@@ -107,7 +107,7 @@ class TranslateService {
         return 'Google 免费翻译';
       case TranslateBackend.llm:
         if (llmApiKey.trim().isEmpty) {
-          return 'Google 免费翻译（未配 Key）';
+          return 'LLM 未配置 Key';
         }
         return '自配 LLM 翻译';
       case TranslateBackend.local:
@@ -117,9 +117,12 @@ class TranslateService {
 
   /// 翻译一段文本。
   ///
+  /// [sourceLang] 传给 LLM 后端以避免翻反方向（google / local 不需要，它们
+  /// 自己判断源语言）。默认 `auto`。
+  ///
   /// 返回 null 表示「翻译失败 / 后端未就绪」。调用方收到 null 时应静默降级
   /// 为「只显示中文单语」，而不是报错中断字幕流。
-  Future<String?> translate(String text) async {
+  Future<String?> translate(String text, {String sourceLang = 'auto'}) async {
     final src = text.trim();
     if (src.isEmpty) return null;
 
@@ -128,29 +131,37 @@ class TranslateService {
         return _translateGoogle(src);
       case TranslateBackend.llm:
         if (llmApiKey.trim().isEmpty) {
-          // Key 没配：自动回落到 Google，保证双语功能始终可用
-          return _translateGoogle(src);
+          debugPrint('[Translate] LLM Key 未配置，翻译不可用');
+          return null;
         }
-        return _translateLlm(src);
+        return _translateLlm(src, sourceLang: sourceLang);
       case TranslateBackend.local:
         return _translateLocal(src);
     }
   }
 
   /// 本地 Opus-MT 翻译（懒加载模型）。
+  ///
+  /// 当前只支持 zh↔en（opus-mt-zh-en）。
+  /// 目标语言/模型加载不匹配时报告明确错误，不回退到网络翻译
+  /// （离线模式的硬边界：禁止任何网络回退）。
   Future<String?> _translateLocal(String text) async {
     final dir = localModelDir;
     if (dir == null || dir.isEmpty) {
       debugPrint('[Translate] 本地翻译未配置模型目录');
       return null;
     }
+    // Opus-MT zh-en 只能翻英文
+    if (targetLang != 'en') {
+      debugPrint('[Translate] 本地模型仅支持中→英，目标语言$targetLang不可用');
+      return null;
+    }
     _local ??= LocalTranslateBackend();
     if (!_local!.isLoaded) {
       final ok = await _local!.loadModel(dir);
       if (!ok) {
-        // 模型加载失败：回落到 Google，保证双语可用
-        debugPrint('[Translate] 本地模型加载失败，回落到 Google');
-        return _translateGoogle(text);
+        debugPrint('[Translate] 本地模型加载失败，离线翻译不可用');
+        return null;
       }
     }
     return _local!.translate(text);
@@ -191,7 +202,11 @@ class TranslateService {
   }
 
   /// OpenAI 兼容 chat completions 后端。
-  Future<String?> _translateLlm(String text) async {
+  ///
+  /// [sourceLang] 告诉 LLM 源语言（避免翻反方向），默认 `auto` 不指明。
+  Future<String?> _translateLlm(String text,
+      {String sourceLang = 'auto'}) async {
+    final srcName = sourceLang == 'auto' ? '' : _langName(sourceLang);
     try {
       final uri = Uri.parse(llmBaseUrl);
       final resp = await _client
@@ -210,7 +225,9 @@ class TranslateService {
                 },
                 {
                   'role': 'user',
-                  'content': '把下面的中文字幕翻译成${_langName(targetLang)}：\n$text',
+                  'content': srcName.isNotEmpty
+                      ? '把下面的${srcName}字幕翻译成${_langName(targetLang)}：\n$text'
+                      : '把下面的字幕翻译成${_langName(targetLang)}：\n$text',
                 },
               ],
               'temperature': 0.3,

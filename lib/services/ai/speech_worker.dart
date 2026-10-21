@@ -83,13 +83,13 @@ void speechWorkerEntry(SendPort mainSendPort) {
         final wavPath = message[2] as String;
         final thr = (message[3] as num?)?.toDouble() ?? 0.01;
         final r = recognizer;
-        String? result;
         if (r == null) {
-          result = null;
+          replyTo?.send(const [null, null]);
         } else {
-          result = _transcribePath(r, wavPath, silenceThreshold: thr);
+          final (text, lang) =
+              _transcribePath(r, wavPath, silenceThreshold: thr);
+          replyTo?.send([text, lang]);
         }
-        replyTo?.send(result);
         break;
 
       case 'dispose':
@@ -108,12 +108,16 @@ void speechWorkerEntry(SendPort mainSendPort) {
 }
 
 /// 在 worker isolate 里转写 WAV，先做 RMS 静音跳过。
-String? _transcribePath(
+///
+/// 返回 (清理后的文本, 检测到的语言代码)。
+/// SenseVoice 输出带 `<|zh|>` 标签前缀，从此提取语言信息；
+/// 其他模型（如 Whisper）无此标签时返回 null。
+(String?, String?) _transcribePath(
   sherpa.OfflineRecognizer recognizer,
   String wavPath, {
   required double silenceThreshold,
 }) {
-  if (!File(wavPath).existsSync()) return null;
+  if (!File(wavPath).existsSync()) return (null, null);
   try {
     final wave = sherpa.readWave(wavPath);
     final samples = wave.samples;
@@ -128,7 +132,7 @@ String? _transcribePath(
       }
       final count = (samples.length / stride).ceil();
       final rms = count > 0 ? sqrt(sumSq / count) : 0.0;
-      if (rms < silenceThreshold) return '';
+      if (rms < silenceThreshold) return ('', null);
     }
 
     final stream = recognizer.createStream();
@@ -139,7 +143,7 @@ String? _transcribePath(
     stream.free();
     return _cleanAsrText(raw);
   } catch (_) {
-    return null;
+    return (null, null);
   }
 }
 
@@ -150,15 +154,26 @@ String? _transcribePath(
 /// 表现为「AI 识别出来了但显示的内容是乱的」。
 ///
 /// 处理：
-///  1. 去掉 `<|...|>` 形式的标签 token；
-///  2. 合并连续重复的标点（SenseVoice 常见 `。。`）；
-///  3. 去掉首尾空白与开头多余的标点。
-String? _cleanAsrText(String raw) {
+///  1. 提取 `<|lang|>` 标签中的语言代码（SenseVoice），供翻译方向判断；
+///  2. 去掉 `<|...|>` 形式的标签 token；
+///  3. 合并连续重复的标点（SenseVoice 常见 `。。`）；
+///  4. 去掉首尾空白与开头多余的标点。
+///
+/// 返回 `(cleanedText, detectedLang)`，detectedLang 为 null 表示未检出。
+(String?, String?) _cleanAsrText(String raw) {
+  // 提取 SenseVoice 语言标签（如 <|zh|> → zh）
+  String? detectedLang;
+  final langMatch =
+      RegExp(r'<\|(zh|en|ja|ko|yue|fr|de|es|ru|pt|it)\|>').firstMatch(raw);
+  if (langMatch != null) {
+    detectedLang = langMatch.group(1);
+  }
+
   var s = raw.replaceAll(RegExp(r'<\|[^|]*\|>'), '');
   // 压缩重复标点：。。 → 。，、、 → 、
   s = s.replaceAll(RegExp(r'([。，、！？：；,.!?:;])\1+'), r'$1');
   // 去掉开头连续的标点/空白（识别片段起始常有孤立标点）
   s = s.replaceAll(RegExp(r'^[\s。，、！？：；,.!?:;\-—]+'), '');
   s = s.trim();
-  return s;
+  return (s.isEmpty ? null : s, detectedLang);
 }

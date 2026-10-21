@@ -59,13 +59,16 @@ class PlayerPage extends ConsumerStatefulWidget {
 }
 
 class _PlayerPageState extends ConsumerState<PlayerPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _showControls = true;
   bool _showSpeedSelector = false;
   bool _isFullscreen = false;
 
   /// 手势拖动进度时的预览位置（毫秒）；null 表示当前没在拖动
   double? _seekPreviewMs;
+
+  /// GlassSlider 正在拖动时置 true，用来禁止手势层同时触发的 seek。
+  bool _sliderDragging = false;
 
   /// 长按前的速度，松手时恢复这个值
   double? _speedBeforeLongPress;
@@ -84,6 +87,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 使用全局 VideoController，页面销毁时保留引用给 mini player 复用
     _videoController = ref.read(playerProvider).videoController!;
     _controlsAnim = AnimationController(
@@ -151,7 +155,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App 进入后台时立即落盘进度；回到前台的路径不需要额外处理，
+    // Player 流会自动报告当前位置。
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      try {
+        ref.read(playerProvider.notifier).saveProgress();
+      } catch (_) {}
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoHideTimer?.cancel();
     _controlsAnim.dispose();
     // 退出播放器时停掉实时字幕
@@ -282,6 +299,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (mounted) setState(() => _seekPreviewMs = null);
   }
 
+  /// 滑块开始拖动：通知手势层抑制横向 seek
+  void _onSliderDragStart() {
+    if (!mounted) return;
+    setState(() => _sliderDragging = true);
+  }
+
+  /// 滑块结束拖动（松手/取消）：清除预览，通知手势层恢复
+  void _onSliderDragEnd() {
+    if (!mounted) return;
+    setState(() {
+      _sliderDragging = false;
+      _seekPreviewMs = null;
+    });
+  }
+
   /// 长按画面开始 → 倍速播放
   void _onLongPressStart() {
     final notifier = ref.read(playerProvider.notifier);
@@ -325,14 +357,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       if (queue.isEmpty) queue = null;
     }
 
-    await ref
-        .read(playerProvider.notifier)
-        .loadVideo(
+    await ref.read(playerProvider.notifier).loadVideo(
           model,
           queue: queue,
-          startIndex: queue == null
-              ? 0
-              : widget.startIndex.clamp(0, queue.length - 1),
+          startIndex:
+              queue == null ? 0 : widget.startIndex.clamp(0, queue.length - 1),
         );
 
     // 换片时停掉上一部的实时字幕（新的字幕由用户重新开启）
@@ -344,6 +373,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     // 监听「ASS 原生渲染」开关：切换后必须立刻重建，
     // 因为自绘浮层要跟着显示/隐藏（否则双字幕）。
     ref.watch(subtitleNativeAssTickProvider);
+
+    // AI 实时字幕开着且有内容时，主字幕退让（避免 mpv 字幕和 AI 字幕同屏叠加）。
+    final liveSub = ref.watch(
+        liveSubtitleProvider.select((s) => s.running && s.entries.isNotEmpty));
+    final _aiActive = liveSub;
 
     // 只订阅「结构性」字段：position / 字幕行号这类高频变化的字段
     // 由进度条、时间文字、字幕浮层等叶子节点各自 select 订阅。
@@ -383,12 +417,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     // 手机 / 平板统一用全屏布局：视频铺满整屏、控件浮层自动隐藏。
     // 之前平板横屏走「左视频 62% + 右控制面板 38%」的分栏，视频铺不满、
     // 右边像一直有块面板挡着，观感也和手机端不一致。
-    return _buildFullScreenLayout(context, playerState);
+    return _buildFullScreenLayout(context, playerState, aiActive: _aiActive);
   }
 
   // ═══════════════ 全屏（手机 / 平板统一） ═══════════════
 
-  Widget _buildFullScreenLayout(BuildContext context, PlayerState state) {
+  Widget _buildFullScreenLayout(BuildContext context, PlayerState state,
+      {bool aiActive = false}) {
     final isLarge = AppBreakpoints.isLargeScreen(context);
     final buttonScale = isLarge ? 1.3 : 1.0;
 
@@ -413,9 +448,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onSeekFraction: (fraction) {
         // 用 ref.read 取实时位置，避免订阅高频字段
         final live = ref.read(playerProvider);
-        ref
-            .read(playerProvider.notifier)
-            .seekRelative(
+        ref.read(playerProvider.notifier).seekRelative(
               ((fraction * live.duration.inMilliseconds / 1000) -
                       live.position.inMilliseconds / 1000)
                   .round(),
@@ -449,6 +482,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 onLongPressStart: _onLongPressStart,
                 onLongPressEnd: _onLongPressEnd,
                 longPressSpeed: AppSettingsService.instance.longPressSpeed,
+                blockSeek: _sliderDragging,
               ),
             ),
             // 主字幕：默认由 Flutter 自绘浮层渲染（样式统一可调）。
@@ -456,6 +490,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             // 但如果用户在设置里开了「ASS 原生渲染」，主字幕交给 mpv/libass
             // 画（特效完整），此时浮层**必须不画**，否则又会出现双字幕。
             if (!_settings.subtitleNativeAss &&
+                !aiActive &&
                 state.currentSubtitleLines.isNotEmpty)
               Positioned(
                 bottom: _subtitleBottom(isLarge),
@@ -469,11 +504,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   stroke: _settings.subtitleStroke,
                   secondaryScale: _settings.subtitleSecondaryScale,
                   secondaryDim: _settings.subtitleSecondaryDim,
-                  maxCharsPerLine: isLarge ? 34 : 22,
                 ),
               ),
             // 第二字幕（外挂自绘，可与主字幕同屏）
-            if (_hasSecondaryOverlay(state))
+            if (!aiActive && _hasSecondaryOverlay(state))
               _LiveSubtitle(
                 builder: (context, live) => Positioned(
                   bottom: _subtitleBottom(isLarge) + (isLarge ? 52 : 40),
@@ -487,7 +521,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     bgOpacity: _settings.subtitleBgOpacity,
                     textColor: Color(_settings.subtitleTextColorValue),
                     stroke: _settings.subtitleStroke,
-                    maxCharsPerLine: isLarge ? 34 : 22,
+                    secondaryScale: _settings.subtitleSecondaryScale,
+                    secondaryDim: _settings.subtitleSecondaryDim,
                   ),
                 ),
               ),
@@ -559,7 +594,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+                colors: [
+                  Colors.black.withValues(alpha: 0.6),
+                  Colors.transparent
+                ],
               ),
             ),
             child: Row(
@@ -659,19 +697,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   String _audioTrackDesc(PlayerState state) {
     final tracks = state.audioTracks;
     if (tracks.isEmpty) return '未知';
-    return tracks
-        .map((a) {
-          final parts = <String>[
-            if (a.codec?.isNotEmpty == true) a.codec!,
-            if (a.channelscount != null && a.channelscount! > 0)
-              '${a.channelscount}声道',
-            if (a.samplerate != null && a.samplerate! > 0)
-              '${(a.samplerate! / 1000).toStringAsFixed(1)}kHz',
-            if (a.language?.isNotEmpty == true) a.language!,
-          ];
-          return parts.isEmpty ? '音轨' : parts.join(' ');
-        })
-        .join(' / ');
+    return tracks.map((a) {
+      final parts = <String>[
+        if (a.codec?.isNotEmpty == true) a.codec!,
+        if (a.channelscount != null && a.channelscount! > 0)
+          '${a.channelscount}声道',
+        if (a.samplerate != null && a.samplerate! > 0)
+          '${(a.samplerate! / 1000).toStringAsFixed(1)}kHz',
+        if (a.language?.isNotEmpty == true) a.language!,
+      ];
+      return parts.isEmpty ? '音轨' : parts.join(' ');
+    }).join(' / ');
   }
 
   void _showVideoInfoSheet(PlayerState state) {
@@ -720,16 +756,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         '内嵌字幕',
         state.embeddedSubtitles.isEmpty
             ? '无'
-            : state.embeddedSubtitles
-                  .map((t) {
-                    final label = (t.title?.isNotEmpty == true)
-                        ? t.title!
-                        : ((t.language?.isNotEmpty == true)
-                              ? t.language!
-                              : t.id);
-                    return label;
-                  })
-                  .join(' / '),
+            : state.embeddedSubtitles.map((t) {
+                final label = (t.title?.isNotEmpty == true)
+                    ? t.title!
+                    : ((t.language?.isNotEmpty == true) ? t.language! : t.id);
+                return label;
+              }).join(' / '),
       ],
       ['解码方式', AppSettingsService.instance.hardwareDecoding ? '硬件解码' : '软件解码'],
       ['播放次数', v != null ? '${v.playCount} 次' : '0 次'],
@@ -889,9 +921,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     }
 
     // 解析 ASR 模型目录（复用实时字幕的同一解析逻辑）
-    final modelDir = await ref
-        .read(liveSubtitleProvider.notifier)
-        .resolveAsrModelDir();
+    final modelDir =
+        await ref.read(liveSubtitleProvider.notifier).resolveAsrModelDir();
     if (modelDir == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1132,11 +1163,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _modeChip(BilingualMode.both, '双语',
-                                  live.bilingualMode),
+                              _modeChip(
+                                  BilingualMode.both, '双语', live.bilingualMode),
                               const SizedBox(width: 6),
-                              _modeChip(BilingualMode.zh, '中文',
-                                  live.bilingualMode),
+                              _modeChip(
+                                  BilingualMode.zh, '中文', live.bilingualMode),
                               const SizedBox(width: 6),
                               _modeChip(BilingualMode.foreign, '外文',
                                   live.bilingualMode),
@@ -1161,8 +1192,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                     onPressed: running
                                         ? null
                                         : () => _generateFullSubtitles(
-                                            translateLang: _fullSubtitleLang,
-                                          ),
+                                              translateLang: _fullSubtitleLang,
+                                            ),
                                     icon: const Icon(
                                       Icons.download_rounded,
                                       size: 18,
@@ -1291,12 +1322,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ),
                 trailing:
                     (st.activeSubtitle == null && st.activeTrackId == null)
-                    ? const Icon(
-                        Icons.check_rounded,
-                        color: GlassTheme.accentPurple,
-                        size: 18,
-                      )
-                    : null,
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: GlassTheme.accentPurple,
+                            size: 18,
+                          )
+                        : null,
                 onTap: () {
                   notifier.disableSubtitles();
                   Navigator.pop(ctx);
@@ -1354,8 +1385,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   final label = (t.title?.isNotEmpty == true)
                       ? t.title!
                       : ((t.language?.isNotEmpty == true)
-                            ? t.language!
-                            : '字幕轨 ${t.id}');
+                          ? t.language!
+                          : '字幕轨 ${t.id}');
                   final extra = [
                     if (t.language?.isNotEmpty == true && t.language != t.title)
                       t.language!,
@@ -1523,8 +1554,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  for (final t in tracks)
-                    _audioTrackTile(t, st, notifier),
+                  for (final t in tracks) _audioTrackTile(t, st, notifier),
                 ],
               ),
             ),
@@ -1621,9 +1651,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           icon: Icon(
             Icons.vertical_split_rounded,
             size: 20,
-            color: isSecondary
-                ? GlassTheme.accentTeal
-                : GlassTheme.textTertiary,
+            color:
+                isSecondary ? GlassTheme.accentTeal : GlassTheme.textTertiary,
           ),
           onPressed: onSecondary,
         ),
@@ -1795,9 +1824,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         overflow: TextOverflow.ellipsis,
                       ),
                       onTap: () {
-                        ref
-                            .read(playerProvider.notifier)
-                            .loadExternalSubtitle(
+                        ref.read(playerProvider.notifier).loadExternalSubtitle(
                               f.path,
                               language: f.language,
                               title: f.title,
@@ -1836,7 +1863,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.7)
+                ],
               ),
             ),
             child: _LivePosition(
@@ -1848,8 +1878,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16 * scale),
                       child: GlassSlider(
-                        value:
-                            _seekPreviewMs ??
+                        value: _seekPreviewMs ??
                             live.position.inMilliseconds.toDouble(),
                         min: 0,
                         max: live.duration.inMilliseconds.toDouble(),
@@ -1861,6 +1890,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         onChangeEnd: (v) {
                           _onSeekCommit(v.round());
                         },
+                        onDragStart: _onSliderDragStart,
+                        onDragEnd: _onSliderDragEnd,
                       ),
                     ),
                   SizedBox(height: 4 * scale),
@@ -1874,11 +1905,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                           Text(
                             _fmtDuration(
                               Duration(
-                                milliseconds:
-                                    (_seekPreviewMs ??
-                                            live.position.inMilliseconds
-                                                .toDouble())
-                                        .round(),
+                                milliseconds: (_seekPreviewMs ??
+                                        live.position.inMilliseconds.toDouble())
+                                    .round(),
                               ),
                             ),
                             style: TextStyle(
@@ -2035,8 +2064,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         child: Row(
                           children: [
                             const Icon(Icons.speed_rounded,
-                                size: 18,
-                                color: Colors.white70),
+                                size: 18, color: Colors.white70),
                             const SizedBox(width: 6),
                             Text(
                               '播放速度',
@@ -2075,22 +2103,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: isActive
-                                    ? GlassTheme.accentTeal.withValues(alpha: 0.85)
+                                    ? GlassTheme.accentTeal
+                                        .withValues(alpha: 0.85)
                                     : Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
                                 border: isActive
                                     ? null
                                     : Border.all(
-                                        color: Colors.white.withValues(alpha: 0.2),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.2),
                                         width: 1,
                                       ),
                               ),
                               child: Text(
                                 _fmtSpeed(s),
                                 style: TextStyle(
-                                  color: isActive
-                                      ? Colors.white
-                                      : Colors.white70,
+                                  color:
+                                      isActive ? Colors.white : Colors.white70,
                                   fontSize: isLarge ? 14 : 13,
                                   fontWeight: isActive
                                       ? FontWeight.w700
@@ -2223,7 +2252,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(3),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.5),
       ),
       child: Text(
         label,
@@ -2289,8 +2319,7 @@ class _LiveAiSubtitle extends ConsumerWidget {
     BuildContext context,
     LiveSubtitleState live,
     int positionMs,
-  )
-  builder;
+  ) builder;
   const _LiveAiSubtitle({required this.builder});
 
   @override
@@ -2341,9 +2370,8 @@ Widget _buildAiSubtitleText(
   if (current != null) {
     fullText = current.text;
   } else if (live.status == LiveSubtitleStatus.transcribing) {
-    final generatedUpTo = live.entries.isEmpty
-        ? 0
-        : live.entries.last.end.inMilliseconds;
+    final generatedUpTo =
+        live.entries.isEmpty ? 0 : live.entries.last.end.inMilliseconds;
     // 当前位置已越过已生成范围才提示「正在识别」
     fullText = positionMs >= generatedUpTo ? '正在识别语音…' : '';
   } else if (live.status == LiveSubtitleStatus.paused) {
@@ -2380,7 +2408,6 @@ Widget _buildAiSubtitleText(
     stroke: s.subtitleStroke,
     secondaryScale: s.subtitleSecondaryScale,
     secondaryDim: s.subtitleSecondaryDim,
-    maxCharsPerLine: isLarge ? 34 : 22,
   );
 }
 

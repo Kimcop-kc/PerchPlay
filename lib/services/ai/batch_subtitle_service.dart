@@ -109,11 +109,10 @@ class BatchSubtitleService {
       }
       _notify(0.02);
 
-      // 2. 配置翻译（尊重用户在设置里选的 backend，仅覆盖目标语言）
+      // 2. 重读翻译配置（用户可能在构造后改了设置，loadFromSettings 只跑一次不够）
       if (translate) {
+        _translator.loadFromSettings();
         _translator.targetLang = translateLang;
-        // 不再强制 backend=google：构造函数已 loadFromSettings() 读取用户
-        // 选择的 google/llm/local。若 llm 未配 Key，translate() 内部会回退 google。
       }
 
       // 3. 逐段转写
@@ -142,7 +141,7 @@ class BatchSubtitleService {
           continue;
         }
 
-        final text = await _speech.transcribeFile(wavPath);
+        final (text, _) = await _speech.transcribeFile(wavPath);
         // 清理临时 wav
         try {
           final f = File(wavPath);

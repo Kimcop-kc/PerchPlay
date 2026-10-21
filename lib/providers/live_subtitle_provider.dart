@@ -13,6 +13,7 @@ import '../services/ai/translate_service.dart';
 import '../services/device_info_service.dart';
 import '../services/library_prune_service.dart';
 import '../services/native_bridge_service.dart';
+import 'ui_settings_provider.dart';
 
 /// 实时（准实时）AI 字幕引擎。
 ///
@@ -62,6 +63,17 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
         unawaited(_speech.loadModel(dir));
       }
     };
+  }
+
+  /// 重新从持久化设置加载翻译后端/LLM Key/目标语言。
+  /// 设置页改了配置后调用，无需重启视频立即生效。
+  void reloadTranslateSettings() {
+    _translator.loadFromSettings();
+    _targetLang = _translator.targetLang;
+    state = state.copyWith(
+      targetLang: _targetLang,
+      backendLabel: _translator.backendLabel,
+    );
   }
 
   final SpeechIsolateService _speech = SpeechIsolateService();
@@ -179,8 +191,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
         status: LiveSubtitleStatus.unavailable,
         entries: const [],
         // 把真实失败原因带出来，而不是千篇一律「未找到模型」。
-        message: _lastModelError ??
-            '未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice',
+        message: _lastModelError ?? '未找到 ASR 模型，请到设置 → AI 模型管理 下载 SenseVoice',
       );
       return false;
     }
@@ -234,9 +245,8 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
     _playerPositionMs = ms;
     // 只清掉「游标之后」的条目（它们是旧位置生成的、时间戳仍有效但
     // 会与新位置重复），保留游标之前的既有内容。
-    final kept = state.entries
-        .where((e) => e.end.inMilliseconds <= _cursorMs)
-        .toList();
+    final kept =
+        state.entries.where((e) => e.end.inMilliseconds <= _cursorMs).toList();
     _dropPrefetch();
     state = state.copyWith(
       entries: kept,
@@ -350,7 +360,8 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
 
     if (_loadedModelDir == modelDir && _speech.isLoaded) return true;
 
-    final ok = await _speech.loadModel(modelDir, numThreads: _adaptiveThreads());
+    final ok =
+        await _speech.loadModel(modelDir, numThreads: _adaptiveThreads());
     if (!ok) {
       // 关键：**不要删除模型目录**（曾导致用户 200MB 模型被销毁）。
       // 把具体失败原因暴露出去，用户/日志都能看到卡在哪一步。
@@ -613,7 +624,7 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
         return;
       }
 
-      final text = await _speech.transcribeFile(wavPath);
+      final (text, detectedLang) = await _speech.transcribeFile(wavPath);
 
       if (gen != _generation || !_running) return;
 
@@ -621,11 +632,26 @@ class LiveSubtitleNotifier extends StateNotifier<LiveSubtitleState> {
         var line = text.trim();
         // 双语：翻译成外文拼在下面（失败/超时静默降级为单语，不拖慢字幕流）
         if (_bilingual) {
+          // 从 ASR 检测到的语言决定翻译方向：
+          //  - detectedLang = 'en' → 英译中（反向），targetLang 固定 'zh'
+          //  - detectedLang = 'zh' → 中译外（正向），targetLang 为用户设定
+          //  - detectedLang = null → sourceLang='auto'，Google/LLM 自己判断
+          final srcLang = detectedLang ?? 'auto';
+          final savedTl = _translator.targetLang;
+          if (detectedLang == 'en') {
+            _translator.targetLang = 'zh';
+          }
           final translated = await _translator
-              .translate(line)
+              .translate(line, sourceLang: srcLang)
               .timeout(const Duration(seconds: 3), onTimeout: () => null);
+          _translator.targetLang = savedTl;
           if (translated != null && translated.isNotEmpty) {
-            line = '$line\n$translated';
+            // 双语行格式统一为「中文\n外文」：BilingualMode.zh 取首行、
+            // BilingualMode.foreign 取末行，不管原视频是什么语言都正确。
+            // 英译中时 ASR 文本是英文、翻译结果是中文 → 交换顺序。
+            line = detectedLang == 'en'
+                ? '$translated\n$line'
+                : '$line\n$translated';
           }
         }
         final entry = SubtitleEntry(
@@ -706,14 +732,14 @@ class LiveSubtitleState {
   });
 
   const LiveSubtitleState.initial()
-    : running = false,
-      status = LiveSubtitleStatus.idle,
-      entries = const [],
-      message = null,
-      bilingual = false,
-      targetLang = 'en',
-      bilingualMode = BilingualMode.both,
-      backendLabel = 'Google 免费翻译';
+      : running = false,
+        status = LiveSubtitleStatus.idle,
+        entries = const [],
+        message = null,
+        bilingual = false,
+        targetLang = 'en',
+        bilingualMode = BilingualMode.both,
+        backendLabel = 'Google 免费翻译';
 
   LiveSubtitleState copyWith({
     bool? running,
@@ -770,9 +796,14 @@ enum LiveSubtitleStatus {
 
 /// 全局实时字幕引擎。
 final liveSubtitleProvider =
-    StateNotifierProvider<LiveSubtitleNotifier, LiveSubtitleState>(
-      (ref) => LiveSubtitleNotifier(),
-    );
+    StateNotifierProvider<LiveSubtitleNotifier, LiveSubtitleState>((ref) {
+  final notifier = LiveSubtitleNotifier();
+  // 翻译设置（后端/LLM Key/目标语言）变更时自动重读，无需重启视频
+  ref.listen(translateSettingsTickProvider, (_, __) {
+    notifier.reloadTranslateSettings();
+  });
+  return notifier;
+});
 
 /// 预抽好的一段音频（还没转写）。
 ///

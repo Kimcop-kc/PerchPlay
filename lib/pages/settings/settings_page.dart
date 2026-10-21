@@ -67,8 +67,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _buildHeader(),
             SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: isLarge ? 40 : 16),
+                padding: EdgeInsets.symmetric(horizontal: isLarge ? 40 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -92,8 +91,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(height: 24),
                     if (device.brand.isChineseBrand)
                       _buildChineseRomOptimization(context, device),
-                    if (device.isIPad)
-                      _buildIPadFeatures(context),
+                    if (device.isIPad) _buildIPadFeatures(context),
                     const SizedBox(height: 24),
                     _sectionHeader('关于'),
                     _buildAbout(),
@@ -222,8 +220,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             '已隐藏的视频（$hiddenCount 个）',
             trailing: hiddenCount == 0
                 ? const Text('无',
-                    style: TextStyle(
-                        color: GlassTheme.textTertiary, fontSize: 13))
+                    style:
+                        TextStyle(color: GlassTheme.textTertiary, fontSize: 13))
                 : GlassButton.outlined(
                     label: '全部恢复',
                     height: 32,
@@ -299,7 +297,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ref.read(glassBlurProvider.notifier).state = v;
               _settings.setGlassBlur(v);
             },
-          ),          const Padding(
+          ),
+          const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
               '只影响是否对背后内容做实时模糊，导航栏外观不变。'
@@ -373,7 +372,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               const SizedBox(height: 6),
               Text(rom.batteryGuide,
                   style: const TextStyle(
-                      color: GlassTheme.textSecondary, fontSize: 12, height: 1.4)),
+                      color: GlassTheme.textSecondary,
+                      fontSize: 12,
+                      height: 1.4)),
               const SizedBox(height: 12),
               GlassButton.outlined(
                 label: '去设置',
@@ -397,7 +398,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const SizedBox(height: 6),
                 Text(rom.autoStartGuide,
                     style: const TextStyle(
-                        color: GlassTheme.textSecondary, fontSize: 12, height: 1.4)),
+                        color: GlassTheme.textSecondary,
+                        fontSize: 12,
+                        height: 1.4)),
                 const SizedBox(height: 12),
                 GlassButton.outlined(
                   label: '开启自启动',
@@ -425,26 +428,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              _ipadFeatureRow(
-                  Icons.auto_awesome_mosaic_rounded, '台前调度 (Stage Manager)',
-                  '已适配分屏/侧拉/全屏'),
+              _ipadFeatureRow(Icons.auto_awesome_mosaic_rounded,
+                  '台前调度 (Stage Manager)', '已适配分屏/侧拉/全屏'),
               const SizedBox(height: 10),
               _ipadFeatureRow(
-                  Icons.refresh_rounded, '120Hz ProMotion',
-                  '流畅动画已锁定'),
+                  Icons.refresh_rounded, '120Hz ProMotion', '流畅动画已锁定'),
               const SizedBox(height: 10),
               _ipadFeatureRow(
-                  Icons.keyboard_rounded, '妙控键盘快捷键',
-                  '空格/方向键/F/S/R/P/M 等'),
+                  Icons.keyboard_rounded, '妙控键盘快捷键', '空格/方向键/F/S/R/P/M 等'),
               const SizedBox(height: 10),
-              _ipadFeatureRow(
-                  Icons.edit_rounded, 'Apple Pencil 悬停',
-                  'M2 芯片专属'),
+              _ipadFeatureRow(Icons.edit_rounded, 'Apple Pencil 悬停', 'M2 芯片专属'),
               if (iPad.supportXDR)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: _ipadFeatureRow(Icons.hdr_on_rounded, 'XDR HDR',
-                      'Liquid Retina XDR'),
+                  child: _ipadFeatureRow(
+                      Icons.hdr_on_rounded, 'XDR HDR', 'Liquid Retina XDR'),
                 ),
             ],
           ),
@@ -497,7 +495,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               const Spacer(),
               if (isEnabled)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: GlassTheme.accentTeal.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
@@ -510,15 +509,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 )
               else
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
                   ),
                   child: const Text('未启用',
                       style: TextStyle(
-                          color: GlassTheme.textTertiary,
-                          fontSize: 11)),
+                          color: GlassTheme.textTertiary, fontSize: 11)),
                 ),
             ],
           ),
@@ -527,7 +526,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             '扫描视频后自动匹配 TMDB 海报、简介、评分。\n'
             '去 themoviedb.org 免费申请即可拿到凭证。\n'
             '「API 密钥 (v3 auth)」和「API 读访问令牌」都支持，粘哪个都能用。',
-            style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, height: 1.4),
+            style: TextStyle(
+                color: GlassTheme.textSecondary, fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 12),
           Row(
@@ -537,22 +537,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   controller: _tmdbController,
                   obscureText: true,
                   obscuringCharacter: '\u2022',
-                  style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary),
+                  style: const TextStyle(
+                      fontSize: 13, color: GlassTheme.textPrimary),
                   decoration: InputDecoration(
-                    hintText: isEnabled ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '粘贴 TMDB API Key 或 读访问令牌',
-                    hintStyle: const TextStyle(fontSize: 12, color: GlassTheme.textTertiary),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    hintText: isEnabled
+                        ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+                        : '粘贴 TMDB API Key 或 读访问令牌',
+                    hintStyle: const TextStyle(
+                        fontSize: 12, color: GlassTheme.textTertiary),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                      borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                      borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.1)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                      borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                      borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.1)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
-                      borderSide: const BorderSide(color: GlassTheme.accentTeal),
+                      borderSide:
+                          const BorderSide(color: GlassTheme.accentTeal),
                     ),
                     filled: true,
                     fillColor: Colors.white.withValues(alpha: 0.5),
@@ -607,8 +615,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       fontSize: 15,
                       fontWeight: FontWeight.w500)),
               subtitle: const Text('下载、切换、删除语音识别与翻译模型',
-                  style: TextStyle(
-                      color: GlassTheme.textTertiary, fontSize: 12)),
+                  style:
+                      TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
               trailing: const Icon(Icons.chevron_right,
                   color: GlassTheme.textTertiary, size: 20),
               onTap: () {
@@ -633,8 +641,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       fontSize: 15,
                       fontWeight: FontWeight.w500)),
               subtitle: const Text('翻译后端、LLM Key 与目标语言',
-                  style: TextStyle(
-                      color: GlassTheme.textTertiary, fontSize: 12)),
+                  style:
+                      TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
               trailing: const Icon(Icons.chevron_right,
                   color: GlassTheme.textTertiary, size: 20),
               onTap: () => _showTranslateSettings(context),
@@ -672,8 +680,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           final items = snapshot.data ?? const <StorageItem>[];
           if (items.isEmpty) {
             return const Text('暂无缓存数据',
-                style: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 13));
+                style: TextStyle(color: GlassTheme.textTertiary, fontSize: 13));
           }
           return Column(
             children: [
@@ -810,6 +817,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await _settings.setLlmBaseUrl(urlCtrl.text.trim());
       await _settings.setLlmModel(modelCtrl.text.trim());
       await _settings.setTranslateTargetLang(targetLang);
+      // 通知运行中的翻译器重读配置（后端/LLM Key/目标语言立即生效）
+      try {
+        ref.read(translateSettingsTickProvider.notifier).state++;
+      } catch (_) {}
     }
 
     showDialog<void>(
@@ -820,8 +831,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 20),
             child: ClipRRect(
-              borderRadius:
-                  BorderRadius.circular(GlassTheme.radiusLg),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
               child: SafeBackdropFilter(
                 blurSigma: 24,
                 child: Container(
@@ -929,8 +939,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       color: GlassTheme.textPrimary),
                                   decoration: _translateInputDecoration(
                                       '粘贴 LLM API Key'),
-                                  onChanged: (_) =>
-                                      setDialogState(() {}),
+                                  onChanged: (_) => setDialogState(() {}),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -971,8 +980,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             controller: modelCtrl,
                             style: const TextStyle(
                                 fontSize: 13, color: GlassTheme.textPrimary),
-                            decoration:
-                                _translateInputDecoration('模型名称'),
+                            decoration: _translateInputDecoration('模型名称'),
                             onChanged: (_) => setDialogState(() {}),
                           ),
                         ],
@@ -986,8 +994,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         const SizedBox(height: 8),
                         Container(
                           height: 44,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.5),
                             borderRadius:
@@ -1002,8 +1009,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               icon: const Icon(Icons.keyboard_arrow_down,
                                   color: GlassTheme.textTertiary),
                               style: const TextStyle(
-                                  fontSize: 13,
-                                  color: GlassTheme.textPrimary),
+                                  fontSize: 13, color: GlassTheme.textPrimary),
                               items: [
                                 for (final (code, label) in langOptions)
                                   DropdownMenuItem<String>(
@@ -1013,8 +1019,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ],
                               onChanged: (v) {
                                 if (v == null) return;
-                                setDialogState(
-                                    () => targetLang = v);
+                                setDialogState(() => targetLang = v);
                               },
                             ),
                           ),
@@ -1037,8 +1042,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 label: '保存',
                                 height: 46,
                                 onTap: () async {
-                                  final navigator =
-                                      Navigator.of(dialogCtx);
+                                  final navigator = Navigator.of(dialogCtx);
                                   await persist();
                                   if (mounted) setState(() {});
                                   navigator.pop();
@@ -1465,10 +1469,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   InputDecoration _translateInputDecoration(String hintText) {
     return InputDecoration(
-      hintText: hintText,      hintStyle: const TextStyle(
-          fontSize: 12, color: GlassTheme.textTertiary),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      hintText: hintText,
+      hintStyle: const TextStyle(fontSize: 12, color: GlassTheme.textTertiary),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
         borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
@@ -1518,7 +1521,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text('v${AppConstants.appVersion}',
-              style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 12)),
         ],
       ),
     );
@@ -1724,8 +1728,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     // 避让悬浮玻璃导航栏 + 底部安全区
     final bottomInset = MediaQuery.of(context).padding.bottom + 96;
     return ClipRRect(
-      borderRadius:
-          const BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
+      borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(GlassTheme.radiusXl)),
       child: SafeBackdropFilter(
         blurSigma: 24,
         child: Container(
@@ -1738,7 +1742,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ],
             ),
             border: Border(
-              top: BorderSide(color: Colors.black.withValues(alpha: 0.06), width: 0.5),
+              top: BorderSide(
+                  color: Colors.black.withValues(alpha: 0.06), width: 0.5),
             ),
           ),
           child: Column(

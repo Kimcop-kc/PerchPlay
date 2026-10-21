@@ -166,37 +166,31 @@ class PlayerState {
       volume: volume ?? this.volume,
       brightness: brightness ?? this.brightness,
       speed: speed ?? this.speed,
-      currentVideo: clearCurrentVideo
-          ? null
-          : (currentVideo ?? this.currentVideo),
+      currentVideo:
+          clearCurrentVideo ? null : (currentVideo ?? this.currentVideo),
       queue: queue ?? this.queue,
       currentIndex: currentIndex ?? this.currentIndex,
       availableSubtitles: availableSubtitles ?? this.availableSubtitles,
-      activeSubtitle: clearActiveSubtitle
-          ? null
-          : (activeSubtitle ?? this.activeSubtitle),
+      activeSubtitle:
+          clearActiveSubtitle ? null : (activeSubtitle ?? this.activeSubtitle),
       subtitleEntries: subtitleEntries ?? this.subtitleEntries,
       activeSubtitleIndex: activeSubtitleIndex ?? this.activeSubtitleIndex,
       videoWidth: videoWidth ?? this.videoWidth,
       videoHeight: videoHeight ?? this.videoHeight,
       embeddedSubtitles: embeddedSubtitles ?? this.embeddedSubtitles,
-      activeTrackId: clearTrackId
-          ? null
-          : (activeTrackId ?? this.activeTrackId),
+      activeTrackId:
+          clearTrackId ? null : (activeTrackId ?? this.activeTrackId),
       videoCodec: clearMediaInfo ? null : (videoCodec ?? this.videoCodec),
       videoFps: clearMediaInfo ? null : (videoFps ?? this.videoFps),
-      audioTracks: clearMediaInfo
-          ? const []
-          : (audioTracks ?? this.audioTracks),
+      audioTracks:
+          clearMediaInfo ? const [] : (audioTracks ?? this.audioTracks),
       activeAudioTrackId: clearMediaInfo
           ? null
           : (activeAudioTrackId ?? this.activeAudioTrackId),
-      colorPrimaries: clearMediaInfo
-          ? null
-          : (colorPrimaries ?? this.colorPrimaries),
-      transferFunction: clearMediaInfo
-          ? null
-          : (transferFunction ?? this.transferFunction),
+      colorPrimaries:
+          clearMediaInfo ? null : (colorPrimaries ?? this.colorPrimaries),
+      transferFunction:
+          clearMediaInfo ? null : (transferFunction ?? this.transferFunction),
       sigPeak: clearMediaInfo ? null : (sigPeak ?? this.sigPeak),
       secondaryTrackId: clearSecondaryTrackId
           ? null
@@ -335,8 +329,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
       // 原生模式下让 libass 完全按字幕文件来（不强制覆盖样式），
       // 否则 ASS 的字体/位置会被 mpv 默认值改掉。
-      await platform.setProperty(
-          'sub-ass-override', nativeAss ? 'no' : 'yes');
+      await platform.setProperty('sub-ass-override', nativeAss ? 'no' : 'yes');
 
       // ── HDR 色调映射（对 SDR 视频无副作用）──
       // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
@@ -366,9 +359,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (platform is! NativePlayer) return;
       final nativeAss = AppSettingsService.instance.subtitleNativeAss;
       await platform.setProperty('sub-visibility', nativeAss ? 'yes' : 'no');
-      await platform.setProperty(
-          'sub-ass-override', nativeAss ? 'no' : 'yes');
-      debugPrint('[Player] 字幕渲染模式: ${nativeAss ? "mpv/libass 原生" : "Flutter 自绘"}');
+      await platform.setProperty('sub-ass-override', nativeAss ? 'no' : 'yes');
+      debugPrint(
+          '[Player] 字幕渲染模式: ${nativeAss ? "mpv/libass 原生" : "Flutter 自绘"}');
     } catch (e) {
       debugPrint('[Player] 切换字幕渲染模式失败: $e');
     }
@@ -434,9 +427,21 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       state = state.copyWith(duration: dur);
       // 时长就绪后补一次 seek（首次 seek 可能早于媒体加载完成而被忽略）
       final pending = _pendingResume;
+      final loadId = _pendingResumeLoadId;
       if (pending != null && dur > Duration.zero) {
         _pendingResume = null;
-        state.player.seek(pending);
+        _pendingResumeLoadId = 0;
+        // 用 player 当前时长做钳位（不用回调参数 dur）：
+        // 快速切集时回调里的 dur 可能来自旧媒体，用它钳位会出错。
+        final realDur = state.player.state.duration;
+        final clamped = pending < Duration.zero
+            ? Duration.zero
+            : (pending > realDur ? realDur : pending);
+        final token = ++_seekToken;
+        state.player.seek(clamped).then((_) {
+          if (token != _seekToken || loadId != _loadToken) return;
+          state = state.copyWith(position: clamped);
+        }).catchError((_) {});
       }
     });
 
@@ -486,9 +491,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 内嵌/外挂都走这个流，浮层只渲染这一份，避免双重绘制与位置错乱。
     state.player.stream.subtitle.listen((lines) {
       state = state.copyWith(
-        currentSubtitleLines: lines.isEmpty
-            ? const <String>[]
-            : List<String>.from(lines),
+        currentSubtitleLines:
+            lines.isEmpty ? const <String>[] : List<String>.from(lines),
       );
     });
 
@@ -514,8 +518,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     });
   }
 
+  /// 上次进度落盘时间（5s 节流）
   DateTime? _lastSaveAt;
+
+  /// 待恢复的播放位置，配合 [_pendingResumeLoadId] 防止旧媒体的 duration
+  /// 事件抢在新媒体之前消费掉 resume。
   Duration? _pendingResume;
+  int _pendingResumeLoadId = 0;
+
+  /// seek 竞态令牌：每次新 seek 递增，旧 seek 回来发现编号落后就丢弃。
+
+  /// seek 竞态令牌：每次新 seek 递增，旧 seek 回来发现编号落后就丢弃。
+  int _seekToken = 0;
 
   /// 第几次 loadVideo（自动挂字幕用）
   ///
@@ -556,6 +570,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     int? startIndex,
   }) async {
     final token = ++_loadToken;
+    // 丢弃上一部的 pending resume（可能来自旧 duration 事件尾抛）
+    _pendingResume = null;
+    _pendingResumeLoadId = 0;
     // 播放页可能只传 path/title 构造的临时模型；
     // 从数据库取真实记录，拿到真实 id 与上次进度。
     VideoModel effective = video;
@@ -585,6 +602,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       availableSubtitles: const [],
     );
     _lastSaveAt = DateTime.now();
+    _lastPosEmitAt = null; // 重置节流，新视频位置立即生效
+    _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
     await applyDecodingMode();
@@ -600,10 +619,26 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       'resume=${resumeMs.toInt()}ms',
     );
     if (resumeMs > 1000) {
-      _pendingResume = Duration(milliseconds: resumeMs.toInt());
-      try {
-        await state.player.seek(_pendingResume!);
-      } catch (_) {}
+      final dur = state.player.state.duration;
+      // 如果 player 已经报告了时长，立刻钳位并跳转；
+      // 否则挂到 pending，等 duration 事件来再跳。
+      if (dur > Duration.zero) {
+        final clamped = Duration(
+            milliseconds: resumeMs.round().clamp(0, dur.inMilliseconds));
+        final stoken = ++_seekToken;
+        try {
+          await state.player.seek(clamped);
+        } catch (_) {}
+        if (stoken == _seekToken) {
+          state = state.copyWith(position: clamped);
+        }
+      } else {
+        _pendingResume = Duration(milliseconds: resumeMs.toInt());
+        _pendingResumeLoadId = token; // 绑定到当前 load，旧 duration 事件不会消费
+        try {
+          await state.player.seek(_pendingResume!);
+        } catch (_) {}
+      }
     }
 
     // 加载外挂字幕（同目录下所有同名文件，面板里可选）
@@ -753,21 +788,43 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 跳转
+  /// 跳转：钳位到有效区间，并用 seekToken 保护竞态。
+  ///
+  /// 对网络源（NAS/云盘/直链），若 mpv 不支持该流的精确跳转，
+  /// position 流会在 200ms 内自然拉回实际位置，进度条不会卡在错误值。
   Future<void> seekTo(Duration position) async {
-    await state.player.seek(position);
+    final dur = state.duration;
+    final clamped = dur > Duration.zero
+        ? (position < Duration.zero
+            ? Duration.zero
+            : (position > dur ? dur : position))
+        : position;
+    final token = ++_seekToken;
+    try {
+      await state.player.seek(clamped);
+    } catch (_) {}
+    // 如果这期间又有了新的 seek 请求，这次的结果作废
+    if (token != _seekToken) return;
+    state = state.copyWith(position: clamped);
   }
 
   /// 相对跳转
   Future<void> seekRelative(int seconds) async {
-    final newPos = state.position + Duration(seconds: seconds);
-    if (newPos < Duration.zero) {
-      await state.player.seek(Duration.zero);
-    } else if (newPos > state.duration) {
-      await state.player.seek(state.duration);
-    } else {
-      await state.player.seek(newPos);
+    final dur = state.duration;
+    if (dur <= Duration.zero) {
+      // 时长未知：做不了相对跳转
+      await state.player.seek(state.position);
+      return;
     }
+    final raw = state.position + Duration(seconds: seconds);
+    final target =
+        raw < Duration.zero ? Duration.zero : (raw > dur ? dur : raw);
+    final token = ++_seekToken;
+    try {
+      await state.player.seek(target);
+    } catch (_) {}
+    if (token != _seekToken) return;
+    state = state.copyWith(position: target);
   }
 
   /// 设置音量（0-1，控制 media_kit 播放器音量）
