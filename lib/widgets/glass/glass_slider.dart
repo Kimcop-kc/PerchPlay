@@ -54,6 +54,7 @@ class _GlassSliderState extends State<GlassSlider> {
         .clamp(0.0, 1.0);
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onPanDown: (details) {
         setState(() => _dragging = true);
         _dragValue = _valueAt(details.localPosition.dx, context);
@@ -86,9 +87,10 @@ class _GlassSliderState extends State<GlassSlider> {
           final activeWidth = width * fraction;
 
           return SizedBox(
+            // 命中区高度加大到 32px，保证手指容易点中进度条
             height: widget.height +
                 (widget.showThumb ? widget.thumbRadius * 2 : 0) +
-                8,
+                24,
             child: Stack(
               clipBehavior: Clip.none,
               children: [

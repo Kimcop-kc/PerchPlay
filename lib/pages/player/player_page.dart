@@ -88,8 +88,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       duration: const Duration(milliseconds: 350),
       value: 1,
     );
-    // 方向：平板强制横屏（只写横屏系统才会触发旋转），手机四方向全开
-    OrientationPolicy.applyPlayer();
+    // 方向：按用户设置（auto/landscape/portrait）决定进入方向
+    OrientationPolicy.applyPlayer(
+      orientation: AppSettingsService.instance.playerOrientation,
+    );
     // 沉浸式状态栏：黑色背景 + 透明状态栏 + 白色图标（否则深色图标在黑底看不清）
     _applyPlayerFullscreenUi();
     // 延迟到 widget tree 构建完成后加载视频

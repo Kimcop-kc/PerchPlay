@@ -187,6 +187,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             }),
           ),
           _divider(),
+          _settingRow(
+            Icons.screen_rotation_rounded,
+            '打开视频方向',
+            trailing: Text(_playerOrientationLabel(_settings.playerOrientation),
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontWeight: FontWeight.w600)),
+            onTap: () => _showPlayerOrientationPicker(),
+          ),
+          _divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
@@ -271,7 +281,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _settingRow(
             Icons.text_fields_rounded,
             '字幕样式',
-            trailing: _unsupportedTag(null),
+            trailing: const Icon(Icons.chevron_right,
+                color: GlassTheme.textTertiary, size: 20),
             onTap: () => _showSubtitleStyleSheet(context),
           ),
           _divider(),
@@ -1472,6 +1483,103 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         onChanged: (v) {
           _settings.setSkipSeconds(v.toInt());
         },
+      ),
+    );
+  }
+
+  String _playerOrientationLabel(String v) {
+    switch (v) {
+      case 'landscape':
+        return '横屏';
+      case 'portrait':
+        return '竖屏';
+      case 'auto':
+      default:
+        return '自动';
+    }
+  }
+
+  void _showPlayerOrientationPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _orientationSheet(
+        current: _settings.playerOrientation,
+        onSelect: (v) => _settings.setPlayerOrientation(v).then((_) {
+          if (mounted) setState(() {});
+        }),
+      ),
+    );
+  }
+
+  Widget _orientationSheet({
+    required String current,
+    required void Function(String) onSelect,
+  }) {
+    final bottomInset = MediaQuery.of(context).padding.bottom + 96;
+    const options = <(String, String, String)>[
+      ('auto', '自动', '跟随手机当前方向，可自由旋转'),
+      ('landscape', '横屏', '打开视频即横屏全屏'),
+      ('portrait', '竖屏', '打开视频即竖屏'),
+    ];
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(GlassTheme.radiusXl)),
+      child: SafeBackdropFilter(
+        blurSigma: 24,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.8),
+                Colors.white.withValues(alpha: 0.5),
+              ],
+            ),
+            border: Border(
+              top: BorderSide(
+                  color: Colors.black.withValues(alpha: 0.06), width: 0.5),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 32,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    color: Colors.black.withValues(alpha: 0.15),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('打开视频方向',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 12),
+              for (final (key, label, desc) in options)
+                GlassButton(
+                  label: '$label · $desc',
+                  width: double.infinity,
+                  height: 52,
+                  ghost: true,
+                  filled: false,
+                  foregroundColor: current == key
+                      ? GlassTheme.accentPurple
+                      : GlassTheme.textPrimary,
+                  onTap: () {
+                    onSelect(key);
+                    Navigator.pop(context);
+                  },
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

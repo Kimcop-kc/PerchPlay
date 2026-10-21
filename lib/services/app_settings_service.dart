@@ -21,6 +21,7 @@ class AppSettingsService {
   static const _kAutoPlayNext = 'settings.autoPlayNext';
   static const _kBackgroundPlay = 'settings.backgroundPlay';
   static const _kHardwareDecoding = 'settings.hardwareDecoding';
+  static const _kPlayerOrientation = 'settings.playerOrientation';
   static const _kAllFilesPrompted = 'settings.allFilesPrompted';
   static const _kGlassBlur = 'settings.glassBlur';
   static const _kGlassBlurV2 = 'settings.glassBlurV2';
@@ -55,6 +56,10 @@ class AppSettingsService {
   bool _autoPlayNext = true;
   bool _backgroundPlay = true;
   bool _hardwareDecoding = true;
+
+  /// 打开视频时的屏幕方向：'auto'（跟随手机）| 'landscape'（横屏）| 'portrait'（竖屏）
+  String _playerOrientation = 'auto';
+  String get playerOrientation => _playerOrientation;
   bool _loaded = false;
 
   double get defaultSpeed => _defaultSpeed;
@@ -260,6 +265,7 @@ class AppSettingsService {
       _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
       _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
       _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
+      _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
       _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
       // 用 v2 键：早期版本 Android 默认关闭时可能写入了 false，
       // 那些残留值会把新默认值（开启）盖掉，看起来像"开关没用/默认关闭"
@@ -486,6 +492,14 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kHardwareDecoding, value);
+    } catch (_) {}
+  }
+
+  Future<void> setPlayerOrientation(String value) async {
+    _playerOrientation = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPlayerOrientation, value);
     } catch (_) {}
   }
 

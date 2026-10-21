@@ -46,21 +46,37 @@ class OrientationPolicy {
 
   /// 进入播放页
   ///
-  /// 平板 → 只允许横屏：只写横屏系统才会从竖屏转到横屏；
-  /// 手机 → 四个方向全开，用户可以自由横竖屏。
-  static Future<void> applyPlayer() {
-    if (isLandscapeDevice) {
-      return SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+  /// 按用户设置的方向偏好（auto/landscape/portrait）决定：
+  ///  - auto：平板只横屏（只写横屏才会触发旋转），手机四方向全开
+  ///  - landscape：强制横屏进入
+  ///  - portrait：强制竖屏进入
+  static Future<void> applyPlayer({String orientation = 'auto'}) {
+    switch (orientation) {
+      case 'landscape':
+        return SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      case 'portrait':
+        return SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      case 'auto':
+      default:
+        if (isLandscapeDevice) {
+          return SystemChrome.setPreferredOrientations(const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+        }
+        return SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
     }
-    return SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
   }
 
   /// 播放页全屏（沉浸横屏）

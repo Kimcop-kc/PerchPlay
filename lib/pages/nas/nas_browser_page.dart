@@ -79,6 +79,9 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         bottom: false,
         child: Column(
           children: [
+            // 手机显示标题栏（含 NAS/网盘切换按钮）；
+            // 平板标题在 _buildTabletLayout 内部，避免重复。
+            if (!isLarge) _buildTabletTitle(),
             if (nasState.errorMessage != null)
               _buildErrorBanner(nasState.errorMessage!),
             _buildDiscoverySection(nasState),
@@ -284,18 +287,18 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   Widget _buildTabletTitle() {
     // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
     return AppPageHeader(
-      title: '网络存储',
-      subtitle: _showCloud ? '云盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
+      title: '串流',
+      subtitle: _showCloud ? '网盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
       asSliver: false,
       childGap: 12,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 「NAS / 云盘」分段切换：两者都是「远程媒体库」，
+          // 「NAS / 网盘」分段切换：两者都是「远程媒体库」，
           // 合成一个 tab 免得底栏挤到 7 项、手机每项只剩约 50dp。
           GlassButton.outlined(
             icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
-            label: _showCloud ? 'NAS' : '云盘',
+            label: _showCloud ? 'NAS' : '网盘',
             height: 36,
             foregroundColor: GlassTheme.accentPurple,
             onTap: () => setState(() => _showCloud = !_showCloud),

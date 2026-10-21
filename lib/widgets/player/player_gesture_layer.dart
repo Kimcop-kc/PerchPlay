@@ -88,14 +88,15 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   /// 纵向：需要滑动「屏幕高度 × 该系数」才走完 100%，避免过于灵敏
   static const double _verticalDamping = 1.25;
 
-  /// 横向：滑过整屏宽度对应的进度跨度 = 时长的 12%，
-  /// 并夹在 30s ~ 4min 之间（长片也能较快掠过，短片不会一点就飞）
-  static const double _seekWindowRatio = 0.12;
-  static const int _seekWindowMinMs = 30 * 1000;
-  static const int _seekWindowMaxMs = 4 * 60 * 1000;
+  /// 横向：滑过整屏宽度 = 整个时长（1:1 映射，快速定位）。
+  ///
+  /// 之前用 12% 时长 + 30s~4min 夹取，短片子划全屏只能前进几秒、
+  /// 长片子又划不动，体验很差。现在改成全时长映射，用户划多少就到多少，
+  /// 精确快进慢退都顺手。
+  static const double _seekWindowRatio = 1.0;
 
   /// 横向拖动的最小位移，避免误触就跳进度
-  static const double _seekMinDrag = 22.0;
+  static const double _seekMinDrag = 12.0;
 
   /// 判定手势方向的最小位移
   static const double _axisThreshold = 14.0;
@@ -233,8 +234,8 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     // 位移太小不响应，避免误触
     if (dx.abs() < _seekMinDrag) return;
 
-    final windowMs = (duration * _seekWindowRatio)
-        .clamp(_seekWindowMinMs.toDouble(), _seekWindowMaxMs.toDouble());
+    // 全时长映射：滑满整屏 = 从头到尾
+    final windowMs = duration * _seekWindowRatio;
     final target = (_startPositionMs + dx / screenWidth * windowMs)
         .clamp(0.0, duration.toDouble())
         .round();

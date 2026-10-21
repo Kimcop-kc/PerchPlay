@@ -208,9 +208,9 @@ class _NavConfig {
     _NavItemConfig(
         icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
     _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
-    // NAS 与云盘合并为「存储」：两者都是远程媒体库，
+    // NAS 与云盘合并为「串流」：两者都是远程媒体库，
     // 分开会让底栏到 7 项，手机每项只剩约 50dp、文字挤在一起。
-    _NavItemConfig(icon: Icons.dns_rounded, label: '存储', route: '/nas'),
+    _NavItemConfig(icon: Icons.dns_rounded, label: '串流', route: '/nas'),
     settings,
   ];
 
