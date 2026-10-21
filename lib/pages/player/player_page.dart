@@ -16,6 +16,7 @@ import '../../core/system/orientation_policy.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../models/cast_device_model.dart';
+import '../../models/subtitle_model.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/ui_settings_provider.dart';
@@ -228,6 +229,32 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final v = _settings.subtitleFontSize;
     if (v > 0) return isLarge ? v + 2 : v;
     return isLarge ? 18 : 16;
+  }
+
+  /// 把设置的字符串对齐值转成 TextAlign。
+  TextAlign _subtitleAlign(String value) {
+    switch (value) {
+      case 'start':
+        return TextAlign.left;
+      case 'end':
+        return TextAlign.right;
+      case 'center':
+      default:
+        return TextAlign.center;
+    }
+  }
+
+  /// 主字幕命中的 ASS 条目（带 verticalPos / alignment）。
+  ///
+  /// 主字幕若是外挂 ASS/SSA，`subtitleEntries` 里存的解析结果含定位信息；
+  /// 命中下标 `activeSubtitleIndex` 指向当前应显示的条目。内嵌字幕无此信息，
+  /// 返回 null（mpv 只推纯文本，没有 ASS 定位）。
+  SubtitleEntry? _primaryAssEntry(PlayerState state) {
+    final entries = state.subtitleEntries;
+    if (entries == null || entries.isEmpty) return null;
+    final idx = state.activeSubtitleIndex;
+    if (idx < 0 || idx >= entries.length) return null;
+    return entries[idx];
   }
 
   double _subtitleBottom(bool isLarge) {
@@ -458,11 +485,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     activeIndex:
                         externalSecondary ? live.secondarySubtitleIndex : -1,
                     fontSize: _subtitleFontSize(isLarge),
+                    fontFamily: _settings.subtitleFontFamily,
+                    fontWeightIndex: _settings.subtitleFontWeight,
+                    lineHeight: _settings.subtitleLineHeight,
+                    lineSpacing: _settings.subtitleLineSpacing,
                     bgOpacity: _settings.subtitleBgOpacity,
+                    bgColor: Color(_settings.subtitleBgColorValue),
+                    showBg: _settings.subtitleShowBg,
+                    bgRadius: _settings.subtitleBgRadius,
                     textColor: Color(_settings.subtitleTextColorValue),
                     stroke: _settings.subtitleStroke,
                     secondaryScale: _settings.subtitleSecondaryScale,
                     secondaryDim: _settings.subtitleSecondaryDim,
+                    align: _subtitleAlign(_settings.subtitleAlign),
+                    primaryAssEntry: _primaryAssEntry(live),
+                    useAssPosition: _settings.subtitleUseAssPosition,
                   ),
                 );
               },

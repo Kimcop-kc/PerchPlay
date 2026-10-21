@@ -259,4 +259,166 @@ void main() {
     expect(texts.length, 1);
     expect(texts.first.data, '只有第二字幕');
   });
+
+  testWidgets('字体族与粗细应用到渲染', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const SubtitleOverlay(
+          lines: ['测试字体'],
+          fontSize: 16,
+          fontFamily: 'serif',
+          fontWeightIndex: 7,
+        ),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.style!.fontFamily, 'serif');
+    expect(text.style!.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('行高应用到渲染', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const SubtitleOverlay(
+          lines: ['测试行高'],
+          fontSize: 16,
+          lineHeight: 1.8,
+        ),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.style!.height, 1.8);
+  });
+
+  testWidgets('显示黑底关闭时不渲染背景', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const SubtitleOverlay(
+          lines: ['无背景'],
+          fontSize: 16,
+          showBg: false,
+        ),
+      ),
+    );
+
+    final decorated =
+        tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
+    expect(decorated.decoration, isA<BoxDecoration>());
+    final box = decorated.decoration as BoxDecoration;
+    expect(box.color, Colors.transparent);
+  });
+
+  testWidgets('背景色与圆角应用到渲染', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const SubtitleOverlay(
+          lines: ['背景'],
+          fontSize: 16,
+          bgColor: Color(0xFF1A1A2E),
+          bgRadius: 8,
+          bgOpacity: 0.5,
+        ),
+      ),
+    );
+
+    final decorated =
+        tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
+    final box = decorated.decoration as BoxDecoration;
+    expect(box.borderRadius, BorderRadius.circular(8));
+    expect(box.color, const Color(0xFF1A1A2E).withValues(alpha: 0.5));
+  });
+
+  testWidgets('对齐方式：左对齐', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const SubtitleOverlay(
+          lines: ['左对齐'],
+          fontSize: 16,
+          align: TextAlign.left,
+        ),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.textAlign, TextAlign.left);
+  });
+
+  testWidgets('ASS 对齐映射：numpad 8（顶中）→ 居中', (tester) async {
+    final entries = [
+      SubtitleEntry(
+        index: 0,
+        start: Duration.zero,
+        end: const Duration(seconds: 1),
+        text: '主字幕',
+        alignment: 8,
+      ),
+    ];
+    await tester.pumpWidget(
+      wrap(
+        SubtitleOverlay(
+          lines: const ['主字幕'],
+          primaryAssEntry: entries[0],
+          fontSize: 16,
+          useAssPosition: true,
+        ),
+      ),
+    );
+
+    // numpad 8 = 第 2 列（居中）
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.textAlign, TextAlign.center);
+  });
+
+  testWidgets('ASS 对齐映射：numpad 7（中左）→ 左对齐', (tester) async {
+    final entries = [
+      SubtitleEntry(
+        index: 0,
+        start: Duration.zero,
+        end: const Duration(seconds: 1),
+        text: '主字幕',
+        alignment: 7,
+      ),
+    ];
+    await tester.pumpWidget(
+      wrap(
+        SubtitleOverlay(
+          lines: const ['主字幕'],
+          primaryAssEntry: entries[0],
+          fontSize: 16,
+          useAssPosition: true,
+        ),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.textAlign, TextAlign.left);
+  });
+
+  testWidgets('关闭 ASS 定位时用设置的对齐', (tester) async {
+    final entries = [
+      SubtitleEntry(
+        index: 0,
+        start: Duration.zero,
+        end: const Duration(seconds: 1),
+        text: '主字幕',
+        alignment: 7, // 左对齐，但被 useAssPosition=false 忽略
+      ),
+    ];
+    await tester.pumpWidget(
+      wrap(
+        SubtitleOverlay(
+          lines: const ['主字幕'],
+          primaryAssEntry: entries[0],
+          fontSize: 16,
+          align: TextAlign.right,
+          useAssPosition: false,
+        ),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.textAlign, TextAlign.right);
+  });
 }

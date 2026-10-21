@@ -5,8 +5,9 @@ import '../../models/subtitle_model.dart';
 /// 字幕覆盖层（统一渲染入口）。
 ///
 /// 三种输入，按优先级：
-/// 1. [lines] 与 [entries]/[activeIndex] **同时有效** → 双语：
-///    原文（[lines] 合并为一行）在上，译文（命中的 [entries] 条目）在下。
+/// 1. [lines] 与 [entries]/[activeIndex]/[secondaryLines] **同时有效** → 双语：
+///    原文（[lines] 合并为一行）在上，译文（[secondaryLines] 或命中的
+///    [entries] 条目）在下。
 /// 2. 仅 [lines] → 单语主字幕。
 /// 3. 仅 [entries] + [activeIndex] → 单语第二字幕。
 ///
@@ -18,8 +19,8 @@ import '../../models/subtitle_model.dart';
 ///   绝不因固定字符数规则意外增加行数。
 ///
 /// ## 样式
-/// 字号 / 黑底透明度 / 文字颜色 / 描边 / 双语次行样式全部由外部传入，
-/// 默认值等价于「白色文字 + 62% 黑底 + 轻描边」。
+/// 字号 / 字体 / 粗细 / 行高 / 黑底透明度 / 背景色 / 圆角 / 文字颜色 /
+/// 描边 / 对齐 / 双语次行样式全部由外部传入。
 class SubtitleOverlay extends StatelessWidget {
   final List<SubtitleEntry> entries;
   final int activeIndex;
@@ -39,8 +40,26 @@ class SubtitleOverlay extends StatelessWidget {
   /// 紧凑样式：更小的内边距与圆角。
   final bool compact;
 
-  /// 黑底不透明度（0 = 无黑底）。
+  /// 字体族；'system' 或空 = 系统默认。
+  final String fontFamily;
+
+  /// 字体粗细（FontWeight 索引 3~8）。
+  final int fontWeightIndex;
+
+  /// 行高（TextStyle.height）。
+  final double lineHeight;
+
+  /// 黑底不透明度（0 = 无黑底）。仅在 [showBg] 时生效。
   final double bgOpacity;
+
+  /// 背景色。
+  final Color bgColor;
+
+  /// 是否显示黑底。
+  final bool showBg;
+
+  /// 背景圆角（逻辑像素）。
+  final double bgRadius;
 
   /// 文字颜色。
   final Color textColor;
@@ -60,6 +79,19 @@ class SubtitleOverlay extends StatelessWidget {
   /// 自适应字号下限（相对 [fontSize] 的比例，0~1）。
   final double minFontScale;
 
+  /// 字幕对齐方式。
+  final TextAlign align;
+
+  /// 主字幕的 ASS 定位源（从 [entries][[activeIndex]] 提取，或由外部传入）。
+  ///
+  /// 主字幕若是外挂 ASS/SSA，Dart 解析出的 [SubtitleEntry] 带
+  /// verticalPos / alignment。传这里的条目用于定位；内嵌字幕无此信息
+  /// （mpv 只推纯文本），传 null。
+  final SubtitleEntry? primaryAssEntry;
+
+  /// 是否应用 ASS 定位/对齐。默认 true。
+  final bool useAssPosition;
+
   const SubtitleOverlay({
     super.key,
     this.entries = const [],
@@ -68,13 +100,22 @@ class SubtitleOverlay extends StatelessWidget {
     this.secondaryLines = const [],
     this.fontSize = 0,
     this.compact = false,
+    this.fontFamily = 'system',
+    this.fontWeightIndex = 5,
+    this.lineHeight = 1.35,
     this.bgOpacity = 0.62,
+    this.bgColor = Colors.black,
+    this.showBg = true,
+    this.bgRadius = 4,
     this.textColor = Colors.white,
     this.stroke = true,
     this.secondaryScale = 0.82,
     this.secondaryDim = true,
     this.lineSpacing = 3,
     this.minFontScale = 0.72,
+    this.align = TextAlign.center,
+    this.primaryAssEntry,
+    this.useAssPosition = true,
   });
 
   @override
@@ -96,7 +137,15 @@ class SubtitleOverlay extends StatelessWidget {
     final primaryStyle = _buildStyle(baseFontSize, isSecondary: false);
     final secondaryStyle = _buildStyle(baseFontSize, isSecondary: bilingual);
 
-    // 外层 Center 让内容按自身宽度居中（不被 Positioned 的 left+right 拉伸）。
+    // ASS 对齐：主字幕定位用 primaryAssEntry（外挂 ASS 解析结果），
+    // 否则回退到第二字幕 entries 的命中条目。
+    final SubtitleEntry? assSource = primaryAssEntry ?? _primaryEntry();
+    final int? assAlign = useAssPosition ? assSource?.alignment : null;
+
+    // 水平对齐：优先 ASS 对齐（numpad 1-9 映射到左右中），否则用设置
+    final TextAlign effectiveAlign = _resolveAlign(assAlign);
+
+    // 外层 Center 让内容按自身宽度居中；对齐方式用 effectiveAlign 调整。
     // 黑底只包住文字，不横向撑满屏幕。
     return Center(
       child: LayoutBuilder(
@@ -104,18 +153,36 @@ class SubtitleOverlay extends StatelessWidget {
           final maxWidth = constraints.maxWidth;
           return Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: _crossAxis(assAlign),
             children: [
               if (primaryText != null)
-                _buildLine(context, primaryText, primaryStyle, maxWidth),
+                _buildLine(
+                  context,
+                  primaryText,
+                  primaryStyle,
+                  maxWidth,
+                  effectiveAlign,
+                ),
               if (bilingual) SizedBox(height: lineSpacing),
               if (secondaryText != null)
-                _buildLine(context, secondaryText, secondaryStyle, maxWidth),
+                _buildLine(
+                  context,
+                  secondaryText,
+                  secondaryStyle,
+                  maxWidth,
+                  effectiveAlign,
+                ),
             ],
           );
         },
       ),
     );
+  }
+
+  /// 命中主字幕条目的 ASS 定位（主字幕 entries 才有位置信息）。
+  SubtitleEntry? _primaryEntry() {
+    if (activeIndex < 0 || activeIndex >= entries.length) return null;
+    return entries[activeIndex];
   }
 
   /// 主字幕文本：合并 [lines] 的非空行，内部换行折叠为空格。
@@ -142,12 +209,30 @@ class SubtitleOverlay extends StatelessWidget {
     return t.isEmpty ? null : t;
   }
 
+  /// 字体族：'system' 或空 = 系统默认。
+  String? get _effectiveFontFamily =>
+      (fontFamily.isEmpty || fontFamily == 'system') ? null : fontFamily;
+
+  FontWeight get _effectiveFontWeight {
+    // fontWeightIndex 语义：3=w300, 4=w400, 5=w500, 6=w600, 7=w700, 8=w800
+    const weights = <int, FontWeight>{
+      3: FontWeight.w300,
+      4: FontWeight.w400,
+      5: FontWeight.w500,
+      6: FontWeight.w600,
+      7: FontWeight.w700,
+      8: FontWeight.w800,
+    };
+    return weights[fontWeightIndex] ?? FontWeight.w500;
+  }
+
   TextStyle _buildStyle(double size, {required bool isSecondary}) {
     final base = TextStyle(
       color: textColor,
       fontSize: isSecondary ? size * secondaryScale : size,
-      fontWeight: isSecondary ? FontWeight.w400 : FontWeight.w500,
-      height: 1.35,
+      fontWeight: isSecondary ? FontWeight.w400 : _effectiveFontWeight,
+      height: lineHeight,
+      fontFamily: _effectiveFontFamily,
       shadows: stroke
           ? const [
               Shadow(
@@ -169,12 +254,42 @@ class SubtitleOverlay extends StatelessWidget {
     );
   }
 
+  /// ASS numpad 对齐（1-9）映射到 Column 交叉轴对齐。
+  CrossAxisAlignment _crossAxis(int? assAlign) {
+    if (assAlign == null) return CrossAxisAlignment.center;
+    // numpad: 1/4/7 左，2/5/8 中，3/6/9 右
+    final col = (assAlign - 1) % 3;
+    switch (col) {
+      case 0:
+        return CrossAxisAlignment.start;
+      case 2:
+        return CrossAxisAlignment.end;
+      default:
+        return CrossAxisAlignment.center;
+    }
+  }
+
+  /// 解析最终文本对齐：ASS 对齐优先，否则用 [align]。
+  TextAlign _resolveAlign(int? assAlign) {
+    if (assAlign == null) return align;
+    final col = (assAlign - 1) % 3;
+    switch (col) {
+      case 0:
+        return TextAlign.left;
+      case 2:
+        return TextAlign.right;
+      default:
+        return TextAlign.center;
+    }
+  }
+
   /// 渲染一行：自适应字号 + 单行省略号。
   Widget _buildLine(
     BuildContext context,
     String text,
     TextStyle baseStyle,
     double maxWidth,
+    TextAlign textAlign,
   ) {
     // 把文本内部的换行/连续空白折叠成单个空格（字幕文本不应含排版换行）
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -195,8 +310,10 @@ class SubtitleOverlay extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: bgOpacity.clamp(0.0, 1.0)),
-        borderRadius: BorderRadius.circular(compact ? 3 : 4),
+        color: showBg
+            ? bgColor.withValues(alpha: bgOpacity.clamp(0.0, 1.0))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(bgRadius),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -205,7 +322,7 @@ class SubtitleOverlay extends StatelessWidget {
         ),
         child: Text(
           normalized,
-          textAlign: TextAlign.center,
+          textAlign: textAlign,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: style,

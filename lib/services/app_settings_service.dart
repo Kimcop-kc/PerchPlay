@@ -36,6 +36,15 @@ class AppSettingsService {
   static const _kSubtitlePosition = 'settings.subtitle.position';
   static const _kSubtitleSecondaryScale = 'settings.subtitle.secondaryScale';
   static const _kSubtitleSecondaryDim = 'settings.subtitle.secondaryDim';
+  static const _kSubtitleFontFamily = 'settings.subtitle.fontFamily';
+  static const _kSubtitleFontWeight = 'settings.subtitle.fontWeight';
+  static const _kSubtitleLineSpacing = 'settings.subtitle.lineSpacing';
+  static const _kSubtitleLineHeight = 'settings.subtitle.lineHeight';
+  static const _kSubtitleBgRadius = 'settings.subtitle.bgRadius';
+  static const _kSubtitleBgColor = 'settings.subtitle.bgColor';
+  static const _kSubtitleShowBg = 'settings.subtitle.showBg';
+  static const _kSubtitleAlign = 'settings.subtitle.align';
+  static const _kSubtitleUseAssPos = 'settings.subtitle.useAssPosition';
 
   double _defaultSpeed = 1.0;
 
@@ -118,6 +127,42 @@ class AppSettingsService {
   /// 双语字幕时译文是否用灰色（弱化，突出原文）。
   bool _subtitleSecondaryDim = true;
   bool get subtitleSecondaryDim => _subtitleSecondaryDim;
+
+  /// 字幕字体族：'system' = 系统默认；其余为内置字体名。默认 'system'。
+  String _subtitleFontFamily = 'system';
+  String get subtitleFontFamily => _subtitleFontFamily;
+
+  /// 字幕字体粗细（FontWeight 索引 3~8，即 w300~w800）。默认 5（w500）。
+  int _subtitleFontWeight = 5;
+  int get subtitleFontWeight => _subtitleFontWeight;
+
+  /// 双语文两行之间的间距（逻辑像素，0~12）。默认 3。
+  double _subtitleLineSpacing = 3;
+  double get subtitleLineSpacing => _subtitleLineSpacing;
+
+  /// 字幕行高（TextStyle.height，1.0~1.8）。默认 1.35。
+  double _subtitleLineHeight = 1.35;
+  double get subtitleLineHeight => _subtitleLineHeight;
+
+  /// 字幕背景圆角（逻辑像素，0~12）。默认 4。
+  double _subtitleBgRadius = 4;
+  double get subtitleBgRadius => _subtitleBgRadius;
+
+  /// 字幕背景色（ARGB int）。默认黑色。
+  int _subtitleBgColor = 0xFF000000;
+  int get subtitleBgColorValue => _subtitleBgColor;
+
+  /// 是否显示字幕黑底。默认 true。
+  bool _subtitleShowBg = true;
+  bool get subtitleShowBg => _subtitleShowBg;
+
+  /// 字幕对齐方式：'center' | 'start' | 'end'。默认 'center'。
+  String _subtitleAlign = 'center';
+  String get subtitleAlign => _subtitleAlign;
+
+  /// 是否应用 ASS 定位/对齐（垂直位置 + numpad 对齐）。默认 true。
+  bool _subtitleUseAssPosition = true;
+  bool get subtitleUseAssPosition => _subtitleUseAssPosition;
 
   /// 【已废弃】字幕统一由 Flutter 渲染，mpv/libass 原生渲染已移除。
   ///
@@ -237,6 +282,19 @@ class AppSettingsService {
       _subtitleSecondaryScale =
           (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
       _subtitleSecondaryDim = prefs.getBool(_kSubtitleSecondaryDim) ?? true;
+      _subtitleFontFamily = prefs.getString(_kSubtitleFontFamily) ?? 'system';
+      _subtitleFontWeight =
+          (prefs.getInt(_kSubtitleFontWeight) ?? 5).clamp(3, 8);
+      _subtitleLineSpacing =
+          (prefs.getDouble(_kSubtitleLineSpacing) ?? 3).clamp(0, 12);
+      _subtitleLineHeight =
+          (prefs.getDouble(_kSubtitleLineHeight) ?? 1.35).clamp(1.0, 1.8);
+      _subtitleBgRadius =
+          (prefs.getDouble(_kSubtitleBgRadius) ?? 4).clamp(0, 12);
+      _subtitleBgColor = prefs.getInt(_kSubtitleBgColor) ?? 0xFF000000;
+      _subtitleShowBg = prefs.getBool(_kSubtitleShowBg) ?? true;
+      _subtitleAlign = prefs.getString(_kSubtitleAlign) ?? 'center';
+      _subtitleUseAssPosition = prefs.getBool(_kSubtitleUseAssPos) ?? true;
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
@@ -629,6 +687,78 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleSecondaryDim, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleFontFamily(String v) async {
+    _subtitleFontFamily = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSubtitleFontFamily, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleFontWeight(int v) async {
+    _subtitleFontWeight = v.clamp(3, 8);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSubtitleFontWeight, _subtitleFontWeight);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleLineSpacing(double v) async {
+    _subtitleLineSpacing = v.clamp(0, 12);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleLineSpacing, _subtitleLineSpacing);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleLineHeight(double v) async {
+    _subtitleLineHeight = v.clamp(1.0, 1.8);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleLineHeight, _subtitleLineHeight);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleBgRadius(double v) async {
+    _subtitleBgRadius = v.clamp(0, 12);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kSubtitleBgRadius, _subtitleBgRadius);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleBgColor(int argb) async {
+    _subtitleBgColor = argb;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSubtitleBgColor, _subtitleBgColor);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleShowBg(bool v) async {
+    _subtitleShowBg = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleShowBg, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleAlign(String v) async {
+    _subtitleAlign = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSubtitleAlign, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleUseAssPosition(bool v) async {
+    _subtitleUseAssPosition = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleUseAssPos, v);
     } catch (_) {}
   }
 
