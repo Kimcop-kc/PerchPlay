@@ -241,7 +241,8 @@ void main() {
 
   group('searchKey', () {
     test('带年份与不带年份的 key 不同', () {
-      const a = ScrapeResult(title: 'Dune', year: 2021, type: ScrapeType.movie, tmdbId: 1);
+      const a = ScrapeResult(
+          title: 'Dune', year: 2021, type: ScrapeType.movie, tmdbId: 1);
       const b = ScrapeResult(title: 'Dune', type: ScrapeType.movie, tmdbId: 1);
       expect(a.searchKey, 'dune (2021)');
       expect(b.searchKey, 'dune');

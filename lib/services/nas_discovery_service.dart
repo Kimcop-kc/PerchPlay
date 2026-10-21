@@ -205,8 +205,7 @@ class NasDiscoveryService {
     } catch (_) {}
 
     try {
-      final req =
-          await client.getUrl(Uri.parse('$scheme://$host:$port/'));
+      final req = await client.getUrl(Uri.parse('$scheme://$host:$port/'));
       req.headers.set('User-Agent', 'PerchPlay/1.0');
       req.headers.set(HttpHeaders.connectionHeader, 'close');
       final res = await req.close().timeout(const Duration(seconds: 2));

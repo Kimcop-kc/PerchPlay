@@ -78,8 +78,7 @@ class DeviceInfoService {
   Future<void> init({String? deviceModel, String? systemName}) async {
     if (_initialized) return;
 
-    if (Platform.isIOS ||
-        (systemName != null && systemName.contains('iOS'))) {
+    if (Platform.isIOS || (systemName != null && systemName.contains('iOS'))) {
       final model = deviceModel ?? 'iPad';
       if (model.contains('iPad')) {
         _brand = DeviceBrand.ipad;
@@ -156,9 +155,10 @@ class DeviceInfoService {
 
   DeviceCapabilities _appleCapabilities(String model) {
     final m = model.toLowerCase();
-    final isPro2022 =
-        m.contains('ipad14,5') || m.contains('ipad14,6') ||
-        m.contains('ipad14,3') || m.contains('ipad14,4');
+    final isPro2022 = m.contains('ipad14,5') ||
+        m.contains('ipad14,6') ||
+        m.contains('ipad14,3') ||
+        m.contains('ipad14,4');
     final isPro = m.contains('pro');
     final hasLidar = m.contains('ipad14,5') ||
         m.contains('ipad14,6') ||
@@ -188,8 +188,7 @@ class DeviceInfoService {
   DeviceCapabilities _androidCapabilities(DeviceBrand brand, String model) {
     final isXiaomi = brand == DeviceBrand.xiaomi;
     final isHuawei = brand == DeviceBrand.huawei;
-    final isOppoVivo =
-        brand == DeviceBrand.oppo || brand == DeviceBrand.vivo;
+    final isOppoVivo = brand == DeviceBrand.oppo || brand == DeviceBrand.vivo;
     final has120Hz = isXiaomi || isOppoVivo;
 
     return DeviceCapabilities(
@@ -214,8 +213,7 @@ class DeviceInfoService {
   bool get isHuawei => _brand == DeviceBrand.huawei;
   bool get isOppo => _brand == DeviceBrand.oppo;
   bool get isVivo => _brand == DeviceBrand.vivo;
-  bool get isChineseBrand =>
-      isXiaomi || isHuawei || isOppo || isVivo;
+  bool get isChineseBrand => isXiaomi || isHuawei || isOppo || isVivo;
   bool get isIPad => _brand == DeviceBrand.ipad;
   bool get isIPadPro =>
       _iPadModel == IPadModel.ipadPro2022 ||
@@ -223,8 +221,7 @@ class DeviceInfoService {
       _iPadModel == IPadModel.ipadPro2020;
   bool get isIPadPro2022 => _iPadModel == IPadModel.ipadPro2022;
   bool get isIPhone => _brand == DeviceBrand.apple;
-  bool get supportStageManager =>
-      _capabilities.supportStageManager;
+  bool get supportStageManager => _capabilities.supportStageManager;
   bool get has120Hz => _capabilities.has120Hz;
   bool get hasLidar => _capabilities.hasLidar;
 
@@ -240,8 +237,7 @@ class DeviceInfoService {
             if (parts.length >= 2) {
               final kb = int.tryParse(parts[1]);
               if (kb != null) {
-                return double.parse(
-                    (kb / (1024 * 1024)).toStringAsFixed(1));
+                return double.parse((kb / (1024 * 1024)).toStringAsFixed(1));
               }
             }
           }

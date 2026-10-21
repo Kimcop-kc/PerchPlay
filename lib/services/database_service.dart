@@ -161,8 +161,8 @@ class DatabaseService {
   /// 按路径取单条记录（播放器恢复进度用）
   Future<VideoModel?> getVideoByPath(String path) async {
     final db = await database;
-    final maps =
-        await db.query('videos', where: 'path = ?', whereArgs: [path], limit: 1);
+    final maps = await db.query('videos',
+        where: 'path = ?', whereArgs: [path], limit: 1);
     if (maps.isEmpty) return null;
     return VideoModel.fromJson(maps.first);
   }
@@ -188,7 +188,8 @@ class DatabaseService {
                   ? old.thumbnailPath
                   : video.thumbnailPath,
               // 扫描到的时长若为 0，保留之前播放时测得的时长
-              durationMs: video.durationMs > 0 ? video.durationMs : old.durationMs,
+              durationMs:
+                  video.durationMs > 0 ? video.durationMs : old.durationMs,
             );
       batch.insert('videos', merged.toJson(),
           conflictAlgorithm: ConflictAlgorithm.replace);
@@ -215,8 +216,7 @@ class DatabaseService {
     }
     for (final path in videoPaths) {
       if (path.isEmpty) continue;
-      batch.delete('scrape_cache',
-          where: 'video_path = ?', whereArgs: [path]);
+      batch.delete('scrape_cache', where: 'video_path = ?', whereArgs: [path]);
     }
     await batch.commit(noResult: true);
   }
@@ -290,8 +290,8 @@ class DatabaseService {
 
   Future<List<String>> getAllFolders() async {
     final db = await database;
-    final maps = await db.rawQuery(
-        'SELECT DISTINCT folderPath FROM videos ORDER BY folderPath');
+    final maps = await db
+        .rawQuery('SELECT DISTINCT folderPath FROM videos ORDER BY folderPath');
     return maps.map((m) => m['folderPath'] as String).toList();
   }
 
@@ -331,8 +331,8 @@ class DatabaseService {
       id: map['id'] as String,
       name: map['name'] as String,
       videoIds: ids,
-      createdAt:
-          DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
       sortOrder: (map['sortOrder'] as int?) ?? 0,
       isAuto: ((map['isAuto'] as int?) ?? 0) == 1,
     );
@@ -406,7 +406,8 @@ class DatabaseService {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<Map<String, dynamic>?> getScrapeCache(String searchKey, String type) async {
+  Future<Map<String, dynamic>?> getScrapeCache(
+      String searchKey, String type) async {
     final db = await database;
     final rows = await db.query('scrape_cache',
         where: 'search_key = ? AND type = ?',
@@ -418,9 +419,7 @@ class DatabaseService {
   Future<Map<String, dynamic>?> getScrapeCacheByPath(String videoPath) async {
     final db = await database;
     final rows = await db.query('scrape_cache',
-        where: 'video_path = ?',
-        whereArgs: [videoPath],
-        limit: 1);
+        where: 'video_path = ?', whereArgs: [videoPath], limit: 1);
     return rows.isEmpty ? null : rows.first;
   }
 
@@ -432,7 +431,6 @@ class DatabaseService {
   Future<void> deleteScrapeCache(String searchKey, String type) async {
     final db = await database;
     await db.delete('scrape_cache',
-        where: 'search_key = ? AND type = ?',
-        whereArgs: [searchKey, type]);
+        where: 'search_key = ? AND type = ?', whereArgs: [searchKey, type]);
   }
 }

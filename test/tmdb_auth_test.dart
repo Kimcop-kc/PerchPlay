@@ -22,8 +22,8 @@ void main() {
       });
 
   test('v3 密钥：走 api_key 查询参数，不带 Authorization 头', () async {
-    final svc = TmdbService(apiKey: '897d1fc0d9da045996a8fd2b13c38aa2',
-        client: recordingClient());
+    final svc = TmdbService(
+        apiKey: '897d1fc0d9da045996a8fd2b13c38aa2', client: recordingClient());
 
     await svc.searchMovie('Interstellar');
 

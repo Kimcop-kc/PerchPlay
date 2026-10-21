@@ -126,12 +126,14 @@ class Pan115DriveClient {
   /// 115 的流程：用 `pickcode` 换一次性下载地址。
   Future<String?> getDownloadUrl(String pickCode) async {
     try {
-      final uri = Uri.parse('$_proApi/app/chrome/downurl?t=${DateTime.now().millisecondsSinceEpoch}');
+      final uri = Uri.parse(
+          '$_proApi/app/chrome/downurl?t=${DateTime.now().millisecondsSinceEpoch}');
       final req = await _client.postUrl(uri);
       _headers.forEach(req.headers.set);
       req.headers.contentType =
           ContentType('application', 'x-www-form-urlencoded');
-      req.write('data=${Uri.encodeComponent(jsonEncode({'pickcode': pickCode}))}');
+      req.write(
+          'data=${Uri.encodeComponent(jsonEncode({'pickcode': pickCode}))}');
       final resp = await req.close();
       if (resp.statusCode != 200) return null;
       final body = await resp.transform(utf8.decoder).join();

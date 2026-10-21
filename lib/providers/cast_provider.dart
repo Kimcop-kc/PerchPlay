@@ -118,8 +118,7 @@ class CastNotifier extends StateNotifier<CastState> {
     final updated = List<CastDevice>.from(state.devices);
     final idx = updated.indexWhere((d) => d.id == device.id);
     if (idx >= 0) {
-      updated[idx] = updated[idx]
-          .copyWith(status: CastDeviceStatus.connecting);
+      updated[idx] = updated[idx].copyWith(status: CastDeviceStatus.connecting);
       state = state.copyWith(devices: updated);
     }
     final ok = await _control.connect(device);
@@ -136,8 +135,7 @@ class CastNotifier extends StateNotifier<CastState> {
   /// 先用手机会话内的 HTTP 服务把文件暴露到局域网（电视读不到
   /// /storage/... 路径），再把该 URL 交给设备播放。
   Future<bool> castLocalFile(String filePath, {String title = ''}) async {
-    final url =
-        await LocalMediaServer.instance.urlFor(filePath, title: title);
+    final url = await LocalMediaServer.instance.urlFor(filePath, title: title);
     if (url == null) {
       state = state.copyWith(errorMessage: '无法启动本地投屏服务（检查网络）');
       return false;

@@ -278,9 +278,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 color: GlassTheme.textTertiary,
                 tooltip: '刷新',
-                onPressed: () => _navigate(_currentPath.isNotEmpty
-                    ? _currentPath
-                    : _rootPath),
+                onPressed: () => _navigate(
+                    _currentPath.isNotEmpty ? _currentPath : _rootPath),
               ),
               GlassButton(
                 icon: _gridView
@@ -394,14 +393,14 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
               controller: _searchController,
               onChanged: (v) => setState(() => _query = v),
               textInputAction: TextInputAction.search,
-              style: const TextStyle(
-                  color: GlassTheme.textPrimary, fontSize: 14),
+              style:
+                  const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
                 hintText: '搜索文件名',
-                hintStyle: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 14),
+                hintStyle:
+                    TextStyle(color: GlassTheme.textTertiary, fontSize: 14),
               ),
             ),
           ),
@@ -531,8 +530,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
               size: 40, color: GlassTheme.textTertiary),
           SizedBox(height: 8),
           Text('没有匹配的文件',
-              style: TextStyle(
-                  color: GlassTheme.textTertiary, fontSize: 13)),
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 13)),
         ],
       ),
     );
@@ -582,7 +580,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.folder_open_rounded, size: 48, color: GlassTheme.textTertiary),
+            Icon(Icons.folder_open_rounded,
+                size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('未发现可访问的存储目录',
                 style: TextStyle(color: GlassTheme.textPrimary, fontSize: 16)),
@@ -615,13 +614,15 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           children: [
             GestureDetector(
               onTap: _loadRoots,
-              child: const Icon(Icons.folder_rounded, size: 14, color: GlassTheme.textTertiary),
+              child: const Icon(Icons.folder_rounded,
+                  size: 14, color: GlassTheme.textTertiary),
             ),
             ...parts.asMap().entries.map((e) {
               final path = '/' + parts.sublist(0, e.key + 1).join('/');
               return Row(
                 children: [
-                  const Icon(Icons.chevron_right_rounded, size: 14, color: GlassTheme.textTertiary),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 14, color: GlassTheme.textTertiary),
                   GestureDetector(
                     onTap: () => _navigate(path),
                     child: Text(e.value,
@@ -686,11 +687,15 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
               Icon(
                 isDir
                     ? Icons.folder_rounded
-                    : (isVideo ? Icons.play_circle_rounded : Icons.insert_drive_file_rounded),
+                    : (isVideo
+                        ? Icons.play_circle_rounded
+                        : Icons.insert_drive_file_rounded),
                 size: 40,
                 color: isDir
                     ? GlassTheme.accentTeal.withValues(alpha: 0.8)
-                    : (isVideo ? GlassTheme.accentPurple : GlassTheme.textTertiary),
+                    : (isVideo
+                        ? GlassTheme.accentPurple
+                        : GlassTheme.textTertiary),
               ),
               const SizedBox(height: 8),
               Text(
@@ -698,7 +703,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 11),
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 11),
               ),
             ],
           ),
@@ -737,17 +743,20 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 Icon(
                   isDir ? Icons.folder_rounded : Icons.movie_rounded,
                   size: 22,
-                  color: isDir ? GlassTheme.accentTeal : GlassTheme.accentPurple,
+                  color:
+                      isDir ? GlassTheme.accentTeal : GlassTheme.accentPurple,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(entry.path.split('/').last,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
+                      style: const TextStyle(
+                          color: GlassTheme.textPrimary, fontSize: 14)),
                 ),
                 if (isDir)
-                  const Icon(Icons.chevron_right_rounded, color: GlassTheme.textTertiary),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: GlassTheme.textTertiary),
               ],
             ),
           ),

@@ -35,10 +35,8 @@ class TmdbService {
     if (_isBearerToken) {
       final params = Map<String, String>.from(url.queryParameters)
         ..remove('api_key');
-      return _client
-          .get(url.replace(queryParameters: params),
-              headers: {'Authorization': 'Bearer $apiKey'})
-          .timeout(_timeout);
+      return _client.get(url.replace(queryParameters: params),
+          headers: {'Authorization': 'Bearer $apiKey'}).timeout(_timeout);
     }
     return _client.get(url).timeout(_timeout);
   }
@@ -86,13 +84,15 @@ class TmdbService {
       'include_adult': 'false',
     };
     if (year != null) params['year'] = year.toString();
-    final url = Uri.parse('$_base/search/movie').replace(queryParameters: params);
+    final url =
+        Uri.parse('$_base/search/movie').replace(queryParameters: params);
     final resp = await _get(url);
     if (resp.statusCode != 200) return [];
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
     return list
-        .map((e) => _parseSearchResult(e as Map<String, dynamic>, forceType: ScrapeType.movie))
+        .map((e) => _parseSearchResult(e as Map<String, dynamic>,
+            forceType: ScrapeType.movie))
         .where((r) => r != null)
         .cast<ScrapeResult>()
         .toList();
@@ -114,7 +114,8 @@ class TmdbService {
     final data = jsonDecode(resp.body);
     final list = (data['results'] as List?) ?? [];
     return list
-        .map((e) => _parseSearchResult(e as Map<String, dynamic>, forceType: ScrapeType.tv))
+        .map((e) => _parseSearchResult(e as Map<String, dynamic>,
+            forceType: ScrapeType.tv))
         .where((r) => r != null)
         .cast<ScrapeResult>()
         .toList();
@@ -160,7 +161,8 @@ class TmdbService {
     String language = 'zh-CN',
     ScrapeResult? seriesInfo,
   }) async {
-    final url = Uri.parse('$_base/tv/$seriesId/season/$seasonNumber/episode/$episodeNumber')
+    final url = Uri.parse(
+            '$_base/tv/$seriesId/season/$seasonNumber/episode/$episodeNumber')
         .replace(queryParameters: {
       'api_key': apiKey,
       'language': language,
@@ -168,7 +170,8 @@ class TmdbService {
     final resp = await _get(url);
     if (resp.statusCode != 200) return null;
     final epData = jsonDecode(resp.body) as Map<String, dynamic>;
-    final series = seriesInfo ?? await getTvDetail(seriesId, language: language);
+    final series =
+        seriesInfo ?? await getTvDetail(seriesId, language: language);
     return ScrapeResult(
       title: series?.title ?? '',
       originalTitle: series?.originalTitle,
@@ -197,16 +200,17 @@ class TmdbService {
     if (mediaType != 'movie' && mediaType != 'tv') return null;
     final type = mediaType == 'tv' ? ScrapeType.tv : ScrapeType.movie;
 
-    final title =
-        (e['title'] ?? e['name'] ?? '') as String;
+    final title = (e['title'] ?? e['name'] ?? '') as String;
     if (title.isEmpty) return null;
 
     final dateStr = (e['first_air_date'] ?? e['release_date'] ?? '') as String;
-    final year = dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
+    final year =
+        dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
     // genreIds 需要查 genre map 才能转名；search 结果不带 genre 名称，留空
     return ScrapeResult(
       title: title,
-      originalTitle: e['original_title'] as String? ?? e['original_name'] as String?,
+      originalTitle:
+          e['original_title'] as String? ?? e['original_name'] as String?,
       year: year,
       overview: e['overview'] as String?,
       posterPath: e['poster_path'] as String?,
@@ -219,7 +223,8 @@ class TmdbService {
     );
   }
 
-  ScrapeResult _parseDetail(Map<String, dynamic> e, {required ScrapeType type}) {
+  ScrapeResult _parseDetail(Map<String, dynamic> e,
+      {required ScrapeType type}) {
     final genres = (e['genres'] as List?)
             ?.map((g) => (g as Map<String, dynamic>)['name'] as String? ?? '')
             .where((g) => g.isNotEmpty)
@@ -227,11 +232,13 @@ class TmdbService {
         [];
 
     final dateStr = (e['first_air_date'] ?? e['release_date'] ?? '') as String;
-    final year = dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
+    final year =
+        dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
 
     return ScrapeResult(
       title: (e['title'] ?? e['name'] ?? '') as String,
-      originalTitle: e['original_title'] as String? ?? e['original_name'] as String?,
+      originalTitle:
+          e['original_title'] as String? ?? e['original_name'] as String?,
       year: year,
       overview: e['overview'] as String?,
       posterPath: e['poster_path'] as String?,

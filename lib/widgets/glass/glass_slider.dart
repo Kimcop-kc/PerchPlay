@@ -11,6 +11,13 @@ class GlassSlider extends StatefulWidget {
   final double max;
   final ValueChanged<double>? onChanged;
   final ValueChanged<double>? onChangeEnd;
+
+  /// 拖动开始时回调（父页面可借此告知手势层"滑块正在操作，抑制画面 seek"）。
+  final VoidCallback? onDragStart;
+
+  /// 拖动结束时回调（包括取消）。
+  final VoidCallback? onDragEnd;
+
   final double height;
   final Color activeColor;
   final bool showThumb;
@@ -25,6 +32,8 @@ class GlassSlider extends StatefulWidget {
     this.onChangeEnd,
     this.height = 4,
     this.activeColor = GlassTheme.accentPurple,
+    this.onDragStart,
+    this.onDragEnd,
     this.showThumb = true,
     this.thumbRadius = 7,
   });
@@ -41,14 +50,14 @@ class _GlassSliderState extends State<GlassSlider> {
   Widget build(BuildContext context) {
     // 拖动时用内部值（跟手），否则用外部 value（反映真实进度）
     final effectiveValue = _dragValue ?? widget.value;
-    final fraction = ((effectiveValue - widget.min) /
-            (widget.max - widget.min))
+    final fraction = ((effectiveValue - widget.min) / (widget.max - widget.min))
         .clamp(0.0, 1.0);
 
     return GestureDetector(
       onPanDown: (details) {
         setState(() => _dragging = true);
         _dragValue = _valueAt(details.localPosition.dx, context);
+        widget.onDragStart?.call();
       },
       onPanUpdate: (details) {
         setState(() {
@@ -62,9 +71,13 @@ class _GlassSliderState extends State<GlassSlider> {
         // 松手时提交最终值
         widget.onChangeEnd?.call(_dragValue ?? widget.value);
         _dragValue = null;
+        widget.onDragEnd?.call();
       },
       onPanCancel: () {
         setState(() => _dragging = false);
+        // 拖动被取消（系统手势/通知栏下拉等）。
+        // 通知父页面清除预览并恢复真实进度，但**不提交跳转**。
+        widget.onDragEnd?.call();
         _dragValue = null;
       },
       child: LayoutBuilder(
@@ -73,7 +86,9 @@ class _GlassSliderState extends State<GlassSlider> {
           final activeWidth = width * fraction;
 
           return SizedBox(
-            height: widget.height + (widget.showThumb ? widget.thumbRadius * 2 : 0) + 8,
+            height: widget.height +
+                (widget.showThumb ? widget.thumbRadius * 2 : 0) +
+                8,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -142,8 +157,8 @@ class _GlassSliderState extends State<GlassSlider> {
                 // Thumb
                 if (widget.showThumb)
                   Positioned(
-                    left: (activeWidth - widget.thumbRadius * 2).clamp(
-                        0, width - widget.thumbRadius * 2),
+                    left: (activeWidth - widget.thumbRadius * 2)
+                        .clamp(0, width - widget.thumbRadius * 2),
                     top: 0,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),

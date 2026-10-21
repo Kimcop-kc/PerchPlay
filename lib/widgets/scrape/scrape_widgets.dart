@@ -35,8 +35,7 @@ class ScrapedPoster extends StatelessWidget {
       height: height,
       fit: fit,
       gaplessPlayback: true,
-      errorBuilder: (_, __, ___) =>
-          fallback ?? const SizedBox.shrink(),
+      errorBuilder: (_, __, ___) => fallback ?? const SizedBox.shrink(),
       loadingBuilder: (ctx, child, progress) {
         if (progress == null) return child;
         return Container(
@@ -93,8 +92,7 @@ class ScrapeInfoSection extends ConsumerWidget {
     );
   }
 
-  Widget _buildMatched(
-      BuildContext context, WidgetRef ref, ScrapeResult r) {
+  Widget _buildMatched(BuildContext context, WidgetRef ref, ScrapeResult r) {
     final poster = r.posterUrl;
     return GlassPanel(
       radius: GlassTheme.radiusLg,
@@ -156,7 +154,9 @@ class ScrapeInfoSection extends ConsumerWidget {
                   Text(
                     r.overview!,
                     style: const TextStyle(
-                        color: GlassTheme.textSecondary, fontSize: 12, height: 1.35),
+                        color: GlassTheme.textSecondary,
+                        fontSize: 12,
+                        height: 1.35),
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -177,8 +177,7 @@ class ScrapeInfoSection extends ConsumerWidget {
         borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
       ),
       child: Text(text,
-          style: const TextStyle(
-              color: GlassTheme.accentPurple, fontSize: 11)),
+          style: const TextStyle(color: GlassTheme.accentPurple, fontSize: 11)),
     );
   }
 
@@ -193,8 +192,7 @@ class ScrapeInfoSection extends ConsumerWidget {
           videoPath: videoPath,
           initialQuery: initialQuery,
         ),
-        icon: Icon(
-            hasResult ? Icons.edit_rounded : Icons.search_rounded,
+        icon: Icon(hasResult ? Icons.edit_rounded : Icons.search_rounded,
             size: 16),
         label: Text(hasResult ? '匹配不对？手动修改' : '手动匹配影片信息',
             style: const TextStyle(fontSize: 13)),
@@ -309,7 +307,8 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Text('刮削未启用：请先在「设置 → 影片刮削」里填 TMDB API Key',
-                  style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+                  style:
+                      TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
             )
           else ...[
             Row(

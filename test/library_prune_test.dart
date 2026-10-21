@@ -84,8 +84,8 @@ void main() {
     expect(LibraryPruneService.isRemotePath('smb://nas/y.mkv'), isTrue);
     expect(LibraryPruneService.isRemotePath(r'\\NAS\share\y.mkv'), isTrue);
 
-    expect(LibraryPruneService.isRemotePath('/storage/emulated/0/y.mp4'),
-        isFalse);
+    expect(
+        LibraryPruneService.isRemotePath('/storage/emulated/0/y.mp4'), isFalse);
     expect(LibraryPruneService.isRemotePath(r'C:\Users\a\y.mp4'), isFalse);
     expect(LibraryPruneService.isRemotePath(''), isFalse);
   });

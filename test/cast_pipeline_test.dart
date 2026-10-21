@@ -41,8 +41,7 @@ void main() {
     expect(url!.startsWith('http://'), isTrue);
 
     // 换成回环地址访问（本地 IP 在开发机上同样可路由）
-    final localUrl =
-        'http://127.0.0.1:${server.port}${Uri.parse(url).path}';
+    final localUrl = 'http://127.0.0.1:${server.port}${Uri.parse(url).path}';
     final client = HttpClient();
 
     // 完整请求
@@ -57,7 +56,8 @@ void main() {
     req.headers.set(HttpHeaders.rangeHeader, 'bytes=10-19');
     res = await req.close();
     expect(res.statusCode, 206, reason: 'Range 必须返回 206');
-    expect(res.headers.value(HttpHeaders.contentRangeHeader), 'bytes 10-19/1000');
+    expect(
+        res.headers.value(HttpHeaders.contentRangeHeader), 'bytes 10-19/1000');
     bytes = await res.fold<List<int>>([], (a, b) => a..addAll(b));
     expect(bytes.length, 10);
     expect(bytes, payload.sublist(10, 20));
@@ -96,7 +96,8 @@ void main() {
 
     final mediaUrl = 'http://192.168.1.50:41234/video/movie.mp4';
     final ok = await control.playUrl(mediaUrl, title: '测试影片');
-    expect(ok, isTrue, reason: 'SetAVTransportURI + Play 应成功（${control.lastError}）');
+    expect(ok, isTrue,
+        reason: 'SetAVTransportURI + Play 应成功（${control.lastError}）');
 
     await control.disconnect();
 
@@ -107,7 +108,6 @@ void main() {
         reason: '必须 POST 到描述里给出的 controlURL，实际日志：\n$log');
     expect(log.contains('SetAVTransportURI'), isTrue);
     expect(log.contains('Play'), isTrue);
-    expect(log.contains(mediaUrl), isTrue,
-        reason: 'SOAP 里应带上待投的媒体 URL');
+    expect(log.contains(mediaUrl), isTrue, reason: 'SOAP 里应带上待投的媒体 URL');
   });
 }

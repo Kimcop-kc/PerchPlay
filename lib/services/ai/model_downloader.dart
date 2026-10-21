@@ -120,8 +120,7 @@ class ModelDownloader {
       try {
         debugPrint('[Downloader] 尝试 ${mirror.source.name}: ${mirror.url}');
         await _downloadMirror(mirror, destDir, onProgress: onProgress);
-        debugPrint(
-            '[Downloader] 下载成功: ${model.id} ← ${mirror.source.name}');
+        debugPrint('[Downloader] 下载成功: ${model.id} ← ${mirror.source.name}');
         return destDir.path;
       } catch (e) {
         debugPrint('[Downloader] ${mirror.source.name} 失败: $e');
@@ -131,8 +130,7 @@ class ModelDownloader {
       }
     }
 
-    throw StateError(
-        '所有下载源均失败:\n${errors.map((e) => '  - $e').join('\n')}');
+    throw StateError('所有下载源均失败:\n${errors.map((e) => '  - $e').join('\n')}');
   }
 
   // ── 镜像下载 ──
@@ -167,15 +165,16 @@ class ModelDownloader {
     } else {
       // 单文件模式
       final uri = Uri.parse(mirror.url);
-      final fileName = uri.pathSegments.isNotEmpty
-          ? uri.pathSegments.last
-          : 'model.bin';
+      final fileName =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.last : 'model.bin';
       final dest = File('${destDir.path}/$fileName');
       await _downloadFile(mirror.url, dest,
           onProgress: onProgress, expectedSha256: mirror.sha256);
 
       // GitHub Release .tar.bz2 → 自动解压到目标目录
-      if (fileName.endsWith('.tar.bz2') || fileName.endsWith('.tar.gz') || fileName.endsWith('.zip')) {
+      if (fileName.endsWith('.tar.bz2') ||
+          fileName.endsWith('.tar.gz') ||
+          fileName.endsWith('.zip')) {
         await _decompressArchive(dest, destDir);
       }
     }
@@ -339,7 +338,8 @@ class ModelDownloader {
           continue;
         }
         // 校验失败：重置此片及之后所有片
-        debugPrint('[Downloader] 分片 $index 校验失败（expected $savedSha got $actual），重新下载');
+        debugPrint(
+            '[Downloader] 分片 $index 校验失败（expected $savedSha got $actual），重新下载');
       }
       // 从此片开始全部重置
       for (var j = index; j < chunkCount; j++) {
@@ -412,10 +412,7 @@ class ModelDownloader {
     for (var batchStart = 0;
         batchStart < pending.length;
         batchStart += _maxParallel) {
-      final batch = pending
-          .skip(batchStart)
-          .take(_maxParallel)
-          .toList();
+      final batch = pending.skip(batchStart).take(_maxParallel).toList();
 
       await Future.wait(batch.map((index) async {
         final start = index * chunkSize;
@@ -441,8 +438,7 @@ class ModelDownloader {
           } catch (e) {
             if (retry < _chunkRetries) {
               debugPrint('[Downloader] 分片 $index 失败，第 ${retry + 1} 次重试: $e');
-              await Future.delayed(
-                  Duration(seconds: 1 + retry * 2)); // 递增退避
+              await Future.delayed(Duration(seconds: 1 + retry * 2)); // 递增退避
               // 重试前清理残留的 part 文件
               if (await part.exists()) await part.delete();
             } else {
@@ -460,12 +456,8 @@ class ModelDownloader {
 
   /// 用 Range 请求下载 [start]-[end] 字节，写入 [part] 文件。
   Future<void> _downloadChunk(
-    String url,
-    File part,
-    int start,
-    int end,
-    int totalBytes,
-    {ProgressCallback? onProgress}) async {
+      String url, File part, int start, int end, int totalBytes,
+      {ProgressCallback? onProgress}) async {
     final request = http.Request('GET', Uri.parse(url));
     request.headers['Range'] = 'bytes=$start-$end';
 
@@ -539,8 +531,7 @@ class ModelDownloader {
             '全量 SHA-256 校验失败: expected $expectedSha256, got $finalHash '
             'for ${dest.uri.pathSegments.last}');
       }
-      debugPrint(
-          '[Downloader] SHA-256 校验通过: ${dest.uri.pathSegments.last}');
+      debugPrint('[Downloader] SHA-256 校验通过: ${dest.uri.pathSegments.last}');
     }
 
     // 清理
@@ -586,8 +577,7 @@ class ModelDownloader {
       final actual = await dest.length();
       if (actual != totalBytes) {
         await dest.delete();
-        throw StateError(
-            '文件大小不匹配: expected $totalBytes, got $actual for $url');
+        throw StateError('文件大小不匹配: expected $totalBytes, got $actual for $url');
       }
     }
 
@@ -598,16 +588,14 @@ class ModelDownloader {
         throw StateError(
             'SHA-256 校验失败: expected $expectedSha256, got $actualHash for $url');
       }
-      debugPrint(
-          '[Downloader] SHA-256 校验通过: ${dest.uri.pathSegments.last}');
+      debugPrint('[Downloader] SHA-256 校验通过: ${dest.uri.pathSegments.last}');
     }
   }
 
   // ── .dstate 进度文件 ──
 
   /// .part.N 文件路径
-  File _partFile(File dest, int index) =>
-      File('${dest.path}.part.$index');
+  File _partFile(File dest, int index) => File('${dest.path}.part.$index');
 
   /// 读取 .dstate JSON，文件不存在或损坏返回 null
   Future<Map<String, dynamic>?> _loadDState(File f) async {
@@ -635,7 +623,8 @@ class ModelDownloader {
   }
 
   /// 清分片临时文件 + .dstate（用于分片失败回退到单流前）
-  Future<void> _cleanChunkState(File dest, File dstateFile, int chunkCount) async {
+  Future<void> _cleanChunkState(
+      File dest, File dstateFile, int chunkCount) async {
     await _deleteParts(dest, chunkCount);
     if (await dstateFile.exists()) await dstateFile.delete();
   }

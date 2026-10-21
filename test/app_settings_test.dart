@@ -22,8 +22,7 @@ void main() {
     final settings = AppSettingsService.instance;
     await settings.ensureLoaded();
 
-    expect(settings.glassBlur, isTrue,
-        reason: '默认必须是开启；旧键的 false 不应该生效');
+    expect(settings.glassBlur, isTrue, reason: '默认必须是开启；旧键的 false 不应该生效');
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.containsKey('settings.glassBlur'), isFalse,
@@ -37,8 +36,7 @@ void main() {
     expect(settings.glassBlur, isFalse);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('settings.glassBlurV2'), isFalse,
-        reason: '持久化到 v2 键');
+    expect(prefs.getBool('settings.glassBlurV2'), isFalse, reason: '持久化到 v2 键');
 
     await settings.setGlassBlur(true);
     expect(settings.glassBlur, isTrue);

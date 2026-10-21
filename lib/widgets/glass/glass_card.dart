@@ -55,7 +55,8 @@ class _GlassCardState extends State<GlassCard>
       value: widget.selected ? 1 : 0,
     );
     _scaleAnimation = Tween<double>(begin: 1, end: 1.02).animate(
-      CurvedAnimation(parent: _hoverController, curve: GlassCurves.iosDecelerate),
+      CurvedAnimation(
+          parent: _hoverController, curve: GlassCurves.iosDecelerate),
     );
   }
 
@@ -105,23 +106,26 @@ class _GlassCardState extends State<GlassCard>
                         blurSigma: 24,
                         child: Container(
                           decoration: BoxDecoration(
-                            borderRadius:
-                                BorderRadius.circular(widget.radius),
+                            borderRadius: BorderRadius.circular(widget.radius),
                             border: Border.all(
                               color: widget.selected
-                                  ? GlassTheme.accentPurple.withValues(alpha: 0.5)
-                                  : Colors.white.withValues(alpha: 
-                                      0.35 + _hoverController.value * 0.15),
+                                  ? GlassTheme.accentPurple
+                                      .withValues(alpha: 0.5)
+                                  : Colors.white.withValues(
+                                      alpha:
+                                          0.35 + _hoverController.value * 0.15),
                               width: widget.selected ? 1.2 : 0.8,
                             ),
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.white.withValues(alpha: 
-                                    0.50 + _hoverController.value * 0.10),
-                                Colors.white.withValues(alpha: 
-                                    0.18 + _hoverController.value * 0.06),
+                                Colors.white.withValues(
+                                    alpha:
+                                        0.50 + _hoverController.value * 0.10),
+                                Colors.white.withValues(
+                                    alpha:
+                                        0.18 + _hoverController.value * 0.06),
                               ],
                             ),
                             boxShadow: [
@@ -179,8 +183,7 @@ class _GlassCardState extends State<GlassCard>
                     Padding(
                       padding: widget.padding,
                       child: ClipRRect(
-                        borderRadius:
-                            BorderRadius.circular(widget.radius - 2),
+                        borderRadius: BorderRadius.circular(widget.radius - 2),
                         child: child!,
                       ),
                     ),

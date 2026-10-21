@@ -41,9 +41,9 @@ class ScrapeKind {
 class SourceGroup {
   final String name;
   final List<int> indices;
-  final bool isSeries;   // true=影视剧集，false=个人视频
+  final bool isSeries; // true=影视剧集，false=个人视频
   final bool isFallback; // true=按前缀兜底分组
-  final bool isMovie;    // true=「电影」集合（影视文件里没归成剧集/前缀的那些）
+  final bool isMovie; // true=「电影」集合（影视文件里没归成剧集/前缀的那些）
 
   const SourceGroup({
     required this.name,
@@ -269,7 +269,7 @@ class VideoSourceService {
 
     // ── 先按来源分桶 ──
     final personal = <int>[]; // camera/capcut/shortVideo/screenRecord/social
-    final media = <int>[];    // other/download
+    final media = <int>[]; // other/download
     // 刮削已确认是电影的影视文件：不参与剧集识别，直接进「电影」集合
     final movies = <int>[];
 
@@ -314,8 +314,7 @@ class VideoSourceService {
       final fallback = _groupByPrefix(paths, remainingMedia, minSize: 2);
       final usedInFallback = <int>{};
       for (final f in fallback) {
-        final allMovies =
-            f.indices.every((i) => isScrapedMovie(paths[i]));
+        final allMovies = f.indices.every((i) => isScrapedMovie(paths[i]));
         if (allMovies) {
           // 刮削确认是各自独立的电影，不该被共同前缀捆成一个「分组」列表
           movies.addAll(f.indices);

@@ -13,11 +13,11 @@ class GlassTheme {
   GlassTheme._();
 
   // ────────── 基础色板（浅色玻璃底） ──────────
-  static const bg = Color(0xFFF2F2F7);          // iOS 浅灰底
-  static const bgRaised = Color(0xFFE5E5EA);    // 抬高一层
+  static const bg = Color(0xFFF2F2F7); // iOS 浅灰底
+  static const bgRaised = Color(0xFFE5E5EA); // 抬高一层
   static const accentPurple = Color(0xFF6E5CE7); // 主紫
-  static const accentTeal = Color(0xFF00B8A9);   // 主青
-  static const accentPink = Color(0xFFFF4D6D);   // 点缀粉
+  static const accentTeal = Color(0xFF00B8A9); // 主青
+  static const accentPink = Color(0xFFFF4D6D); // 点缀粉
   static const surfaceWhite = Color(0xFFFFFFFF);
   // 浅色主题下文字颜色
   static const textPrimary = Color(0xFF1C1C1E);
@@ -25,10 +25,10 @@ class GlassTheme {
   static const textTertiary = Color(0xFF8E8E93);
 
   // ────────── 玻璃透明度预设 ──────────
-  static const glassLight = 0.06;   // 极透
+  static const glassLight = 0.06; // 极透
   static const glassStandard = 0.10; // 标准毛玻璃
-  static const glassHeavy = 0.16;   // 厚玻璃
-  static const glassSheet = 0.20;   // Sheet 面板
+  static const glassHeavy = 0.16; // 厚玻璃
+  static const glassSheet = 0.20; // Sheet 面板
 
   // ────────── 彩色玻璃 ──────────
   static const tintPurple = Color(0x189B7EF0);
@@ -141,9 +141,9 @@ class GlassTheme {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFF6F4FC),  // 顶部偏紫白
-      Color(0xFFF2F2F7),  // 中间浅灰
-      Color(0xFFEFF9F8),  // 底部偏青白
+      Color(0xFFF6F4FC), // 顶部偏紫白
+      Color(0xFFF2F2F7), // 中间浅灰
+      Color(0xFFEFF9F8), // 底部偏青白
     ],
     stops: [0.0, 0.5, 1.0],
   );

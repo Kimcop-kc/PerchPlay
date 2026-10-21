@@ -67,8 +67,7 @@ class CastDiscoveryService {
 
   Future<void> _startSsdp() async {
     try {
-      _ssdpSocket = await RawDatagramSocket.bind(
-          InternetAddress.anyIPv4, 0);
+      _ssdpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       _ssdpSocket!.readEventsEnabled = true;
 
       _ssdpSubscription = _ssdpSocket!.listen(_handleSsdpResponse);
@@ -78,7 +77,8 @@ class CastDiscoveryService {
       // 也搜索 Chromecast
       _sendSsdpSearch(serviceType: 'urn:dial-multiscreen-org:service:dial:1');
       // Miracast
-      _sendSsdpSearch(serviceType: 'urn:schemas-upnp-org:service:AVTransport:1');
+      _sendSsdpSearch(
+          serviceType: 'urn:schemas-upnp-org:service:AVTransport:1');
     } catch (e) {
       debugPrint('[CastDiscovery] SSDP socket error: $e');
     }
@@ -173,8 +173,7 @@ class CastDiscoveryService {
     }
   }
 
-  Future<void> _probeHost(
-      String host, int port, CastProtocol protocol) async {
+  Future<void> _probeHost(String host, int port, CastProtocol protocol) async {
     try {
       final socket = await Socket.connect(
         host,
@@ -220,8 +219,7 @@ class CastDiscoveryService {
     return map;
   }
 
-  String _extractNameFromHeaders(
-      Map<String, String> headers, String server) {
+  String _extractNameFromHeaders(Map<String, String> headers, String server) {
     // 尝试从 X-FRIENDLY-NAME 或 USN 提取
     final friendly = headers['x-friendly-name'];
     if (friendly != null && friendly.isNotEmpty) return friendly;
@@ -237,8 +235,7 @@ class CastDiscoveryService {
   }
 
   CastProtocol _inferProtocol(String server, String st) {
-    if (server.toLowerCase().contains('chromecast') ||
-        st.contains('dial')) {
+    if (server.toLowerCase().contains('chromecast') || st.contains('dial')) {
       return CastProtocol.chromecast;
     }
     if (server.toLowerCase().contains('airplay') ||
@@ -269,8 +266,7 @@ class CastDiscoveryService {
     try {
       for (final interface in await NetworkInterface.list()) {
         for (final addr in interface.addresses) {
-          if (addr.type == InternetAddressType.IPv4 &&
-              !addr.isLoopback) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
             final parts = addr.address.split('.');
             return '${parts[0]}.${parts[1]}.${parts[2]}';
           }

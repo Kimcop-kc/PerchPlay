@@ -74,8 +74,7 @@ void main() {
     });
 
     test('中文片名带数字：只算"弱猜测"，单独一个文件不成剧集', () {
-      final info =
-          MediaNamer.parse('/x/流浪地球2.2023.2160p.HDR.国语中字.mp4');
+      final info = MediaNamer.parse('/x/流浪地球2.2023.2160p.HDR.国语中字.mp4');
       // `流浪地球2` 片名自带数字，会被弱识别成"第 2 集"（这是可接受的过渡态），
       // 关键在于：弱识别必须靠同类聚集佐证才成列表，单独一个文件不成剧集。
       expect(info.weakEpisode, isTrue);
@@ -94,8 +93,7 @@ void main() {
     });
 
     test('方括号发布组应被去掉', () {
-      final info =
-          MediaNamer.parse('/x/[字幕组] 让子弹飞 [1080p] [中字].mkv');
+      final info = MediaNamer.parse('/x/[字幕组] 让子弹飞 [1080p] [中字].mkv');
       expect(info.isEpisode, isFalse);
       expect(info.seriesTitle, '让子弹飞');
     });
@@ -108,8 +106,8 @@ void main() {
 
     test('中文压片/客户端标签应被剔除（内嵌官中_手动选择）', () {
       // 真实反馈：这个片名清洗不干净 → TMDB 搜不到 → 电影"识别不了"
-      final info = MediaNamer.parse(
-          '/x/Heartstopper.Forever.2160p.内嵌官中_手动选择.mkv');
+      final info =
+          MediaNamer.parse('/x/Heartstopper.Forever.2160p.内嵌官中_手动选择.mkv');
       expect(info.isEpisode, isFalse);
       expect(info.seriesTitle, 'Heartstopper Forever');
     });

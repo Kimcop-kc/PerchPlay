@@ -27,8 +27,15 @@ class ModelImporter {
     final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const [
-        'zip', 'tar', 'gz', 'bz2', 'xz',
-        'onnx', 'txt', 'bin', 'safetensors',
+        'zip',
+        'tar',
+        'gz',
+        'bz2',
+        'xz',
+        'onnx',
+        'txt',
+        'bin',
+        'safetensors',
       ],
     );
     if (result == null) return 0;
@@ -116,8 +123,7 @@ class ModelImporter {
           if (await target.exists()) continue; // 已存在不覆盖
           try {
             await entry.copy(target.path);
-            debugPrint(
-                '[ModelImporter] 提升到顶层: ${entry.path} → ${target.path}');
+            debugPrint('[ModelImporter] 提升到顶层: ${entry.path} → ${target.path}');
           } catch (e) {
             debugPrint('[ModelImporter] 提升失败: $e');
           }
@@ -161,7 +167,11 @@ class ModelImporter {
 
   bool _isArchive(String ext) {
     return const {
-      '.zip', '.tar', '.gz', '.bz2', '.xz',
+      '.zip',
+      '.tar',
+      '.gz',
+      '.bz2',
+      '.xz',
     }.contains(ext);
   }
 

@@ -155,7 +155,8 @@ class StorageManager {
     if (!await dir.exists()) return 0;
     var total = 0;
     try {
-      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in dir.list(recursive: true, followLinks: false)) {
         if (entity is! File) continue;
         try {
           total += await entity.length();

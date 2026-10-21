@@ -218,9 +218,23 @@ class NasFileItem {
   /// 是否为支持的视频文件
   bool get isVideo {
     const videoExtensions = [
-      '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv',
-      '.webm', '.m4v', '.mpg', '.mpeg', '.3gp', '.ts',
-      '.m2ts', '.vob', '.rmvb', '.asf', '.divx',
+      '.mp4',
+      '.mkv',
+      '.avi',
+      '.mov',
+      '.wmv',
+      '.flv',
+      '.webm',
+      '.m4v',
+      '.mpg',
+      '.mpeg',
+      '.3gp',
+      '.ts',
+      '.m2ts',
+      '.vob',
+      '.rmvb',
+      '.asf',
+      '.divx',
     ];
     return videoExtensions.any((ext) => extension.toLowerCase() == ext);
   }

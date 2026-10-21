@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
@@ -29,7 +28,6 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
   InAppWebViewController? _controller;
   CookieManager? _cookieManager;
   bool _saving = false;
-
 
   static const String _ua =
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
@@ -84,8 +82,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
           ),
           Expanded(
             child: InAppWebView(
-              initialUrlRequest:
-                  URLRequest(url: WebUri(widget.type.loginUrl)),
+              initialUrlRequest: URLRequest(url: WebUri(widget.type.loginUrl)),
               initialSettings: InAppWebViewSettings(
                 userAgent: _ua,
                 javaScriptEnabled: true,
@@ -149,7 +146,8 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       final ok = required.every((k) => (map[k] ?? '').isNotEmpty);
       if (!ok) return;
 
-      final cookieStr = map.entries.map((e) => '${e.key}=${e.value}').join('; ');
+      final cookieStr =
+          map.entries.map((e) => '${e.key}=${e.value}').join('; ');
       await _save(cookie: cookieStr, refreshToken: '');
     } catch (e) {
       debugPrint('[CloudLogin] 抓取失败: $e');
@@ -165,8 +163,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       case CloudDriveType.baidu:
         return host.contains('baidu.com');
       case CloudDriveType.aliyun:
-        return host.contains('alipan.com') ||
-            host.contains('aliyundrive.com');
+        return host.contains('alipan.com') || host.contains('aliyundrive.com');
     }
   }
 

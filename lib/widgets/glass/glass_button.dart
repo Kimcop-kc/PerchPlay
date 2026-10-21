@@ -55,7 +55,9 @@ class GlassButton extends StatefulWidget {
     this.icon,
     this.label,
     this.compact = false,
-  }) : ghost = false, outlined = false, filled = true;
+  })  : ghost = false,
+        outlined = false,
+        filled = true;
 
   const GlassButton.outlined({
     super.key,
@@ -70,7 +72,9 @@ class GlassButton extends StatefulWidget {
     this.icon,
     this.label,
     this.compact = false,
-  }) : ghost = false, filled = false, outlined = true;
+  })  : ghost = false,
+        filled = false,
+        outlined = true;
 
   @override
   State<GlassButton> createState() => _GlassButtonState();
@@ -113,7 +117,8 @@ class _GlassButtonState extends State<GlassButton>
     }
 
     return GestureDetector(
-      onTapDown: widget.onTap != null ? (_) => setState(() => _pressed = true) : null,
+      onTapDown:
+          widget.onTap != null ? (_) => setState(() => _pressed = true) : null,
       onTapUp: widget.onTap != null
           ? (_) {
               setState(() => _pressed = false);
@@ -153,7 +158,8 @@ class _GlassButtonState extends State<GlassButton>
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF9B7EF0).withValues(alpha: _pressed ? 0.2 : 0.35),
+            color: const Color(0xFF9B7EF0)
+                .withValues(alpha: _pressed ? 0.2 : 0.35),
             blurRadius: _pressed ? 10 : 18,
             offset: Offset(0, (_pressed ? 2.0 : 6.0)),
           ),
@@ -189,7 +195,8 @@ class _GlassButtonState extends State<GlassButton>
     // ghost
     return BoxDecoration(
       borderRadius: BorderRadius.circular(widget.radius),
-      color: _pressed ? Colors.black.withValues(alpha: 0.06) : Colors.transparent,
+      color:
+          _pressed ? Colors.black.withValues(alpha: 0.06) : Colors.transparent,
     );
   }
 }

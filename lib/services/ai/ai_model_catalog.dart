@@ -104,33 +104,34 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
               'resolve/main/encoder-epoch-99-avg-1.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
             'encoder-epoch-99-avg-1.int8.onnx':
                 'https://huggingface.co/csukuangfj/'
-                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
-                'resolve/main/encoder-epoch-99-avg-1.int8.onnx',
+                    'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                    'resolve/main/encoder-epoch-99-avg-1.int8.onnx',
             'decoder-epoch-99-avg-1.int8.onnx':
                 'https://huggingface.co/csukuangfj/'
-                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
-                'resolve/main/decoder-epoch-99-avg-1.int8.onnx',
+                    'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                    'resolve/main/decoder-epoch-99-avg-1.int8.onnx',
             'joiner-epoch-99-avg-1.int8.onnx':
                 'https://huggingface.co/csukuangfj/'
-                'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
-                'resolve/main/joiner-epoch-99-avg-1.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+                    'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
+                    'resolve/main/joiner-epoch-99-avg-1.int8.onnx',
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/'
                 'resolve/main/tokens.txt',
           },
           fileSha256s: <String, String>{
-            'encoder-epoch-99-avg-1.int8.onnx': '8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b',
-            'decoder-epoch-99-avg-1.int8.onnx': '1a70c593d71e53f023f5f55b0b4cfff5055abb786ee3992e5f63dc2e273cc4fa',
-            'joiner-epoch-99-avg-1.int8.onnx': '1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0',
+            'encoder-epoch-99-avg-1.int8.onnx':
+                '8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b',
+            'decoder-epoch-99-avg-1.int8.onnx':
+                '1a70c593d71e53f023f5f55b0b4cfff5055abb786ee3992e5f63dc2e273cc4fa',
+            'joiner-epoch-99-avg-1.int8.onnx':
+                '1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0',
           },
         ),
       ],
@@ -152,23 +153,21 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
               'resolve/main/model.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'model.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'model.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
                 'resolve/main/model.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/'
                 'resolve/main/tokens.txt',
           },
           fileSha256s: <String, String>{
-            'model.int8.onnx': 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
+            'model.int8.onnx':
+                'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
           },
         ),
       ],
@@ -190,18 +189,16 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-paraformer-zh-small-2024-03-09/'
               'resolve/main/model.int8.onnx',
-          sha256: '3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec',
+          sha256:
+              '3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec',
           fileUrls: <String, String>{
-            'model.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'model.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-paraformer-zh-small-2024-03-09/'
                 'resolve/main/model.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-paraformer-zh-small-2024-03-09/'
                 'resolve/main/tokens.txt',
           },
@@ -224,18 +221,16 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-paraformer-zh-2024-03-09/'
               'resolve/main/model.int8.onnx',
-          sha256: '90bc03034ae1bef9575f8cc798cd1519c8be8aa9e8b458a033e32017ff4d584c',
+          sha256:
+              '90bc03034ae1bef9575f8cc798cd1519c8be8aa9e8b458a033e32017ff4d584c',
           fileUrls: <String, String>{
-            'model.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'model.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-paraformer-zh-2024-03-09/'
                 'resolve/main/model.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-paraformer-zh-2024-03-09/'
                 'resolve/main/tokens.txt',
           },
@@ -258,28 +253,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-streaming-paraformer-zh/'
               'resolve/main/encoder.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'encoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'encoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-zh/'
                 'resolve/main/encoder.int8.onnx',
-            'decoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'decoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-zh/'
                 'resolve/main/decoder.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-zh/'
                 'resolve/main/tokens.txt',
           },
           fileSha256s: <String, String>{
-            'encoder.int8.onnx': '81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a',
-            'decoder.int8.onnx': 'f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f',
+            'encoder.int8.onnx':
+                '81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a',
+            'decoder.int8.onnx':
+                'f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f',
           },
         ),
       ],
@@ -300,28 +293,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
               'resolve/main/encoder.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'encoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'encoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
                 'resolve/main/encoder.int8.onnx',
-            'decoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'decoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
                 'resolve/main/decoder.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/'
                 'resolve/main/tokens.txt',
           },
           fileSha256s: <String, String>{
-            'encoder.int8.onnx': '6047a644b41b236d9d8e89e3b94ef39d1b7037daab028131b722ca52e10b0357',
-            'decoder.int8.onnx': '545427acf508452b7d89969be082c8128c681e3432ff43aef09f6159f4b61a7e',
+            'encoder.int8.onnx':
+                '6047a644b41b236d9d8e89e3b94ef39d1b7037daab028131b722ca52e10b0357',
+            'decoder.int8.onnx':
+                '545427acf508452b7d89969be082c8128c681e3432ff43aef09f6159f4b61a7e',
           },
         ),
       ],
@@ -343,28 +334,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-whisper-base/'
               'resolve/main/base-encoder.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'base-encoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'base-encoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-encoder.int8.onnx',
-            'base-decoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'base-decoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-decoder.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-base/'
                 'resolve/main/base-tokens.txt',
           },
           fileSha256s: <String, String>{
-            'base-encoder.int8.onnx': '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11',
-            'base-decoder.int8.onnx': '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d',
+            'base-encoder.int8.onnx':
+                '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11',
+            'base-decoder.int8.onnx':
+                '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d',
           },
         ),
       ],
@@ -385,28 +374,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-whisper-small/'
               'resolve/main/small-encoder.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'small-encoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'small-encoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-encoder.int8.onnx',
-            'small-decoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'small-decoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-decoder.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-small/'
                 'resolve/main/small-tokens.txt',
           },
           fileSha256s: <String, String>{
-            'small-encoder.int8.onnx': '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9',
-            'small-decoder.int8.onnx': 'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee',
+            'small-encoder.int8.onnx':
+                '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9',
+            'small-decoder.int8.onnx':
+                'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee',
           },
         ),
       ],
@@ -427,28 +414,26 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-whisper-large-v3/'
               'resolve/main/large-v3-encoder.int8.onnx',
           sha256: null,
           fileUrls: <String, String>{
-            'large-v3-encoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'large-v3-encoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-large-v3/'
                 'resolve/main/large-v3-encoder.int8.onnx',
-            'large-v3-decoder.int8.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'large-v3-decoder.int8.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-large-v3/'
                 'resolve/main/large-v3-decoder.int8.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-whisper-large-v3/'
                 'resolve/main/large-v3-tokens.txt',
           },
           fileSha256s: <String, String>{
-            'large-v3-encoder.int8.onnx': 'd531cf17248acc43e8c09b472a0877055e770877857a5332fc1304b36534ec85',
-            'large-v3-decoder.int8.onnx': 'ebc6bfd88e162a46cb3edee8a7e727e1dcbc65cabecb19e2573695e4d495e1af',
+            'large-v3-encoder.int8.onnx':
+                'd531cf17248acc43e8c09b472a0877055e770877857a5332fc1304b36534ec85',
+            'large-v3-decoder.int8.onnx':
+                'ebc6bfd88e162a46cb3edee8a7e727e1dcbc65cabecb19e2573695e4d495e1af',
           },
         ),
       ],
@@ -470,23 +455,22 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/csukuangfj/'
+          url: 'https://huggingface.co/csukuangfj/'
               'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
               'resolve/main/model.onnx',
-          sha256: '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
+          sha256:
+              '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
           fileUrls: <String, String>{
-            'model.onnx':
-                'https://huggingface.co/csukuangfj/'
+            'model.onnx': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
                 'resolve/main/model.onnx',
-            'tokens.txt':
-                'https://huggingface.co/csukuangfj/'
+            'tokens.txt': 'https://huggingface.co/csukuangfj/'
                 'sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-2025-11-12/'
                 'resolve/main/tokens.txt',
           },
           fileSha256s: <String, String>{
-            'model.onnx': '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
+            'model.onnx':
+                '49465dc6dbf82b86a8025f8b45d7be34d43d63944cb0ed022e45ff212d30d306',
           },
         ),
       ],
@@ -534,28 +518,25 @@ class AiModelCatalog {
       mirrors: <ModelMirror>[
         ModelMirror(
           source: DownloadSource.huggingface,
-          url:
-              'https://huggingface.co/google/madlad400-3b-mt/'
+          url: 'https://huggingface.co/google/madlad400-3b-mt/'
               'resolve/main/model-q4k.gguf',
-          sha256: 'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
+          sha256:
+              'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
           fileUrls: <String, String>{
-            'model-q4k.gguf':
-                'https://huggingface.co/google/madlad400-3b-mt/'
+            'model-q4k.gguf': 'https://huggingface.co/google/madlad400-3b-mt/'
                 'resolve/main/model-q4k.gguf',
-            'spiece.model':
-                'https://huggingface.co/google/madlad400-3b-mt/'
+            'spiece.model': 'https://huggingface.co/google/madlad400-3b-mt/'
                 'resolve/main/spiece.model',
-            'tokenizer.json':
-                'https://huggingface.co/google/madlad400-3b-mt/'
+            'tokenizer.json': 'https://huggingface.co/google/madlad400-3b-mt/'
                 'resolve/main/tokenizer.json',
           },
           fileSha256s: <String, String>{
-            'model-q4k.gguf': 'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
+            'model-q4k.gguf':
+                'ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37',
           },
         ),
       ],
-      notes:
-          '覆盖面 400+ 语种，冷门语种几乎只有它能翻。注意：这是 GGUF 格式，'
+      notes: '覆盖面 400+ 语种，冷门语种几乎只有它能翻。注意：这是 GGUF 格式，'
           '当前本地翻译后端只支持 Opus-MT 的 ONNX 格式，下载后暂时无法直接使用；'
           '日常请用 Google 免费 / LLM Key 翻译',
     ),

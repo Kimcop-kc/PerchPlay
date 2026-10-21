@@ -41,30 +41,48 @@ class MediaNamer {
 
   /// 中文数字
   static const _cnDigits = {
-    '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
-    '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+    '一': 1,
+    '二': 2,
+    '两': 2,
+    '三': 3,
+    '四': 4,
+    '五': 5,
+    '六': 6,
+    '七': 7,
+    '八': 8,
+    '九': 9,
+    '十': 10,
   };
   static const _numChar = r'0-9一二三四五六七八九十百';
 
   /// 季集：S01E02 / s1e2 / S01.E02 / S01 E02 / S01-E02
   static final _seasonEpisode =
       RegExp(r'[Ss](\d{1,2})[\s._-]*[Ee][Pp]?[\s._-]?(\d{1,3})');
+
   /// 1x02
   static final _xFormat = RegExp(r'(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)');
+
   /// 第1季第2集
-  static final _cnSeasonEpisode =
-      RegExp('第\\s*([$_numChar]{1,4})\\s*季.*?第\\s*([$_numChar]{1,4})\\s*[集话話期]');
+  static final _cnSeasonEpisode = RegExp(
+      '第\\s*([$_numChar]{1,4})\\s*季.*?第\\s*([$_numChar]{1,4})\\s*[集话話期]');
+
   /// 第02集 / 第2话 / 第三期 / 第一集
   static final _cnEpisode = RegExp('第\\s*([$_numChar]{1,4})\\s*[集话話期]');
+
   /// EP02 / E02 / Ep.02
   static final _epPrefix =
       RegExp(r'(?:^|[\s._\-\[\(])[Ee][Pp]?[\s._-]?(\d{1,3})(?!\d)');
+
   /// [02] / (02) / [02v2]
   static final _bracketNum = RegExp(r'[\[\(]\s*(\d{1,3})(?:v\d+)?\s*[\]\)]');
+
   /// 第1季（只有季）
   static final _cnSeasonOnly = RegExp('第\\s*([$_numChar]{1,3})\\s*季');
+
   /// 单独的 S01 段（`Show.S01.01`）
-  static final _seasonToken = RegExp(r'(?:^|[\s._\-])[Ss](\d{1,2})(?![\dEePp])');
+  static final _seasonToken =
+      RegExp(r'(?:^|[\s._\-])[Ss](\d{1,2})(?![\dEePp])');
+
   /// 年份
   static final _year = RegExp(r'(?:19|20)\d{2}');
 
@@ -80,17 +98,19 @@ class MediaNamer {
     // ── 1) 强标记 ──
     final se = _seasonEpisode.firstMatch(fileName);
     final x = se == null ? _xFormat.firstMatch(fileName) : null;
-    final cn =
-        (se == null && x == null) ? _cnSeasonEpisode.firstMatch(fileName) : null;
+    final cn = (se == null && x == null)
+        ? _cnSeasonEpisode.firstMatch(fileName)
+        : null;
     final cnEp = (se == null && x == null && cn == null)
         ? _cnEpisode.firstMatch(fileName)
         : null;
     final epPre = (se == null && x == null && cn == null && cnEp == null)
         ? _epPrefix.firstMatch(fileName)
         : null;
-    final br = (se == null && x == null && cn == null && cnEp == null && epPre == null)
-        ? _bracketNum.firstMatch(fileName)
-        : null;
+    final br =
+        (se == null && x == null && cn == null && cnEp == null && epPre == null)
+            ? _bracketNum.firstMatch(fileName)
+            : null;
 
     if (se != null) {
       season = _num(se.group(1));
@@ -211,8 +231,7 @@ class MediaNamer {
     // 括号内容与噪标签替换成**等长空格**，保证下标仍能对上原串
     var masked =
         raw.replaceAllMapped(_bracket, (m) => ' ' * m.group(0)!.length);
-    masked =
-        masked.replaceAllMapped(_noise, (m) => ' ' * m.group(0)!.length);
+    masked = masked.replaceAllMapped(_noise, (m) => ' ' * m.group(0)!.length);
     for (final m in RegExp(r'\d+').allMatches(masked)) {
       final text = m.group(0)!;
       if (text.length > 3) continue; // 年份/分辨率之类

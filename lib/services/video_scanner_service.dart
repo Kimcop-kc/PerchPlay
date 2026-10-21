@@ -140,7 +140,6 @@ class VideoScannerService {
 
   final _bridge = NativeBridgeService.instance;
 
-
   /// 最大递归深度，防止符号链接循环 / 超深层级卡死
   static const _maxDepth = 8;
 

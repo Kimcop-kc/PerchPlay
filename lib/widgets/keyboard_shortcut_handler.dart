@@ -67,8 +67,7 @@ class _KeyboardShortcutHandlerState
           children: [
             widget.child,
             // Apple Pencil 悬停预览条
-            if (_showPencilPreview &&
-                _iPadService.supportApplePencilHover)
+            if (_showPencilPreview && _iPadService.supportApplePencilHover)
               _buildPencilHoverPreview(),
           ],
         ),

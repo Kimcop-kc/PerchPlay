@@ -85,22 +85,22 @@ class IPadOptimizationService {
   // ────────────── Liquid Retina XDR ──────────────
 
   bool get hasXDRDisplay =>
-      _device.isIPadPro2022 ||
-      (_device.iPadModel == IPadModel.ipadPro2021);
+      _device.isIPadPro2022 || (_device.iPadModel == IPadModel.ipadPro2021);
 
   /// 设置页使用的别名：是否支持 XDR 显示
   bool get supportXDR => hasXDRDisplay;
 
   /// HDR 内容支持
-  bool get supportHDRContent => hasXDRDisplay || _device.capabilities.supportHDR;
+  bool get supportHDRContent =>
+      hasXDRDisplay || _device.capabilities.supportHDR;
 
   // ────────────── iPad 导航栏样式 ──────────────
 
   /// iPad 应该使用固定左侧导航栏还是底部栏
   bool get useSidebarNavigation {
     if (_device.isIPad) {
-      final mode = inferLayoutMode(
-          _device.capabilities.maxScreenWidth.toDouble());
+      final mode =
+          inferLayoutMode(_device.capabilities.maxScreenWidth.toDouble());
       // SplitView 紧凑模式下可降至底部栏
       return mode == IPadLayoutMode.fullScreen ||
           mode == IPadLayoutMode.splitHalf;
@@ -147,24 +147,23 @@ class IPadOptimizationService {
                             fontSize: 18,
                             fontWeight: FontWeight.w700)),
                     Text('M2 芯片 · ProMotion · XDR',
-                        style: TextStyle(
-                            color: Color(0xFF8E8E93), fontSize: 13)),
+                        style:
+                            TextStyle(color: Color(0xFF8E8E93), fontSize: 13)),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 20),
-            _featureRow(Icons.aspect_ratio_rounded, '台前调度',
-                '支持多窗口、分屏、Slide Over'),
+            _featureRow(
+                Icons.aspect_ratio_rounded, '台前调度', '支持多窗口、分屏、Slide Over'),
             const SizedBox(height: 10),
-            _featureRow(Icons.keyboard_rounded, '键盘快捷键',
-                '妙控键盘 Space 播放/暂停，←→ 快进快退'),
+            _featureRow(
+                Icons.keyboard_rounded, '键盘快捷键', '妙控键盘 Space 播放/暂停，←→ 快进快退'),
             const SizedBox(height: 10),
-            _featureRow(Icons.draw_rounded, 'Apple Pencil 悬停',
-                '悬停预览进度条、快速定位'),
+            _featureRow(Icons.draw_rounded, 'Apple Pencil 悬停', '悬停预览进度条、快速定位'),
             const SizedBox(height: 10),
-            _featureRow(Icons.hdr_on_rounded, 'XDR 显示',
-                '1600nit 峰值亮度，HDR 内容完美呈现'),
+            _featureRow(
+                Icons.hdr_on_rounded, 'XDR 显示', '1600nit 峰值亮度，HDR 内容完美呈现'),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -195,9 +194,11 @@ class IPadOptimizationService {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 14)),
+                  style:
+                      const TextStyle(color: Color(0xFF1C1C1E), fontSize: 14)),
               Text(subtitle,
-                  style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12)),
+                  style:
+                      const TextStyle(color: Color(0xFF8E8E93), fontSize: 12)),
             ],
           ),
         ),

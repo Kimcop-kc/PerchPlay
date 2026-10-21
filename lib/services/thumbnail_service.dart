@@ -119,8 +119,9 @@ class ThumbnailService {
     final end = (durationMs * _skipTailRatio).round();
     if (end <= start) return []; // 视频太短，没有"中间段"
 
-    final count =
-        durationMs < 600000 /* 10 分钟 */ ? _samplePointsShort : _samplePointsLong;
+    final count = durationMs < 600000 /* 10 分钟 */
+        ? _samplePointsShort
+        : _samplePointsLong;
     final step = (end - start) / (count + 1); // count 个点在 start~end 内均匀分割
     return List.generate(count, (i) => (start + step * (i + 1)).round());
   }
@@ -130,7 +131,8 @@ class ThumbnailService {
     final hash = videoPath.hashCode.abs().toRadixString(36);
     final base = p.basenameWithoutExtension(videoPath);
     // 文件名过长时截断 base（保留前 40 字符 + '_' + hash）
-    final safe = base.length > 40 ? '${base.substring(0, 40)}_$hash' : '${base}_$hash';
+    final safe =
+        base.length > 40 ? '${base.substring(0, 40)}_$hash' : '${base}_$hash';
     return p.join(dir, '$safe.jpg');
   }
 

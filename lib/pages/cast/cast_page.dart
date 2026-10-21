@@ -92,7 +92,8 @@ class _CastPageState extends ConsumerState<CastPage>
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 13)),
           ),
         ],
       ),
@@ -224,8 +225,8 @@ class _CastPageState extends ConsumerState<CastPage>
             const SizedBox(height: 14),
             Text(
               state.isDiscovering ? '正在搜索投屏设备…' : '未发现投屏设备',
-              style:
-                  const TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
+              style: const TextStyle(
+                  color: GlassTheme.textSecondary, fontSize: 15),
             ),
             const SizedBox(height: 6),
             const Text('请确保设备与手机在同一 Wi-Fi 网络',
@@ -257,8 +258,7 @@ class _CastPageState extends ConsumerState<CastPage>
               const SizedBox(height: 12),
               Text(
                 state.isDiscovering ? '搜索中...' : '未发现投屏设备',
-                style:
-                    TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
+                style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: 6),
               const Text('请确保设备在同一 Wi-Fi 网络',
@@ -275,9 +275,8 @@ class _CastPageState extends ConsumerState<CastPage>
     final chromecast = state.devices
         .where((d) => d.protocol == CastProtocol.chromecast)
         .toList();
-    final airplay = state.devices
-        .where((d) => d.protocol == CastProtocol.airplay)
-        .toList();
+    final airplay =
+        state.devices.where((d) => d.protocol == CastProtocol.airplay).toList();
     final others = state.devices
         .where((d) =>
             d.protocol == CastProtocol.unknown ||
@@ -372,10 +371,9 @@ class _CastPageState extends ConsumerState<CastPage>
                           fontWeight: FontWeight.w600,
                           fontSize: 14)),
                   const SizedBox(height: 2),
-                  Text(
-                      '${device.protocol.name.toUpperCase()} · ${device.host}',
-                      style:
-                          const TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
+                  Text('${device.protocol.name.toUpperCase()} · ${device.host}',
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 11)),
                 ],
               ),
             ),
@@ -456,7 +454,8 @@ class _CastPageState extends ConsumerState<CastPage>
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text('${device.protocol.name.toUpperCase()} · ${device.host}',
-              style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 13)),
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 13)),
           const SizedBox(height: 30),
           // 控制按钮
           Row(
@@ -508,7 +507,8 @@ class _CastPageState extends ConsumerState<CastPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cast_connected_rounded, size: 48, color: GlassTheme.textTertiary),
+          Icon(Icons.cast_connected_rounded,
+              size: 48, color: GlassTheme.textTertiary),
           const SizedBox(height: 12),
           Text('选择左侧设备开始投屏',
               style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
@@ -536,7 +536,10 @@ class _CastPageState extends ConsumerState<CastPage>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.06)],
+                colors: [
+                  color.withValues(alpha: 0.18),
+                  color.withValues(alpha: 0.06)
+                ],
               ),
               border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
             ),
@@ -544,7 +547,9 @@ class _CastPageState extends ConsumerState<CastPage>
           ),
         ),
         const SizedBox(height: 6),
-        Text(label, style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
+        Text(label,
+            style:
+                const TextStyle(color: GlassTheme.textTertiary, fontSize: 11)),
       ],
     );
   }

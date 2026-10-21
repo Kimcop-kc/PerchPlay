@@ -93,8 +93,7 @@ sherpa.OfflineRecognizer? buildOfflineRecognizer(
   final hasJoiner = onnx.keys.any(
     (k) => k.contains('joiner') && k.endsWith('.onnx'),
   );
-  final isParaformer =
-      onnx.keys.any((k) => k.contains('paraformer')) ||
+  final isParaformer = onnx.keys.any((k) => k.contains('paraformer')) ||
       modelDir.toLowerCase().contains('paraformer');
 
   sherpa.OfflineModelConfig modelConfig;

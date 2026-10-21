@@ -40,6 +40,9 @@ class PlayerGestureLayer extends StatefulWidget {
   final int positionMs;
   final int durationMs;
 
+  /// 为 true 时屏蔽手势层的 seek 手势（给 GlassSlider 拖动时用）。
+  final bool blockSeek;
+
   const PlayerGestureLayer({
     super.key,
     this.child,
@@ -56,6 +59,7 @@ class PlayerGestureLayer extends StatefulWidget {
     this.initialVolume = 0.5,
     this.positionMs = 0,
     this.durationMs = 0,
+    this.blockSeek = false,
   });
 
   @override
@@ -110,10 +114,8 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
           onScaleStart: _onScaleStart,
           onScaleUpdate: _onScaleUpdate,
           onScaleEnd: _onScaleEnd,
-          onLongPressStart:
-              hasLongPress ? (_) => _onLongPressStart() : null,
-          onLongPressEnd:
-              hasLongPress ? (_) => _onLongPressEnd() : null,
+          onLongPressStart: hasLongPress ? (_) => _onLongPressStart() : null,
+          onLongPressEnd: hasLongPress ? (_) => _onLongPressEnd() : null,
           child: widget.child ?? const SizedBox.expand(),
         ),
 
@@ -150,7 +152,10 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     _startPositionMs = widget.positionMs;
     _brightnessValue = null;
     _volumeValue = null;
-    _previewTargetMs = null;
+    // 如果外部锁定 seek，不初始化预览值
+    if (!widget.blockSeek) {
+      _previewTargetMs = null;
+    }
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -167,6 +172,11 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
       if (dx.abs() < _axisThreshold && dy.abs() < _axisThreshold) return;
       _axis =
           dx.abs() > dy.abs() ? _GestureAxis.horizontal : _GestureAxis.vertical;
+      // 如果外部锁定 seek（如 GlassSlider 正在拖动），横向手势降级：不响
+      if (_axis == _GestureAxis.horizontal && widget.blockSeek) {
+        _axis = _GestureAxis.none;
+        return;
+      }
     }
 
     switch (_axis) {
@@ -187,7 +197,9 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   void _onScaleEnd(ScaleEndDetails details) {
     if (_isLongPressing) return;
     final target = _previewTargetMs;
-    if (_axis == _GestureAxis.horizontal && target != null) {
+    if (_axis == _GestureAxis.horizontal &&
+        target != null &&
+        !widget.blockSeek) {
       widget.onSeekCommit?.call(target);
     }
     _startPosition = null;

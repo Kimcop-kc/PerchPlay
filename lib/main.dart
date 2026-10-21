@@ -197,13 +197,21 @@ class VideoPlayerApp extends StatelessWidget {
         iconTheme: const IconThemeData(color: GlassTheme.textSecondary),
         textTheme: const TextTheme(
           headlineLarge: TextStyle(
-            color: GlassTheme.textPrimary, fontSize: 32, fontWeight: FontWeight.w700),
+              color: GlassTheme.textPrimary,
+              fontSize: 32,
+              fontWeight: FontWeight.w700),
           headlineMedium: TextStyle(
-            color: GlassTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.w600),
+              color: GlassTheme.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w600),
           titleLarge: TextStyle(
-            color: GlassTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w600),
+              color: GlassTheme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w600),
           titleMedium: TextStyle(
-            color: GlassTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
+              color: GlassTheme.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w500),
           bodyLarge: TextStyle(color: GlassTheme.textSecondary, fontSize: 16),
           bodyMedium: TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
           bodySmall: TextStyle(color: GlassTheme.textTertiary, fontSize: 12),
@@ -252,10 +260,14 @@ class _CrashScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 40),
-                const Icon(Icons.error_outline, color: Color(0xFFFF4D6D), size: 48),
+                const Icon(Icons.error_outline,
+                    color: Color(0xFFFF4D6D), size: 48),
                 const SizedBox(height: 16),
                 const Text('PerchPlay 启动失败',
-                    style: TextStyle(color: Color(0xFF1C1C1E), fontSize: 22, fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        color: Color(0xFF1C1C1E),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 const Text('请重启应用，如仍失败请联系开发者',
                     style: TextStyle(color: Color(0xFF3C3C43), fontSize: 14)),
@@ -264,7 +276,10 @@ class _CrashScreen extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Text(
                       details.exceptionAsString(),
-                      style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontFamily: 'monospace'),
+                      style: const TextStyle(
+                          color: Color(0xFF8E8E93),
+                          fontSize: 12,
+                          fontFamily: 'monospace'),
                     ),
                   ),
                 ),

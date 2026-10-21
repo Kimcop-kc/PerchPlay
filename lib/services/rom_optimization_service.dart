@@ -14,8 +14,7 @@ class RomOptimizationService {
   // ────────────── 电池优化白名单 ──────────────
   // 小米 / 华为 / OPPO / vivo 在后台播放时必须请求忽略电池优化
 
-  bool get needsBatteryOptimizationBypass =>
-      _device.isChineseBrand;
+  bool get needsBatteryOptimizationBypass => _device.isChineseBrand;
 
   String get batteryOptimizationGuideText {
     if (_device.isXiaomi) {
@@ -92,8 +91,7 @@ class RomOptimizationService {
 
   // ────────────── MIUI 特定 ──────────────
 
-  bool get isMiuiWithXiaomiAccount =>
-      _device.isXiaomi; // 小米账号优化
+  bool get isMiuiWithXiaomiAccount => _device.isXiaomi; // 小米账号优化
 
   String get miuiVideoToolboxGuide =>
       '安全中心 → 视频工具箱 → 添加 PerchPlay → 开启画质增强 / 动态补偿';
@@ -191,8 +189,8 @@ class RomOptimizationService {
               Navigator.pop(ctx);
               completer.complete(false);
             },
-            child: const Text('稍后设置',
-                style: TextStyle(color: Color(0xFF8E8E93))),
+            child:
+                const Text('稍后设置', style: TextStyle(color: Color(0xFF8E8E93))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(

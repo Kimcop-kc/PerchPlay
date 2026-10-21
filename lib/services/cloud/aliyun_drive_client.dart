@@ -78,7 +78,8 @@ class AliyunDriveClient {
       final req = await _client.postUrl(uri);
       req.headers.contentType = ContentType.json;
       req.headers.set('User-Agent', userAgent);
-      req.write(jsonEncode({'refresh_token': rt, 'grant_type': 'refresh_token'}));
+      req.write(
+          jsonEncode({'refresh_token': rt, 'grant_type': 'refresh_token'}));
       final resp = await req.close();
       if (resp.statusCode != 200) {
         debugPrint('[Aliyun] 换 token HTTP ${resp.statusCode}');
@@ -120,9 +121,8 @@ class AliyunDriveClient {
       // 取昵称
       try {
         final base = _useOpenApi ? _openApi : _webApi;
-        final path = _useOpenApi
-            ? '/adrive/v1.0/user/getDriveInfo'
-            : '/v2/user/get';
+        final path =
+            _useOpenApi ? '/adrive/v1.0/user/getDriveInfo' : '/v2/user/get';
         final req = await _client.getUrl(Uri.parse('$base$path'));
         _authHeaders(token).forEach(req.headers.set);
         final resp = await req.close();
@@ -193,8 +193,7 @@ class AliyunDriveClient {
             path: parentPath == '/' ? '/$name' : '$parentPath/$name',
             isDirectory: dir,
             size: (raw['size'] as num?)?.toInt() ?? 0,
-            modified: DateTime.tryParse(
-                raw['updated_at']?.toString() ?? ''),
+            modified: DateTime.tryParse(raw['updated_at']?.toString() ?? ''),
             extension: _extOf(name),
           ));
         }

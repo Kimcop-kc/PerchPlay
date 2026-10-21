@@ -65,13 +65,15 @@ class GlassPanel extends StatelessWidget {
                     Colors.white.withValues(alpha: 0.22),
                   ],
                 ),
-                boxShadow: showShadow ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 28,
-                    offset: const Offset(0, 12),
-                  ),
-                ] : null,
+                boxShadow: showShadow
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
+                        ),
+                      ]
+                    : null,
               ),
               child: child,
             ),

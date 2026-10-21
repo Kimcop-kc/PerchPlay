@@ -55,9 +55,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                             .map((id) => videosById[id])
                             .whereType<VideoModel>()
                             .toList();
-                        final firstVideo = videos.isNotEmpty
-                            ? videos.first
-                            : null;
+                        final firstVideo =
+                            videos.isNotEmpty ? videos.first : null;
 
                         // 带队列播放：整张列表按顺序连播
                         void playFrom(int index) {
@@ -165,7 +164,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                   iconSize: 20,
                                   visualDensity: VisualDensity.compact,
                                   color: GlassTheme.textTertiary,
-                                  icon: const Icon(Icons.delete_outline_rounded),
+                                  icon:
+                                      const Icon(Icons.delete_outline_rounded),
                                   onPressed: () => _confirmDelete(playlist),
                                 ),
                               ],
@@ -184,7 +184,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             child: CircularProgressIndicator(color: GlassTheme.accentPurple),
           ),
           error: (e, _) => Center(
-            child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
+            child: Text('⚠ $e',
+                style: const TextStyle(color: GlassTheme.textSecondary)),
           ),
         ),
       ),
@@ -199,7 +200,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: GlassTheme.surfaceWhite,
         title: Text('删除「${playlist.name}」',
-            style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+            style:
+                const TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
         content: Text(
           isAuto
               ? '这是自动生成的列表。删除后不会再自动重建，'
@@ -226,7 +228,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(isAuto ? '已删除自动列表「${playlist.name}」' : '已删除「${playlist.name}」'),
+        content: Text(
+            isAuto ? '已删除自动列表「${playlist.name}」' : '已删除「${playlist.name}」'),
         action: isAuto
             ? SnackBarAction(
                 label: '恢复',
@@ -322,7 +325,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             hintText: '输入列表名称',
             hintStyle: TextStyle(color: GlassTheme.textTertiary),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.2)),
+              borderSide:
+                  BorderSide(color: Colors.black.withValues(alpha: 0.2)),
             ),
             focusedBorder: const UnderlineInputBorder(
               borderSide: BorderSide(color: GlassTheme.accentTeal),
@@ -332,7 +336,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消', style: TextStyle(color: GlassTheme.textSecondary)),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
@@ -372,7 +377,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (emoji.isNotEmpty) Text(emoji, style: const TextStyle(fontSize: 10)),
+          if (emoji.isNotEmpty)
+            Text(emoji, style: const TextStyle(fontSize: 10)),
           if (emoji.isNotEmpty) const SizedBox(width: 2),
           const Text('个人',
               style: TextStyle(color: GlassTheme.accentTeal, fontSize: 10)),

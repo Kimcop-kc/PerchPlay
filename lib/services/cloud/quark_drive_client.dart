@@ -64,8 +64,8 @@ class QuarkDriveClient {
 
   Future<String?> _fetchNickname() async {
     try {
-      final uri = Uri.parse(
-          'https://pan.quark.cn/account/info?fr=pc&platform=pc');
+      final uri =
+          Uri.parse('https://pan.quark.cn/account/info?fr=pc&platform=pc');
       final req = await _client.getUrl(uri);
       _headers.forEach(req.headers.set);
       final resp = await req.close();
@@ -153,8 +153,8 @@ class QuarkDriveClient {
   /// 夸克的直链有时效（约几小时），播放前现取即可。
   Future<String?> getDownloadUrl(String fid) async {
     try {
-      final uri = Uri.parse(
-          '$_base/file/download?pr=ucpro&fr=pc&uc_param_str=');
+      final uri =
+          Uri.parse('$_base/file/download?pr=ucpro&fr=pc&uc_param_str=');
       final req = await _client.postUrl(uri);
       _headers.forEach(req.headers.set);
       req.headers.contentType = ContentType.json;

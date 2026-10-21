@@ -183,9 +183,8 @@ class LocalTranslateBackend {
 
         final raw = logitsTensor.value as List<dynamic>;
         final lastStepLogits = (raw[0] as List<dynamic>).last as List<dynamic>;
-        final logits = lastStepLogits
-            .map((e) => (e as num).toDouble())
-            .toList();
+        final logits =
+            lastStepLogits.map((e) => (e as num).toDouble()).toList();
         final probs = _softmax(logits);
 
         int nextToken = 0;

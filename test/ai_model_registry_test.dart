@@ -59,27 +59,50 @@ void main() {
       for (final model in catalog) {
         expect(ids.add(model.id), isTrue, reason: '模型 id 重复：${model.id}');
         expect(model.sizeMB, greaterThan(0), reason: '${model.id} 体积必须为正');
-        expect(model.capabilities, isNotEmpty,
-            reason: '${model.id} 至少要有一种能力');
+        expect(model.capabilities, isNotEmpty, reason: '${model.id} 至少要有一种能力');
         expect(model.kind, isNotNull);
-        expect(model.license.isNotEmpty, isTrue,
-            reason: '${model.id} 许可证不能为空');
+        expect(model.license.isNotEmpty, isTrue, reason: '${model.id} 许可证不能为空');
         expect(model.mirrors, isNotEmpty, reason: '${model.id} 至少要有一条镜像');
       }
     });
 
     test('现清单模型数量正确（ASR 10 + 翻译 2 = 12）', () {
-      expect(catalog.length, 12,
-          reason: '精简后应只剩 12 个模型，多了说明有漏删的、少了说明误删了');
+      expect(catalog.length, 12, reason: '精简后应只剩 12 个模型，多了说明有漏删的、少了说明误删了');
     });
 
     test('需求点名的模型都在，体积/许可证/档位/类别与约定一致', () {
-      const expected = <String, ({int sizeMB, String license, ModelTier tier, ModelKind kind})>{
-        'sensevoice-small': (sizeMB: 234, license: 'Apache-2.0', tier: ModelTier.balanced, kind: ModelKind.asr),
-        'paraformer-zh-streaming': (sizeMB: 220, license: 'Apache-2.0', tier: ModelTier.balanced, kind: ModelKind.asr),
-        'whisper-large-v3': (sizeMB: 1600, license: 'MIT', tier: ModelTier.highQuality, kind: ModelKind.asr),
-        'opus-mt-zh-en': (sizeMB: 110, license: 'CC-BY-4.0', tier: ModelTier.light, kind: ModelKind.nmt),
-        'madlad-400-3b': (sizeMB: 2000, license: 'Apache-2.0', tier: ModelTier.multilingual, kind: ModelKind.nmt),
+      const expected = <String,
+          ({int sizeMB, String license, ModelTier tier, ModelKind kind})>{
+        'sensevoice-small': (
+          sizeMB: 234,
+          license: 'Apache-2.0',
+          tier: ModelTier.balanced,
+          kind: ModelKind.asr
+        ),
+        'paraformer-zh-streaming': (
+          sizeMB: 220,
+          license: 'Apache-2.0',
+          tier: ModelTier.balanced,
+          kind: ModelKind.asr
+        ),
+        'whisper-large-v3': (
+          sizeMB: 1600,
+          license: 'MIT',
+          tier: ModelTier.highQuality,
+          kind: ModelKind.asr
+        ),
+        'opus-mt-zh-en': (
+          sizeMB: 110,
+          license: 'CC-BY-4.0',
+          tier: ModelTier.light,
+          kind: ModelKind.nmt
+        ),
+        'madlad-400-3b': (
+          sizeMB: 2000,
+          license: 'Apache-2.0',
+          tier: ModelTier.multilingual,
+          kind: ModelKind.nmt
+        ),
       };
       for (final entry in expected.entries) {
         final model = registry.byId(entry.key);
@@ -88,10 +111,8 @@ void main() {
             reason: '${entry.key} 的体积与约定不一致');
         expect(model.license, entry.value.license,
             reason: '${entry.key} 的许可证与约定不一致');
-        expect(model.tier, entry.value.tier,
-            reason: '${entry.key} 的档位与约定不一致');
-        expect(model.kind, entry.value.kind,
-            reason: '${entry.key} 的类别与约定不一致');
+        expect(model.tier, entry.value.tier, reason: '${entry.key} 的档位与约定不一致');
+        expect(model.kind, entry.value.kind, reason: '${entry.key} 的类别与约定不一致');
       }
     });
   });
@@ -128,8 +149,7 @@ void main() {
         deviceRamGB: 4,
       );
       expect(pick, isNotNull, reason: '4GB 下仍有轻量翻译模型可用');
-      expect(pick!.minRamGB, lessThanOrEqualTo(4),
-          reason: '推荐结果必须过内存门槛');
+      expect(pick!.minRamGB, lessThanOrEqualTo(4), reason: '推荐结果必须过内存门槛');
       expect(pick.id, 'opus-mt-zh-en',
           reason: '4GB 下 highQuality 的 madlad 被门坎拦掉，light 里优先 NMT');
     });
@@ -178,8 +198,7 @@ void main() {
         deviceRamGB: 16,
         preferredTier: ModelTier.balanced,
       );
-      expect(pick, isNotNull,
-          reason: '偏好档位没有候选时应回退，而不是返回 null');
+      expect(pick, isNotNull, reason: '偏好档位没有候选时应回退，而不是返回 null');
       expect(pick!.minRamGB, lessThanOrEqualTo(16));
     });
 
@@ -225,10 +244,10 @@ void main() {
     });
 
     test('id 兜底只在 tier/kind/体积全部平手时才生效', () {
-      final a = _testModel(
-          id: 'aaa', capability: AiCapability.asr, sizeMB: 100);
-      final b = _testModel(
-          id: 'bbb', capability: AiCapability.asr, sizeMB: 100);
+      final a =
+          _testModel(id: 'aaa', capability: AiCapability.asr, sizeMB: 100);
+      final b =
+          _testModel(id: 'bbb', capability: AiCapability.asr, sizeMB: 100);
       final injected = AiModelRegistry(models: <AiModel>[b, a]);
       expect(
         injected.recommended(capability: AiCapability.asr, deviceRamGB: 16)?.id,
@@ -318,9 +337,7 @@ void main() {
         },
       );
       expect(
-        injected
-            .recommended(capability: AiCapability.asr, deviceRamGB: 4)
-            ?.id,
+        injected.recommended(capability: AiCapability.asr, deviceRamGB: 4)?.id,
         'small-alt',
         reason: '默认模型装不下就必须让位',
       );
@@ -362,15 +379,14 @@ void main() {
         model.mirrors.map((m) => m.url).toSet(),
       );
       // 不能原地改清单：偏好重排后，原模型条目的镜像顺序必须保持不变
-      expect(model.mirrors.first.source, originalFirst,
-          reason: '不能原地改清单');
+      expect(model.mirrors.first.source, originalFirst, reason: '不能原地改清单');
     });
 
     test('模型没有该来源时保持原顺序', () {
       final model = registry.byId('madlad-400-3b')!;
       final before = model.mirrors.map((m) => m.url).toList();
-      final mirrors = registry.mirrorsFor(
-          model, preferred: DownloadSource.githubRelease);
+      final mirrors =
+          registry.mirrorsFor(model, preferred: DownloadSource.githubRelease);
       expect(mirrors.map((m) => m.url).toList(), before,
           reason: '偏好来源不存在时不能重排、更不能清空');
     });
@@ -434,7 +450,8 @@ void main() {
       expect(text, contains('Apache-2.0'));
 
       expect(AiModelSelector.tierLabel(model.tier), '均衡');
-      expect(AiModelSelector.capabilityLabel(AiCapability.asrStreaming), '实时识别');
+      expect(
+          AiModelSelector.capabilityLabel(AiCapability.asrStreaming), '实时识别');
       expect(AiModelSelector.sourceLabel(DownloadSource.modelscope), '魔搭');
     });
   });

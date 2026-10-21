@@ -164,9 +164,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
           ],
           Expanded(
             child: Text(
-              _current == null
-                  ? '选择账号后浏览文件'
-                  : _dirPath,
+              _current == null ? '选择账号后浏览文件' : _dirPath,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -307,8 +305,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
             padding: const EdgeInsets.only(bottom: 8),
             child: GlassPanel(
               radius: GlassTheme.radiusSm,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: InkWell(
                 onTap: () => _onTapItem(f),
                 child: Row(
@@ -485,8 +482,8 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       _loading = true;
       _error = null;
     });
-    final list = await _svc.listDirectory(acc.type, _dirId,
-        parentPath: _dirPath);
+    final list =
+        await _svc.listDirectory(acc.type, _dirId, parentPath: _dirPath);
     if (!mounted) return;
     if (list == null) {
       setState(() {
@@ -496,9 +493,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       return;
     }
     // 只显示文件夹和视频，其它类型对播放器没意义
-    final filtered = list
-        .where((e) => e.isDirectory || e.isVideo)
-        .toList()
+    final filtered = list.where((e) => e.isDirectory || e.isVideo).toList()
       ..sort((a, b) {
         if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());

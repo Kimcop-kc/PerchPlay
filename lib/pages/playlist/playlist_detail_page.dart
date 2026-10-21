@@ -17,8 +17,8 @@ class PlaylistDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playlists = ref.watch(playlistProvider).valueOrNull ??
-        const <Playlist>[];
+    final playlists =
+        ref.watch(playlistProvider).valueOrNull ?? const <Playlist>[];
     Playlist? playlist;
     for (final p in playlists) {
       if (p.id == playlistId) {

@@ -48,8 +48,8 @@ class BaiduDriveClient {
       if (list == null) return null;
       // 取昵称
       try {
-        final uri = Uri.parse(
-            'https://pan.baidu.com/rest/2.0/xpan/nas?method=uinfo');
+        final uri =
+            Uri.parse('https://pan.baidu.com/rest/2.0/xpan/nas?method=uinfo');
         final req = await _client.getUrl(uri);
         _headers.forEach(req.headers.set);
         final resp = await req.close();
@@ -104,8 +104,7 @@ class BaiduDriveClient {
           final name = raw['server_filename']?.toString() ?? '';
           if (name.isEmpty) continue;
           final isDir = raw['isdir'] == 1 || raw['isdir'] == true;
-          final childPath =
-              parentPath == '/' ? '/$name' : '$parentPath/$name';
+          final childPath = parentPath == '/' ? '/$name' : '$parentPath/$name';
           items.add(CloudFileItem(
             id: raw['fs_id']?.toString() ?? '',
             name: name,

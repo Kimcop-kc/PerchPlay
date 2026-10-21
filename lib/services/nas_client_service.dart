@@ -118,8 +118,7 @@ class NasClientService {
     for (final e in entries) {
       // 跳过 . / .. （部分服务端会返回）
       if (e.name == '.' || e.name == '..') continue;
-      final childPath =
-          rel.isEmpty ? '/${e.name}' : '/$rel/${e.name}';
+      final childPath = rel.isEmpty ? '/${e.name}' : '/$rel/${e.name}';
       final st = e.stat;
       items.add(NasFileItem(
         name: e.name,
@@ -273,9 +272,9 @@ class NasClientService {
       final href = _decodeEntities(_tagText(block, 'href') ?? '');
       if (href.isEmpty) continue;
 
-      final isDir = RegExp(r'<(?:[A-Za-z0-9]+:)?collection',
-              caseSensitive: false)
-          .hasMatch(block);
+      final isDir =
+          RegExp(r'<(?:[A-Za-z0-9]+:)?collection', caseSensitive: false)
+              .hasMatch(block);
 
       // 跳过自身
       final decodedHref = Uri.decodeFull(href).replaceAll(RegExp(r'/$'), '');
@@ -283,16 +282,18 @@ class NasClientService {
           Uri.decodeFull(currentPath).replaceAll(RegExp(r'/$'), '');
       if (decodedHref == decodedPath) continue;
 
-      final size = int.tryParse(_tagText(block, 'getcontentlength') ?? '0') ?? 0;
+      final size =
+          int.tryParse(_tagText(block, 'getcontentlength') ?? '0') ?? 0;
       final modifiedStr = _tagText(block, 'getlastmodified');
       final modified =
           modifiedStr == null ? null : DateTime.tryParse(modifiedStr);
 
       var displayName = _tagText(block, 'displayname') ?? '';
       if (displayName.isEmpty) {
-        displayName = Uri.decodeFull(href).split('/')
-            .where((s) => s.isNotEmpty)
-            .lastOrNull ??
+        displayName = Uri.decodeFull(href)
+                .split('/')
+                .where((s) => s.isNotEmpty)
+                .lastOrNull ??
             href;
       }
 
@@ -408,9 +409,8 @@ class NasClientService {
         : parentPath;
     final fullPath = '$base/$name';
 
-    final ext = name.contains('.')
-        ? '.${name.split('.').last.toLowerCase()}'
-        : '';
+    final ext =
+        name.contains('.') ? '.${name.split('.').last.toLowerCase()}' : '';
 
     return NasFileItem(
       name: name,
@@ -469,10 +469,10 @@ class NasClientService {
     final completer = Completer<String>();
     final buffer = StringBuffer();
     socket.cast<List<int>>().transform(utf8.decoder).listen(
-      buffer.write,
-      onDone: () => completer.complete(buffer.toString()),
-      onError: (e) => completer.complete(buffer.toString()),
-    );
+          buffer.write,
+          onDone: () => completer.complete(buffer.toString()),
+          onError: (e) => completer.complete(buffer.toString()),
+        );
     // 超时
     Future.delayed(const Duration(seconds: 2), () {
       if (!completer.isCompleted) completer.complete(buffer.toString());
@@ -482,8 +482,8 @@ class NasClientService {
 
   Map<String, dynamic>? _parsePasv(String response) {
     // 227 Entering Passive Mode (h1,h2,h3,h4,p1,p2)
-    final match = RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)')
-        .firstMatch(response);
+    final match =
+        RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)').firstMatch(response);
     if (match == null) return null;
 
     final host =

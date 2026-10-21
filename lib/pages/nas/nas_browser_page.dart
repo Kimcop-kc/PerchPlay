@@ -112,7 +112,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(message,
-                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 13)),
           ),
           IconButton(
             icon: const Icon(Icons.close_rounded,
@@ -266,11 +267,12 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.dns_rounded, size: 48, color: GlassTheme.textTertiary),
+                      Icon(Icons.dns_rounded,
+                          size: 48, color: GlassTheme.textTertiary),
                       const SizedBox(height: 12),
                       Text('选择一个连接以浏览文件',
-                          style:
-                              TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
+                          style: TextStyle(
+                              color: GlassTheme.textSecondary, fontSize: 15)),
                     ],
                   ),
                 ),
@@ -283,8 +285,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
     return AppPageHeader(
       title: '网络存储',
-      subtitle:
-          _showCloud ? '云盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
+      subtitle: _showCloud ? '云盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
       asSliver: false,
       childGap: 12,
       trailing: Row(
@@ -336,7 +337,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         }
         final connIndex =
             AppBreakpoints.isLargeScreen(context) ? index : index - 1;
-        if (connIndex >= state.connections.length) return const SizedBox.shrink();
+        if (connIndex >= state.connections.length)
+          return const SizedBox.shrink();
 
         final conn = state.connections[connIndex];
         final isActive = state.activeConnection?.id == conn.id;
@@ -372,12 +374,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                             .withValues(alpha: 0.06),
                       ],
                     ),
-                    borderRadius:
-                        BorderRadius.circular(GlassTheme.radiusXs),
+                    borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
                   ),
                   child: Icon(
                     _protocolIcon(conn.protocol),
-                    color: isActive ? GlassTheme.accentTeal : GlassTheme.textSecondary,
+                    color: isActive
+                        ? GlassTheme.accentTeal
+                        : GlassTheme.textSecondary,
                     size: 22,
                   ),
                 ),
@@ -466,7 +469,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                 scrollDirection: Axis.horizontal,
                 child: Text(
                   state.currentPath,
-                  style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 12),
+                  style: const TextStyle(
+                      color: GlassTheme.textSecondary, fontSize: 12),
                 ),
               ),
             ),
@@ -477,8 +481,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   }
 
   Widget _buildFileList(NasState state) {
-    final sorted = [...state.currentFiles]
-      ..sort((a, b) {
+    final sorted = [...state.currentFiles]..sort((a, b) {
         if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
         return a.name.compareTo(b.name);
       });
@@ -543,7 +546,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           fontWeight: FontWeight.w500)),
                   Text(
                     item.isDirectory ? '文件夹' : _formatSize(item.size),
-                    style: const TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 11),
                   ),
                 ],
               ),
@@ -555,9 +559,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                 filled: true,
                 height: 34,
                 onTap: () {
-                  final url = ref
-                      .read(nasProvider.notifier)
-                      .getPlayableUrl(item.path);
+                  final url =
+                      ref.read(nasProvider.notifier).getPlayableUrl(item.path);
                   context.pushNamed('player', extra: {
                     'videoPath': url,
                     'videoTitle': item.name,
@@ -582,7 +585,9 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     NasProtocol? presetProtocol,
   }) {
     final nameCtrl = TextEditingController(
-        text: presetHost != null ? 'NAS ${presetHost.split('.').last}' : '我的 NAS');
+        text: presetHost != null
+            ? 'NAS ${presetHost.split('.').last}'
+            : '我的 NAS');
     final hostCtrl = TextEditingController(text: presetHost ?? '');
     // 默认仍选 WebDAV：群晖/威联通默认就开，且不需要填共享名；
     // SMB 也支持了（dart_smb2 / libsmb2，SMB2/3），用户可自行切换。
@@ -639,8 +644,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       const SizedBox(height: 14),
                       // 协议选择
                       const Text('协议',
-                          style:
-                              TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+                          style: TextStyle(
+                              color: GlassTheme.textSecondary, fontSize: 13)),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -745,8 +750,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                   name: nameCtrl.text.trim(),
                                   protocol: protocol,
                                   host: hostCtrl.text.trim(),
-                                  port:
-                                      int.tryParse(portCtrl.text) ?? 445,
+                                  port: int.tryParse(portCtrl.text) ?? 445,
                                   username: usernameCtrl.text,
                                   password: passwordCtrl.text,
                                   // SMB 必需：先连到具体共享
@@ -757,9 +761,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                     .read(nasProvider.notifier)
                                     .addConnection(conn);
                                 Navigator.pop(ctx);
-                                ref
-                                    .read(nasProvider.notifier)
-                                    .connect(conn);
+                                ref.read(nasProvider.notifier).connect(conn);
                               },
                             ),
                           ),
@@ -798,8 +800,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
-          borderSide:
-              const BorderSide(color: GlassTheme.accentTeal, width: 1),
+          borderSide: const BorderSide(color: GlassTheme.accentTeal, width: 1),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -828,9 +829,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             const Text('正在自动搜索局域网 NAS…\n也可以手动填写地址',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: GlassTheme.textTertiary,
-                    fontSize: 12,
-                    height: 1.5)),
+                    color: GlassTheme.textTertiary, fontSize: 12, height: 1.5)),
             const SizedBox(height: 16),
             GlassButton.outlined(
               icon: Icons.add_link_rounded,

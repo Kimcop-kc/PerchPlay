@@ -139,7 +139,8 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
         state = state.copyWith(error: e.toString());
       }
       // TMDB 免费 API 限流 ≈ 50 req/s，1 秒间隔绰绰有余
-      if (_queue.isNotEmpty) await Future<void>.delayed(const Duration(seconds: 1));
+      if (_queue.isNotEmpty)
+        await Future<void>.delayed(const Duration(seconds: 1));
     }
     _processing = false;
     ScrapeCacheService.instance.clearSeriesInfoCache();
@@ -168,7 +169,8 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
   }
 
   /// 绑定刮削结果到视频路径
-  Future<ScrapeResult?> bindResult(String videoPath, ScrapeResult result) async {
+  Future<ScrapeResult?> bindResult(
+      String videoPath, ScrapeResult result) async {
     final row = result.toRow();
     row['search_key'] = result.title.toLowerCase();
     row['video_path'] = videoPath;

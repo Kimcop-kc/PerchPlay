@@ -113,7 +113,10 @@ void main() {
     });
 
     test('时长 / 大小：大的在前', () {
-      final byDur = [_v('short.mkv', durationMs: 10), _v('long.mkv', durationMs: 999)];
+      final byDur = [
+        _v('short.mkv', durationMs: 10),
+        _v('long.mkv', durationMs: 999)
+      ];
       LibraryQuery.sortInPlace(byDur, LibrarySort.duration);
       expect(byDur.first.name, 'long.mkv');
 

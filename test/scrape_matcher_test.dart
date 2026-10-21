@@ -64,8 +64,8 @@ void main() {
         _r('Interstellar', year: 2014, tmdbId: 2),
         _r('Interstellar Wars', year: 2018, tmdbId: 3),
       ];
-      final best = ScrapeMatcher.best(candidates,
-          query: 'Interstellar', year: 2014);
+      final best =
+          ScrapeMatcher.best(candidates, query: 'Interstellar', year: 2014);
       expect(best?.tmdbId, 2);
     });
 
@@ -84,11 +84,13 @@ void main() {
         _r('A Star Is Born', year: 2018, tmdbId: 2),
       ];
       expect(
-        ScrapeMatcher.best(candidates, query: 'A Star Is Born', year: 2018)?.tmdbId,
+        ScrapeMatcher.best(candidates, query: 'A Star Is Born', year: 2018)
+            ?.tmdbId,
         2,
       );
       expect(
-        ScrapeMatcher.best(candidates, query: 'A Star Is Born', year: 1976)?.tmdbId,
+        ScrapeMatcher.best(candidates, query: 'A Star Is Born', year: 1976)
+            ?.tmdbId,
         1,
       );
     });
@@ -107,7 +109,8 @@ void main() {
     test('完全不像时返回 null（宁可没海报也不贴错）', () {
       final candidates = [_r('完全无关的片子', year: 1990, tmdbId: 5)];
       expect(
-        ScrapeMatcher.best(candidates, query: 'Heartstopper Forever', year: 2025),
+        ScrapeMatcher.best(candidates,
+            query: 'Heartstopper Forever', year: 2025),
         isNull,
       );
     });
@@ -121,15 +124,22 @@ void main() {
         _r('Dune', year: 2021, tmdbId: 1, voteCount: 10),
         _r('Dune', year: 2021, tmdbId: 2, voteCount: 30000),
       ];
-      expect(ScrapeMatcher.best(candidates, query: 'Dune', year: 2021)?.tmdbId, 2);
+      expect(
+          ScrapeMatcher.best(candidates, query: 'Dune', year: 2021)?.tmdbId, 2);
     });
 
     test('用户报的场景：带中文标签的文件名清洗后能命中', () {
       final candidates = [
-        _r('永远心跳漏一拍', original: 'Heartstopper Forever', year: 2025, tmdbId: 1468683),
-        _r('心跳漏一拍', original: 'Heartstopper', year: 2022, tmdbId: 111, type: ScrapeType.tv),
+        _r('永远心跳漏一拍',
+            original: 'Heartstopper Forever', year: 2025, tmdbId: 1468683),
+        _r('心跳漏一拍',
+            original: 'Heartstopper',
+            year: 2022,
+            tmdbId: 111,
+            type: ScrapeType.tv),
       ];
-      final best = ScrapeMatcher.best(candidates, query: 'Heartstopper Forever');
+      final best =
+          ScrapeMatcher.best(candidates, query: 'Heartstopper Forever');
       expect(best?.tmdbId, 1468683);
     });
   });

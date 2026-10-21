@@ -155,8 +155,8 @@ class SubtitleService {
       // 行内覆盖标签：\pos(x,y) 优先；否则看 {\anN}
       double? vpos;
       int? align;
-      final posMatch = RegExp(r'\\pos\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)')
-          .firstMatch(text);
+      final posMatch =
+          RegExp(r'\\pos\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)').firstMatch(text);
       if (posMatch != null) {
         final y = double.tryParse(posMatch.group(2) ?? '');
         if (y != null && header.playResY > 0) {
@@ -243,9 +243,9 @@ class SubtitleService {
       if (lines.length < 3) continue;
 
       final index = int.tryParse(lines[0].trim()) ?? entries.length + 1;
-      final timeMatch =
-          RegExp(r'(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})')
-              .firstMatch(lines[1].trim());
+      final timeMatch = RegExp(
+              r'(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})')
+          .firstMatch(lines[1].trim());
 
       if (timeMatch == null) continue;
       final text = lines.sublist(2).join(' ');
@@ -364,11 +364,8 @@ class _AssHeader {
       // Styles 的 Format 行：Name,...,Alignment,MarginL,MarginR,MarginV,...
       if (line.startsWith('Format:') && line.contains('Alignment')) {
         // 记录列索引，后面 Style: 行按它取值
-        _styleFormat = line
-            .substring(7)
-            .split(',')
-            .map((e) => e.trim())
-            .toList();
+        _styleFormat =
+            line.substring(7).split(',').map((e) => e.trim()).toList();
         continue;
       }
 

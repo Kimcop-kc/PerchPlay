@@ -23,9 +23,7 @@ class HistoryPage extends ConsumerWidget {
         bottom: false,
         child: library.when(
           data: (videos) {
-            final watched = videos
-                .where((v) => v.lastPosition > 0)
-                .toList()
+            final watched = videos.where((v) => v.lastPosition > 0).toList()
               ..sort((a, b) {
                 final aTime = a.lastPlayed;
                 final bTime = b.lastPlayed;
@@ -45,10 +43,9 @@ class HistoryPage extends ConsumerWidget {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final video = watched[index];
-                        final progress =
-                            video.durationMs > 0
-                                ? video.lastPosition / video.durationMs
-                                : 0.0;
+                        final progress = video.durationMs > 0
+                            ? video.lastPosition / video.durationMs
+                            : 0.0;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: GlassCard(
@@ -110,7 +107,8 @@ class HistoryPage extends ConsumerWidget {
                                           decoration: BoxDecoration(
                                             borderRadius:
                                                 BorderRadius.circular(2),
-                                            color: Colors.black.withValues(alpha: 0.06),
+                                            color: Colors.black
+                                                .withValues(alpha: 0.06),
                                           ),
                                           child: FractionallySizedBox(
                                             alignment: Alignment.centerLeft,
@@ -160,7 +158,8 @@ class HistoryPage extends ConsumerWidget {
             child: CircularProgressIndicator(color: GlassTheme.accentPurple),
           ),
           error: (e, _) => Center(
-            child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
+            child: Text('⚠ $e',
+                style: const TextStyle(color: GlassTheme.textSecondary)),
           ),
         ),
       ),

@@ -21,8 +21,7 @@ class AdaptiveScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _MobileGlassScaffold(
-        currentRoute: currentRoute, child: child);
+    return _MobileGlassScaffold(currentRoute: currentRoute, child: child);
   }
 }
 
@@ -163,7 +162,8 @@ class _MobileGlassScaffold extends ConsumerWidget {
         final video = ref.read(playerProvider).currentVideo!;
         // 用 viewPadding 而不是 padding：键盘弹出时 padding.bottom 会变 0，
         // 导航栏本身也贴到屏幕底部，小窗要跟着它一起走，不能浮在半空
-        final bottom = _navBarHeight + MediaQuery.of(context).viewPadding.bottom;
+        final bottom =
+            _navBarHeight + MediaQuery.of(context).viewPadding.bottom;
         return Positioned(
           left: 0,
           right: 0,
@@ -205,7 +205,8 @@ class _NavConfig {
     _NavItemConfig(icon: Icons.home_rounded, label: '首页', route: '/home'),
     // 不再有「文件夹」tab：首页标题行的「全部视频 / 文件夹」切换器
     // 已经能进文件夹视图，底栏再放一个就是重复入口。
-    _NavItemConfig(icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
+    _NavItemConfig(
+        icon: Icons.playlist_play_rounded, label: '列表', route: '/playlist'),
     _NavItemConfig(icon: Icons.history_rounded, label: '历史', route: '/history'),
     // NAS 与云盘合并为「存储」：两者都是远程媒体库，
     // 分开会让底栏到 7 项，手机每项只剩约 50dp、文字挤在一起。

@@ -225,58 +225,58 @@ class _GlassTrack extends StatelessWidget {
       child: _withOptionalBlur(
         blur: blur,
         child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                // 外观与开关无关：关闭只去掉实时模糊，白色叠加/描边/投影
-                // 保持一致，避免"关掉就换了个样子"
-                colors: [
-                  Colors.white.withValues(alpha: 0.55),
-                  Colors.white.withValues(alpha: 0.35),
-                ],
-              ),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.60),
-                width: 0.7,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              // 外观与开关无关：关闭只去掉实时模糊，白色叠加/描边/投影
+              // 保持一致，避免"关掉就换了个样子"
+              colors: [
+                Colors.white.withValues(alpha: 0.55),
+                Colors.white.withValues(alpha: 0.35),
               ],
             ),
-            child: Stack(
-              children: [
-                // 顶部高光带（玻璃反光）
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 16,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(28)),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.40),
-                          Colors.white.withValues(alpha: 0.0),
-                        ],
-                      ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.60),
+              width: 0.7,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              // 顶部高光带（玻璃反光）
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(28)),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.40),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 }
 

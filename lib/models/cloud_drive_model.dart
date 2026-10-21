@@ -184,7 +184,20 @@ class CloudFileItem {
   });
 
   bool get isVideo => const {
-        'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v',
-        'ts', 'm2ts', 'mpg', 'mpeg', 'rmvb', 'rm', '3gp',
+        'mp4',
+        'mkv',
+        'avi',
+        'mov',
+        'wmv',
+        'flv',
+        'webm',
+        'm4v',
+        'ts',
+        'm2ts',
+        'mpg',
+        'mpeg',
+        'rmvb',
+        'rm',
+        '3gp',
       }.contains(extension.toLowerCase());
 }

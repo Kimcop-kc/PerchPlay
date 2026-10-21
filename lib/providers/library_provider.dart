@@ -69,8 +69,7 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     try {
       // 首选 MediaStore 索引：毫秒级出结果，且自带时长
       final viaMediaStore = await _scanner.scanViaMediaStore();
-      final videos =
-          viaMediaStore ?? await _scanner.scanCommonDirectories();
+      final videos = viaMediaStore ?? await _scanner.scanCommonDirectories();
 
       // ── 列表先出 ──
       // 扫描器内部已经把结果写库（并保留了进度/收藏/缩略图），这里读回来
@@ -85,9 +84,7 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
 
       // 扫描完成后按文件名自动分组（剧集列表）
       if (videos.isNotEmpty) {
-        await ref
-            .read(playlistListProvider.notifier)
-            .syncAutoPlaylists(videos);
+        await ref.read(playlistListProvider.notifier).syncAutoPlaylists(videos);
       }
       // 后台自动刮削（不阻塞 UI，逐个处理）
       // 注意：状态要从 provider 读，不能读 notifier 的 .state

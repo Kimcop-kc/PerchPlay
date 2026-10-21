@@ -119,7 +119,8 @@ class NasNotifier extends StateNotifier<NasState> {
         },
       );
       // 没有局域网（如刚开机还没拿到 IP）→ 不记“已扫描”，尽快重试
-      if (list.isEmpty && !await NasDiscoveryService.instance.hasLocalNetwork()) {
+      if (list.isEmpty &&
+          !await NasDiscoveryService.instance.hasLocalNetwork()) {
         _lastScanAt = null;
       }
       state = state.copyWith(

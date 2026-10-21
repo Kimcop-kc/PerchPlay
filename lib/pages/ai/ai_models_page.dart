@@ -108,9 +108,9 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     if (broken.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              '${broken.length} 个模型不可用（未删除）：\n${broken.take(3).join('、')}'
-              '${broken.length > 3 ? ' 等' : ''}\n可删除后重新下载'),
+          content:
+              Text('${broken.length} 个模型不可用（未删除）：\n${broken.take(3).join('、')}'
+                  '${broken.length > 3 ? ' 等' : ''}\n可删除后重新下载'),
           backgroundColor: const Color(0xFFFF9500),
           duration: const Duration(seconds: 6),
         ),
@@ -169,8 +169,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
       setState(() {});
 
       if (!hasOnnx || !hasTokens) {
-        _errors[model.id] =
-            '下载完成但文件不完整（onnx=${hasOnnx ? "有" : "缺"}, '
+        _errors[model.id] = '下载完成但文件不完整（onnx=${hasOnnx ? "有" : "缺"}, '
             'tokens=${hasTokens ? "有" : "缺"}），AI 可能无法调用';
         setState(() {});
       }
@@ -226,8 +225,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor:
-            GlassTheme.surfaceWhite,
+        backgroundColor: GlassTheme.surfaceWhite,
         title: const Text('导入模型',
             style: TextStyle(
                 color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
@@ -236,8 +234,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
           children: [
             const Text(
               '给模型起个名字（用作存储目录名）',
-              style:
-                  TextStyle(color: GlassTheme.textTertiary, fontSize: 13),
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -250,13 +247,12 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 filled: true,
                 fillColor: Colors.black.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(GlassTheme.radiusSm),
+                  borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
                   borderSide: BorderSide.none,
                 ),
               ),
-              style: const TextStyle(
-                  color: GlassTheme.textPrimary, fontSize: 15),
+              style:
+                  const TextStyle(color: GlassTheme.textPrimary, fontSize: 15),
             ),
           ],
         ),
@@ -285,10 +281,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
 
   /// 返回用户手动导入的模型 id（不在 catalog 中的）
   List<String> _userModelIds() {
-    final catalogIds =
-        AiModelCatalog.all.map((m) => m.id).toSet();
-    return _downloaded.where((id) => !catalogIds.contains(id)).toList()
-      ..sort();
+    final catalogIds = AiModelCatalog.all.map((m) => m.id).toSet();
+    return _downloaded.where((id) => !catalogIds.contains(id)).toList()..sort();
   }
 
   @override
@@ -332,15 +326,13 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (context, index) =>
-                        _buildUserModelCard(userIds[index]),
+                    (context, index) => _buildUserModelCard(userIds[index]),
                     childCount: userIds.length,
                   ),
                 ),
               ],
               const SliverToBoxAdapter(
-                child:
-                    SizedBox(height: GlassTheme.navBarOverlay),
+                child: SizedBox(height: GlassTheme.navBarOverlay),
               ),
             ],
           ],
@@ -374,8 +366,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     final items = <({String role, AiModel model})>[
       (role: '语音识别（必需）', model: asr),
       // 若流式模型和整段模型重复，就不再列第二条
-      if (asrStreaming.id != asr.id)
-        (role: '流式识别（可换）', model: asrStreaming),
+      if (asrStreaming.id != asr.id) (role: '流式识别（可换）', model: asrStreaming),
     ];
 
     return SliverToBoxAdapter(
@@ -421,9 +412,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
             const Text(
               '做「离线实时 AI 字幕」，下载语音识别模型即可；\n翻译默认走 Google 免费接口，无需下载。',
               style: TextStyle(
-                  color: GlassTheme.textTertiary,
-                  fontSize: 12,
-                  height: 1.4),
+                  color: GlassTheme.textTertiary, fontSize: 12, height: 1.4),
             ),
             const SizedBox(height: 10),
             for (final item in items) ...[
@@ -477,7 +466,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                       color: GlassTheme.textPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w600)),
-              Text('${model.sizeLabel} · ${model.languages.take(3).map((l) => l.toUpperCase()).join('/')}',
+              Text(
+                  '${model.sizeLabel} · ${model.languages.take(3).map((l) => l.toUpperCase()).join('/')}',
                   style: const TextStyle(
                       color: GlassTheme.textTertiary, fontSize: 11)),
             ],
@@ -496,9 +486,10 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                 LinearProgressIndicator(
                   value: p > 0 ? p : null,
                   minHeight: 4,
-                  backgroundColor: GlassTheme.accentPurple.withValues(alpha: 0.1),
-                  valueColor: const AlwaysStoppedAnimation(
-                      GlassTheme.accentPurple),
+                  backgroundColor:
+                      GlassTheme.accentPurple.withValues(alpha: 0.1),
+                  valueColor:
+                      const AlwaysStoppedAnimation(GlassTheme.accentPurple),
                 ),
                 const SizedBox(height: 2),
                 Text('${(p * 100).toInt()}%',
@@ -507,10 +498,12 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
               ],
             ),
           )
-        else
+        else if (model.hasAnyDownloadableMirror)
           _smallButton('下载',
               color: GlassTheme.accentPurple,
-              onTap: () => _startDownload(model)),
+              onTap: () => _startDownload(model))
+        else
+          _smallButton('需自行导入', color: GlassTheme.textTertiary, onTap: null),
       ],
     );
   }
@@ -578,8 +571,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
           const SizedBox(width: 6),
           Text('$count',
               style: const TextStyle(
-                  color: GlassTheme.textTertiary,
-                  fontSize: 11)),
+                  color: GlassTheme.textTertiary, fontSize: 11)),
         ],
       ),
     );
@@ -647,19 +639,16 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
   Widget _buildGlobalStatus() {
     if (_importingModelId != null) {
       return Text('导入中…',
-          style: const TextStyle(
-              color: GlassTheme.accentPurple, fontSize: 13));
+          style: const TextStyle(color: GlassTheme.accentPurple, fontSize: 13));
     }
     final downloading = _progress.values.where((p) => p < 1).length;
     if (downloading > 0) {
       return Text('$downloading 个下载中…',
-          style: const TextStyle(
-              color: GlassTheme.accentPurple, fontSize: 13));
+          style: const TextStyle(color: GlassTheme.accentPurple, fontSize: 13));
     }
     if (_downloaded.isNotEmpty) {
       return Text('${_downloaded.length} 个已就绪',
-          style: const TextStyle(
-              color: GlassTheme.accentTeal, fontSize: 13));
+          style: const TextStyle(color: GlassTheme.accentTeal, fontSize: 13));
     }
     return const Text('尚未下载模型',
         style: TextStyle(color: GlassTheme.textTertiary, fontSize: 13));
@@ -673,7 +662,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     final expanded = _expanded.contains(model.id);
     final tooHeavy = DeviceInfoService.instance.isTooHeavy(model.minRamGB);
     final ramGB = DeviceInfoService.instance.ramGB;
-    final ramLabel = ramGB > 0 ? '本机 ${ramGB.toStringAsFixed(1)} GB' : '本机 RAM 未知';
+    final ramLabel =
+        ramGB > 0 ? '本机 ${ramGB.toStringAsFixed(1)} GB' : '本机 RAM 未知';
 
     return Card(
       color: Colors.white.withValues(alpha: 0.6),
@@ -757,6 +747,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                       error: error,
                       onDownload: () => _startDownload(model),
                       onDelete: () => _deleteModel(model.id),
+                      canDownload: model.hasAnyDownloadableMirror,
                     ),
                     const SizedBox(width: 4),
                     AnimatedRotation(
@@ -776,9 +767,10 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                     child: LinearProgressIndicator(
                       value: p,
                       minHeight: 4,
-                      backgroundColor: GlassTheme.accentPurple.withValues(alpha: 0.1),
-                      valueColor: const AlwaysStoppedAnimation(
-                          GlassTheme.accentPurple),
+                      backgroundColor:
+                          GlassTheme.accentPurple.withValues(alpha: 0.1),
+                      valueColor:
+                          const AlwaysStoppedAnimation(GlassTheme.accentPurple),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -829,8 +821,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
                               ? GlassTheme.accentPink
                               : GlassTheme.accentTeal)
                           .withValues(alpha: 0.08),
-                      borderRadius:
-                          BorderRadius.circular(GlassTheme.radiusSm),
+                      borderRadius: BorderRadius.circular(GlassTheme.radiusSm),
                     ),
                     child: Row(
                       children: [
@@ -1011,7 +1002,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
 
   Widget _langChip(AiModel model) {
     if (model.languages.isEmpty) return const SizedBox.shrink();
-    final labels = model.languages.take(3).map((l) => l.toUpperCase()).join('/');
+    final labels =
+        model.languages.take(3).map((l) => l.toUpperCase()).join('/');
     return Text(labels,
         style: const TextStyle(
             color: GlassTheme.textTertiary,
@@ -1030,7 +1022,8 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
               color: color, fontSize: 10, fontWeight: FontWeight.w600)),
     );
   }
-    Widget _buildActionButton({
+
+  Widget _buildActionButton({
     required String modelId,
     required bool isReady,
     required bool isDownloading,
@@ -1038,6 +1031,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
     String? error,
     VoidCallback? onDownload,
     VoidCallback? onDelete,
+    bool canDownload = true,
   }) {
     if (error != null) {
       return Row(
@@ -1078,6 +1072,13 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         onTap: onDelete,
       );
     }
+    if (!canDownload) {
+      return _smallButton(
+        '需自行导入',
+        color: GlassTheme.textTertiary,
+        onTap: null,
+      );
+    }
     return _smallButton(
       '下载',
       color: GlassTheme.accentPurple,
@@ -1097,9 +1098,7 @@ class _AiModelsPageState extends ConsumerState<AiModelsPage> {
         ),
         child: Text(label,
             style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+                color: color, fontSize: 13, fontWeight: FontWeight.w600)),
       ),
     );
   }

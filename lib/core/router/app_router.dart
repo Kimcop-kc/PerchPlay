@@ -84,8 +84,7 @@ class AppRouter {
           GoRoute(
             path: '/cast',
             name: 'cast',
-            pageBuilder: (context, state) =>
-                _tabPage(state, const CastPage()),
+            pageBuilder: (context, state) => _tabPage(state, const CastPage()),
           ),
           GoRoute(
             path: '/nas',

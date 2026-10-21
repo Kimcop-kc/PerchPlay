@@ -97,8 +97,7 @@ class LocalMediaServer {
       final length = await file.length();
       final range = request.headers.value(HttpHeaders.rangeHeader);
 
-      request.response.headers
-          .set(HttpHeaders.acceptRangesHeader, 'bytes');
+      request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
       request.response.headers.contentType =
           ContentType('video', 'mp4', charset: 'utf-8');
       request.response.headers.set('transferMode.dlna.org', 'Streaming');
@@ -132,8 +131,8 @@ class LocalMediaServer {
           isPartial ? HttpStatus.partialContent : HttpStatus.ok;
       request.response.headers.contentLength = end - start + 1;
       if (isPartial) {
-        request.response.headers.set(HttpHeaders.contentRangeHeader,
-            'bytes $start-$end/$length');
+        request.response.headers
+            .set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$length');
       }
 
       final raf = await file.open();

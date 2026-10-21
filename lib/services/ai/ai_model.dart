@@ -238,10 +238,14 @@ class AiModel {
   bool supports(AiCapability capability) => capabilities.contains(capability);
 
   /// 体积的展示文本：≥1GB 用 GB，避免 UI 上出现 「1600 MB」这种不好读的数字
-  String get sizeLabel =>
-      sizeMB >= 1024 ? '${(sizeMB / 1024).toStringAsFixed(1)} GB' : '$sizeMB MB';
+  String get sizeLabel => sizeMB >= 1024
+      ? '${(sizeMB / 1024).toStringAsFixed(1)} GB'
+      : '$sizeMB MB';
+
+  /// 是否有任一镜像包含可下载内容（非占位）。
+  bool get hasAnyDownloadableMirror =>
+      mirrors.any((m) => m.hasDownloadableContent);
 
   @override
-  String toString() =>
-      'AiModel($id, ${kind.name}/${tier.name}, ${sizeMB}MB)';
+  String toString() => 'AiModel($id, ${kind.name}/${tier.name}, ${sizeMB}MB)';
 }

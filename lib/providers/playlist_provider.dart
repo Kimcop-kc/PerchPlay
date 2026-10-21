@@ -227,9 +227,8 @@ class PlaylistListNotifier extends AsyncNotifier<List<Playlist>> {
     for (final entry in results.entries) {
       final r = entry.value;
       if (r == null) continue;
-      out[entry.key] = r.type == ScrapeType.movie
-          ? ScrapeKind.movie
-          : ScrapeKind.tv;
+      out[entry.key] =
+          r.type == ScrapeType.movie ? ScrapeKind.movie : ScrapeKind.tv;
     }
     return out;
   }

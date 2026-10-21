@@ -56,7 +56,8 @@ class ScrapeCacheService {
     if (title.isEmpty) return null;
 
     // 先查缓存（按路径）
-    final cached = await DatabaseService.instance.getScrapeCacheByPath(filePath);
+    final cached =
+        await DatabaseService.instance.getScrapeCacheByPath(filePath);
     if (cached != null) return ScrapeResult.fromRow(cached);
 
     if (info.isEpisode && !info.weakEpisode) {
@@ -73,8 +74,7 @@ class ScrapeCacheService {
       // 剧集查不到 → 按电影再试一次，并且用**带数字的完整片名**，
       // 否则《流浪地球2》会搜到第 1 部
       final full = info.fullTitle.trim();
-      final asMovie = await _scrapeMovie(
-          full.isEmpty ? title : full, info.year,
+      final asMovie = await _scrapeMovie(full.isEmpty ? title : full, info.year,
           filePath: filePath);
       if (asMovie != null) return asMovie;
     }
@@ -177,7 +177,8 @@ class ScrapeCacheService {
       {String? filePath}) async {
     final s = season ?? 1;
     final e = episode ?? 1;
-    final key = '${title.trim().toLowerCase()}|${s}x${e.toString().padLeft(2, '0')}';
+    final key =
+        '${title.trim().toLowerCase()}|${s}x${e.toString().padLeft(2, '0')}';
 
     // 先搜整剧；搜不到就退到混合搜索（TMDB 里有的剧只有本地化/别名能命中）
     var results = await _tmdb!.searchTv(title);

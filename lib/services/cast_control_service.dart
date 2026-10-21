@@ -17,8 +17,7 @@ class CastControlService {
 
   /// 从设备描述 XML 里解析出来的 AVTransport 控制地址（不要再靠猜）
   Uri? _avTransportControlUrl;
-  String _avTransportServiceType =
-      'urn:schemas-upnp-org:service:AVTransport:1';
+  String _avTransportServiceType = 'urn:schemas-upnp-org:service:AVTransport:1';
 
   /// 最近一次错误（UI 用来提示，而不是静默失败）
   String? lastError;
@@ -274,8 +273,8 @@ class CastControlService {
             'CurrentURIMetaData': _buildDlnaMetadata(title, url),
           });
           if (setRes == null && lastError != null) return false;
-          final playRes =
-              await _sendDlnaCommand('Play', params: {'InstanceID': '0', 'Speed': '1'});
+          final playRes = await _sendDlnaCommand('Play',
+              params: {'InstanceID': '0', 'Speed': '1'});
           if (playRes == null && lastError != null) return false;
           break;
 
@@ -306,8 +305,7 @@ class CastControlService {
   /// 暂停
   Future<void> pause() async {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
-      await _sendDlnaCommand('Pause',
-          params: {'InstanceID': '0'});
+      await _sendDlnaCommand('Pause', params: {'InstanceID': '0'});
     }
     _statusController.add(CastControlEvent(type: CastEventType.paused));
   }
@@ -315,8 +313,7 @@ class CastControlService {
   /// 继续播放
   Future<void> resume() async {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
-      await _sendDlnaCommand('Play',
-          params: {'InstanceID': '0', 'Speed': '1'});
+      await _sendDlnaCommand('Play', params: {'InstanceID': '0', 'Speed': '1'});
     }
     _statusController.add(CastControlEvent(type: CastEventType.playing));
   }
@@ -324,8 +321,7 @@ class CastControlService {
   /// 停止
   Future<void> stop() async {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
-      await _sendDlnaCommand('Stop',
-          params: {'InstanceID': '0'});
+      await _sendDlnaCommand('Stop', params: {'InstanceID': '0'});
     }
     _statusController.add(CastControlEvent(type: CastEventType.stopped));
   }

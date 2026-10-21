@@ -241,13 +241,13 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         child: CircularProgressIndicator(color: GlassTheme.accentPurple),
       ),
       error: (e, _) => Center(
-        child: Text('⚠ $e', style: const TextStyle(color: GlassTheme.textSecondary)),
+        child: Text('⚠ $e',
+            style: const TextStyle(color: GlassTheme.textSecondary)),
       ),
     );
   }
 
-  Widget _buildMobileLayout(
-      List<VideoModel> videos, int columns, double hp,
+  Widget _buildMobileLayout(List<VideoModel> videos, int columns, double hp,
       {required int totalCount}) {
     // 小窗已经上移到 AdaptiveScaffold（所有 tab 共用），这里不再自己画一个，
     // 原来为了叠加小窗而套的 Stack 也就没用了。
@@ -429,11 +429,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected
-              ? GlassTheme.accentPurple
-              : Colors.transparent,
+          color: selected ? GlassTheme.accentPurple : Colors.transparent,
           borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
-          boxShadow: selected ? GlassTheme.glassShadow(GlassTheme.accentPurple) : null,
+          boxShadow:
+              selected ? GlassTheme.glassShadow(GlassTheme.accentPurple) : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -562,14 +561,14 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               controller: _searchController,
               onChanged: (v) => setState(() => _query = v),
               textInputAction: TextInputAction.search,
-              style: const TextStyle(
-                  color: GlassTheme.textPrimary, fontSize: 14),
+              style:
+                  const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
                 hintText: '搜索视频名或文件夹',
-                hintStyle: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 14),
+                hintStyle:
+                    TextStyle(color: GlassTheme.textTertiary, fontSize: 14),
               ),
             ),
           ),
@@ -592,8 +591,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   /// 搜索/筛选后没有结果（与"影库为空"区分开）
   Widget _buildNoMatch() {
-    final filtering =
-        _filter != LibraryFilter.all || _query.trim().isNotEmpty;
+    final filtering = _filter != LibraryFilter.all || _query.trim().isNotEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 24),
       child: Column(
@@ -604,8 +602,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           const SizedBox(height: 12),
           Text(
             filtering ? '没有符合条件的视频' : '这里还没有视频',
-            style: const TextStyle(
-                color: GlassTheme.textSecondary, fontSize: 15),
+            style:
+                const TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
           ),
           if (filtering) ...[
             const SizedBox(height: 8),
@@ -635,77 +633,77 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-            Text(video.name,
-                style: const TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Text(
-              '文件名：${video.path.split('/').last}',
+          Text(video.name,
               style: const TextStyle(
-                  color: GlassTheme.textTertiary, fontSize: 11),
+                  color: GlassTheme.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            GlassButton.outlined(
-              icon: Icons.image_search_rounded,
-              label: '匹配影片信息',
-              width: double.infinity,
-              height: 46,
-              foregroundColor: GlassTheme.accentPurple,
-              onTap: () {
-                Navigator.pop(ctx);
-                showManualMatchSheet(
-                  context,
-                  ref,
-                  videoPath: video.path,
-                  initialQuery: MediaNamer.parse(video.path).fullTitle,
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            GlassButton.outlined(
-              icon: Icons.playlist_add_rounded,
-              label: '添加到播放列表',
-              width: double.infinity,
-              height: 46,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAddToPlaylist(video);
-              },
-            ),
-            const SizedBox(height: 10),
-            // 两个动作必须分开：「移除」不碰文件（可恢复），「删除文件」是
-            // 破坏性的。以前只有一个"从影库移除"（只删数据库），下次扫描
-            // 又把磁盘上的文件写回来，用户删了个寂寞。
-            GlassButton.outlined(
-              icon: Icons.visibility_off_rounded,
-              label: '仅从影库移除（保留文件）',
-              width: double.infinity,
-              height: 46,
-              foregroundColor: GlassTheme.accentPurple,
-              onTap: () {
-                Navigator.pop(ctx);
-                _removeFromLibrary(video);
-              },
-            ),
-            const SizedBox(height: 10),
-            GlassButton.outlined(
-              icon: Icons.delete_forever_rounded,
-              label: '删除文件',
-              width: double.infinity,
-              height: 46,
-              foregroundColor: GlassTheme.accentPink,
-              onTap: () {
-                Navigator.pop(ctx);
-                _confirmDeleteFile(video);
-              },
-            ),
+              overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 4),
+          Text(
+            '文件名：${video.path.split('/').last}',
+            style:
+                const TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          GlassButton.outlined(
+            icon: Icons.image_search_rounded,
+            label: '匹配影片信息',
+            width: double.infinity,
+            height: 46,
+            foregroundColor: GlassTheme.accentPurple,
+            onTap: () {
+              Navigator.pop(ctx);
+              showManualMatchSheet(
+                context,
+                ref,
+                videoPath: video.path,
+                initialQuery: MediaNamer.parse(video.path).fullTitle,
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          GlassButton.outlined(
+            icon: Icons.playlist_add_rounded,
+            label: '添加到播放列表',
+            width: double.infinity,
+            height: 46,
+            foregroundColor: GlassTheme.accentTeal,
+            onTap: () {
+              Navigator.pop(ctx);
+              _showAddToPlaylist(video);
+            },
+          ),
+          const SizedBox(height: 10),
+          // 两个动作必须分开：「移除」不碰文件（可恢复），「删除文件」是
+          // 破坏性的。以前只有一个"从影库移除"（只删数据库），下次扫描
+          // 又把磁盘上的文件写回来，用户删了个寂寞。
+          GlassButton.outlined(
+            icon: Icons.visibility_off_rounded,
+            label: '仅从影库移除（保留文件）',
+            width: double.infinity,
+            height: 46,
+            foregroundColor: GlassTheme.accentPurple,
+            onTap: () {
+              Navigator.pop(ctx);
+              _removeFromLibrary(video);
+            },
+          ),
+          const SizedBox(height: 10),
+          GlassButton.outlined(
+            icon: Icons.delete_forever_rounded,
+            label: '删除文件',
+            width: double.infinity,
+            height: 46,
+            foregroundColor: GlassTheme.accentPink,
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmDeleteFile(video);
+            },
+          ),
         ],
       ),
     );
@@ -715,8 +713,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   Future<void> _showAddToPlaylist(VideoModel video) async {
     // 快照，避免在弹窗里 watch 快速变化的 provider
     final notifier = ref.read(playlistListProvider.notifier);
-    final playlists = ref.read(playlistListProvider).valueOrNull ??
-        const <Playlist>[];
+    final playlists =
+        ref.read(playlistListProvider).valueOrNull ?? const <Playlist>[];
 
     await showGlassSheet<void>(
       context: context,
@@ -725,103 +723,102 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-            const Text('添加到播放列表',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            // 新建并添加
-            GlassButton.filled(
-              icon: Icons.add_rounded,
-              label: '新建播放列表并添加',
-              width: double.infinity,
-              height: 44,
-              onTap: () async {
-                Navigator.pop(ctx);
-                final name = await _askPlaylistName();
-                if (name == null || name.trim().isEmpty) return;
-                await notifier.createPlaylist(name.trim());
-                final created = notifier.byName(name.trim());
-                if (created != null) {
-                  await notifier.addVideoToPlaylist(created.id, video.id);
-                }
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('已添加到「${name.trim()}」')),
-                  );
-                }
+          const Text('添加到播放列表',
+              style: TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          // 新建并添加
+          GlassButton.filled(
+            icon: Icons.add_rounded,
+            label: '新建播放列表并添加',
+            width: double.infinity,
+            height: 44,
+            onTap: () async {
+              Navigator.pop(ctx);
+              final name = await _askPlaylistName();
+              if (name == null || name.trim().isEmpty) return;
+              await notifier.createPlaylist(name.trim());
+              final created = notifier.byName(name.trim());
+              if (created != null) {
+                await notifier.addVideoToPlaylist(created.id, video.id);
+              }
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('已添加到「${name.trim()}」')),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          if (playlists.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('还没有播放列表，先新建一个',
+                    style: TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 13)),
+              ),
+            )
+          else
+            // 外壳已经是 SingleChildScrollView，这里的列表不能再自己滚动
+            // （否则嵌套滚动 + 无界高度约束会报 RenderFlex 错误）
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: playlists.length,
+              itemBuilder: (_, i) {
+                final pl = playlists[i];
+                final added = pl.videoIds.contains(video.id);
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    pl.isAuto
+                        ? Icons.auto_awesome_motion_rounded
+                        : Icons.playlist_play_rounded,
+                    color: pl.isAuto
+                        ? GlassTheme.accentPurple
+                        : GlassTheme.accentTeal,
+                    size: 20,
+                  ),
+                  title: Text(pl.name,
+                      style: const TextStyle(
+                          color: GlassTheme.textPrimary, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    '${pl.videoIds.length} 个视频${pl.isAuto ? ' · 自动生成' : ''}',
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 11),
+                  ),
+                  trailing: added
+                      ? const Icon(Icons.check_rounded,
+                          color: GlassTheme.accentTeal, size: 18)
+                      : const Icon(Icons.add_rounded,
+                          color: GlassTheme.textTertiary, size: 18),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (added) {
+                      await notifier.removeVideoFromPlaylist(pl.id, video.id);
+                    } else {
+                      await notifier.addVideoToPlaylist(pl.id, video.id);
+                    }
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text(added
+                                ? '已从「${pl.name}」移除'
+                                : '已添加到「${pl.name}」')),
+                      );
+                    }
+                  },
+                );
               },
             ),
-            const SizedBox(height: 8),
-            if (playlists.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: Text('还没有播放列表，先新建一个',
-                      style: TextStyle(
-                          color: GlassTheme.textTertiary, fontSize: 13)),
-                ),
-              )
-            else
-              // 外壳已经是 SingleChildScrollView，这里的列表不能再自己滚动
-              // （否则嵌套滚动 + 无界高度约束会报 RenderFlex 错误）
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: playlists.length,
-                  itemBuilder: (_, i) {
-                    final pl = playlists[i];
-                    final added = pl.videoIds.contains(video.id);
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        pl.isAuto
-                            ? Icons.auto_awesome_motion_rounded
-                            : Icons.playlist_play_rounded,
-                        color: pl.isAuto
-                            ? GlassTheme.accentPurple
-                            : GlassTheme.accentTeal,
-                        size: 20,
-                      ),
-                      title: Text(pl.name,
-                          style: const TextStyle(
-                              color: GlassTheme.textPrimary, fontSize: 14),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      subtitle: Text(
-                        '${pl.videoIds.length} 个视频${pl.isAuto ? ' · 自动生成' : ''}',
-                        style: const TextStyle(
-                            color: GlassTheme.textTertiary, fontSize: 11),
-                      ),
-                      trailing: added
-                          ? const Icon(Icons.check_rounded,
-                              color: GlassTheme.accentTeal, size: 18)
-                          : const Icon(Icons.add_rounded,
-                              color: GlassTheme.textTertiary, size: 18),
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        if (added) {
-                          await notifier.removeVideoFromPlaylist(
-                              pl.id, video.id);
-                        } else {
-                          await notifier.addVideoToPlaylist(pl.id, video.id);
-                        }
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text(added
-                                    ? '已从「${pl.name}」移除'
-                                    : '已添加到「${pl.name}」')),
-                          );
-                        }
-                      },
-                    );
-                  },
-                ),
-          ],
-        ),
+        ],
+      ),
     );
   }
 
@@ -896,8 +893,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         : 0.0;
     // 只订阅**这一个**视频的刮削结果：用 select 切片，
     // 否则刮削批量跑时（每秒一条）所有卡片都会跟着重建
-    final scraped = ref.watch(
-        scrapeProvider.select((s) => s.results[video.path]));
+    final scraped =
+        ref.watch(scrapeProvider.select((s) => s.results[video.path]));
 
     return GestureDetector(
       onTap: () {
@@ -1086,9 +1083,8 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
     if (ok != true) return;
 
-    final error = await ref
-        .read(libraryProvider.notifier)
-        .deleteVideoWithFile(video.id);
+    final error =
+        await ref.read(libraryProvider.notifier).deleteVideoWithFile(video.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1117,11 +1113,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
-              hasPermission
-                  ? '未扫描到视频\n点击下方按钮重新扫描'
-                  : '需要授权读取本地视频\n授权后自动扫描',
+              hasPermission ? '未扫描到视频\n点击下方按钮重新扫描' : '需要授权读取本地视频\n授权后自动扫描',
               textAlign: TextAlign.center,
-              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
+              style: TextStyle(
+                  color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 24),
             // 授权 / 扫描入口（主操作）
@@ -1129,7 +1124,9 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               button: true,
               label: hasPermission ? '扫描视频' : '授权并扫描',
               child: GlassButton.filled(
-                icon: hasPermission ? Icons.search_rounded : Icons.lock_open_rounded,
+                icon: hasPermission
+                    ? Icons.search_rounded
+                    : Icons.lock_open_rounded,
                 label: hasPermission ? '扫描视频' : '授权并扫描',
                 width: double.infinity,
                 height: 48,
@@ -1213,5 +1210,4 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     }
     return '${m}m${s.toString().padLeft(2, '0')}s';
   }
-
 }

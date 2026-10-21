@@ -4,7 +4,8 @@ import 'package:perchplay/services/video_source_service.dart';
 void main() {
   group('classify', () {
     test('DCIM/Camera → camera', () {
-      expect(VideoSourceService.classify('/sdcard/DCIM/Camera/VID_20250101.mp4'),
+      expect(
+          VideoSourceService.classify('/sdcard/DCIM/Camera/VID_20250101.mp4'),
           VideoSource.camera);
       expect(VideoSourceService.classify('/sdcard/DCIM/100ANDRO/IMG_1234.MOV'),
           VideoSource.camera);
@@ -13,8 +14,8 @@ void main() {
     test('厂商相机目录', () {
       expect(VideoSourceService.classify('/sdcard/DCIM/CameraX/IMG_001.mp4'),
           VideoSource.camera);
-      expect(
-          VideoSourceService.classify('/sdcard/相机/VID_001.mp4'), VideoSource.camera);
+      expect(VideoSourceService.classify('/sdcard/相机/VID_001.mp4'),
+          VideoSource.camera);
       expect(VideoSourceService.classify('/sdcard/Screenshots/IMG.png'),
           VideoSource.camera);
       expect(VideoSourceService.classify('/sdcard/截屏/scr.mp4'),
@@ -46,7 +47,8 @@ void main() {
     });
 
     test('Screen recorder → screenRecord', () {
-      expect(VideoSourceService.classify('/sdcard/Movies/Screen Records/rec.mp4'),
+      expect(
+          VideoSourceService.classify('/sdcard/Movies/Screen Records/rec.mp4'),
           VideoSource.screenRecord);
       expect(VideoSourceService.classify('/sdcard/录屏/2025-01.mp4'),
           VideoSource.screenRecord);
@@ -57,8 +59,7 @@ void main() {
           VideoSource.social);
       expect(VideoSourceService.classify('/sdcard/QQ/video/abc.mp4'),
           VideoSource.social);
-      expect(
-          VideoSourceService.classify('/sdcard/Telegram Video/abc.mp4'),
+      expect(VideoSourceService.classify('/sdcard/Telegram Video/abc.mp4'),
           VideoSource.social);
     });
 
@@ -70,8 +71,7 @@ void main() {
     });
 
     test('自定义目录 → other', () {
-      expect(
-          VideoSourceService.classify('/sdcard/MyVideos/进击の巨人.S01E01.mp4'),
+      expect(VideoSourceService.classify('/sdcard/MyVideos/进击の巨人.S01E01.mp4'),
           VideoSource.other);
     });
 
@@ -81,7 +81,8 @@ void main() {
     });
 
     test('screenshot 带路径边界', () {
-      expect(VideoSourceService.classify('/sdcard/app-screenshots-helper/scr.png'),
+      expect(
+          VideoSourceService.classify('/sdcard/app-screenshots-helper/scr.png'),
           isNot(VideoSource.camera));
     });
 
@@ -153,7 +154,8 @@ void main() {
         '/sdcard/Movies/CapCut/LV-001.mp4',
         '/sdcard/Movies/CapCut/lv-002.mp4',
       ]);
-      final personal = groups.where((g) => !g.isSeries && !g.isFallback).toList();
+      final personal =
+          groups.where((g) => !g.isSeries && !g.isFallback).toList();
       expect(personal.length, 1);
       expect(personal.first.indices.length, 2);
     });
@@ -311,8 +313,7 @@ void main() {
       final scraped = {
         for (final p in paths) p: ScrapeKind.movie,
       };
-      final groups =
-          VideoSourceService.groupAll(paths, scrapedTypes: scraped);
+      final groups = VideoSourceService.groupAll(paths, scrapedTypes: scraped);
       expect(groups.where((g) => g.isSeries), isEmpty);
       final movie = groups.where((g) => g.isMovie).toList();
       expect(movie.length, 1);
@@ -365,7 +366,8 @@ void main() {
       expect(VideoSourceService.sourceLabel(VideoSource.camera), '📷 相机');
     });
     test('screenRecord → 🖥️ 录屏', () {
-      expect(VideoSourceService.sourceLabel(VideoSource.screenRecord), '🖥️ 录屏');
+      expect(
+          VideoSourceService.sourceLabel(VideoSource.screenRecord), '🖥️ 录屏');
     });
     test('social → 💬 社交', () {
       expect(VideoSourceService.sourceLabel(VideoSource.social), '💬 社交');

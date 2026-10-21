@@ -11,6 +11,10 @@ import '../../models/subtitle_model.dart';
 /// ## 外观完全由参数控制
 /// 字号 / 黑底透明度 / 文字颜色 / 描边 / 双语次行样式都可以从设置传入，
 /// 默认值等价于「白色文字 + 62% 黑底 + 轻描边」。
+///
+/// ## 断行策略
+/// 优先用 [LayoutBuilder] 按可用宽度动态算每行字数（≈ CJK 字符宽 0.58×字号），
+/// 不再硬编码 22/34 字符。仅当外部显式传入 `maxCharsPerLine > 0` 时覆盖该值。
 class SubtitleOverlay extends StatefulWidget {
   final List<SubtitleEntry> entries;
   final int activeIndex;
@@ -92,17 +96,28 @@ class _SubtitleOverlayState extends State<SubtitleOverlay> {
     // 换句才触发淡入；同一句内容不变时不做动画，避免闪烁
     if (_shown != text) _shown = text;
 
-    final double fontSize = widget.fontSize > 0
-        ? widget.fontSize
-        : (widget.compact ? 13.5 : 16.0);
+    final double fontSize =
+        widget.fontSize > 0 ? widget.fontSize : (widget.compact ? 13.5 : 16.0);
+
+    // 字数上限：外部显式传入 >0 则用，否则根据屏幕宽度与字号自适应。
+    final int effectiveMaxChars;
+    if (widget.maxCharsPerLine > 0) {
+      effectiveMaxChars = widget.maxCharsPerLine;
+    } else {
+      // 0.58 ≈ CJK 字符平均宽/字号比；0.90 给左右留 5% 边距空间
+      final screenW = MediaQuery.sizeOf(context).width;
+      effectiveMaxChars =
+          ((screenW * 0.90) / (fontSize * 0.58)).floor().clamp(16, 80);
+    }
 
     // 文本或字数上限变了才重新断行
-    if (_cacheText != text || _cacheMaxChars != widget.maxCharsPerLine) {
+    if (_cacheText != text || _cacheMaxChars != effectiveMaxChars) {
       _cacheText = text;
-      _cacheMaxChars = widget.maxCharsPerLine;
+      _cacheMaxChars = effectiveMaxChars;
       _cacheLines = _buildDisplayLines(
         text,
-        widget.maxCharsPerLine,
+        effectiveMaxChars,
+        fromMpvText: widget.lines.isNotEmpty,
       );
     }
     final displayLines = _cacheLines;
@@ -115,7 +130,8 @@ class _SubtitleOverlayState extends State<SubtitleOverlay> {
       height: 1.35,
       shadows: widget.stroke
           ? const [
-              Shadow(color: Colors.black87, blurRadius: 3, offset: Offset(1, 1)),
+              Shadow(
+                  color: Colors.black87, blurRadius: 3, offset: Offset(1, 1)),
               Shadow(
                   color: Colors.black87, blurRadius: 3, offset: Offset(-1, -1)),
             ]
@@ -184,18 +200,64 @@ class _DisplayLine {
 }
 
 /// 把原始文本拆成待显示的若干行（原文 + 译文，并按上限智能断行）。
-List<_DisplayLine> _buildDisplayLines(String text, int maxChars) {
+///
+/// [fromMpvText]：若为 true 则所有行属于同一种语言（mpv sub-text 不区分原文/译文）；
+/// 此时 cap 1 行，且全部标记为 `isSecondary=false`。
+List<_DisplayLine> _buildDisplayLines(
+  String text,
+  int maxChars, {
+  bool fromMpvText = false,
+}) {
   final rawLines = text.split('\n');
   final out = <_DisplayLine>[];
+
+  // 单语：最多 1 行显示（默认单语字幕一行，过长加省略号）。
+  if (fromMpvText) {
+    for (final raw in rawLines) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      final chunks = maxChars > 0 ? _smartWrap(t, maxChars) : <String>[t];
+      out.addAll(chunks.map((c) => _DisplayLine(text: c, isSecondary: false)));
+    }
+    // 仅保留首行；有剩余内容时加省略号提醒用户当前字幕已被截断
+    if (out.length > 1) {
+      out.removeRange(1, out.length);
+      out.first = _DisplayLine(
+        text: '${out.first.text}…',
+        isSecondary: false,
+      );
+    }
+    return out;
+  }
+
+  // 双语模式（entries 路径）：固定两行——一行原文 + 一行译文。
+  // 过长内容优先智能折行后取首行并加省略号，避免任意拆成四五行。
   for (var i = 0; i < rawLines.length; i++) {
     final raw = rawLines[i].trim();
     if (raw.isEmpty) continue;
-    // 第一行是原文，之后的是译文
     final isSecondary = i > 0;
     final chunks = maxChars > 0 ? _smartWrap(raw, maxChars) : <String>[raw];
     for (final c in chunks) {
       out.add(_DisplayLine(text: c, isSecondary: isSecondary));
     }
+  }
+  final prim = out.where((l) => !l.isSecondary).toList();
+  final sec = out.where((l) => l.isSecondary).toList();
+  out.clear();
+  if (prim.isNotEmpty) {
+    out.add(prim.first);
+    if (prim.length > 1) {
+      out.first = _DisplayLine(
+        text: '${prim.first.text}…',
+        isSecondary: false,
+      );
+    }
+  }
+  if (sec.isNotEmpty) {
+    out.add(_DisplayLine(
+      text: sec.length > 1 ? '${sec.first.text}…' : sec.first.text,
+      isSecondary: true,
+    ));
   }
   return out;
 }

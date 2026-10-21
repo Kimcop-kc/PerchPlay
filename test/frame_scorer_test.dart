@@ -113,7 +113,7 @@ void main() {
       final sc = FrameScorer.score(checker);
 
       // 纯黑和纯灰都无纹理，两者都 ≈ 0
-      expect(sb, lessThanOrEqualTo(sg));  // 都是 ~0, 纯黑 ≤ 纯灰即可
+      expect(sb, lessThanOrEqualTo(sg)); // 都是 ~0, 纯黑 ≤ 纯灰即可
       expect(sb, lessThan(sc));
       expect(sg, lessThan(sc));
     });
@@ -133,12 +133,9 @@ void main() {
       final flatPng = Uint8List.fromList(img.encodePng(flat));
       final flatScore = FrameScorer.score(flatPng);
 
-      expect(sharpScore, greaterThan(100),
-          reason: '1px 棋盘格应有高锐度响应');
-      expect(flatScore, lessThan(1),
-          reason: '纯灰帧无纹理，拉普拉斯能量 ≈ 0');
-      expect(flatScore, lessThan(sharpScore),
-          reason: '模糊 ≈ 无纹理，得分应低于锐利帧');
+      expect(sharpScore, greaterThan(100), reason: '1px 棋盘格应有高锐度响应');
+      expect(flatScore, lessThan(1), reason: '纯灰帧无纹理，拉普拉斯能量 ≈ 0');
+      expect(flatScore, lessThan(sharpScore), reason: '模糊 ≈ 无纹理，得分应低于锐利帧');
     });
   });
 }

@@ -36,8 +36,8 @@ class CoverThumb extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final posterUrl =
-        ref.watch(scrapeProvider.select((s) => s.results[video.path]?.posterUrl));
+    final posterUrl = ref
+        .watch(scrapeProvider.select((s) => s.results[video.path]?.posterUrl));
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: SizedBox(
