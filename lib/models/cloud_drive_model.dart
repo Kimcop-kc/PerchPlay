@@ -35,8 +35,8 @@ extension CloudDriveTypeX on CloudDriveType {
         // 夸克网盘登录页（支持扫码/手机号登录）
         return 'https://pan.quark.cn/signin';
       case CloudDriveType.pan115:
-        // 115 网盘登录页
-        return 'https://115.com/login';
+        // 115 网盘登录页（扫码登录最稳，手机号登录也走这个入口）
+        return 'https://115.com/';
       case CloudDriveType.baidu:
         // 百度网盘登录页
         return 'https://pan.baidu.com/login';

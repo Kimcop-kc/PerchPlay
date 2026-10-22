@@ -98,8 +98,12 @@ class Pan115DriveClient {
           final name = raw['n']?.toString() ?? '';
           if (name.isEmpty) continue;
           final dir = raw['is_dir'] == 1 || raw['is_dir'] == true;
+          // 文件用 pickcode（取直链必需），目录用 cid（列子目录用）
+          final pc = raw['pc']?.toString() ?? '';
+          final fid = raw['fid']?.toString() ?? '';
+          final cid = raw['cid']?.toString() ?? '';
           items.add(CloudFileItem(
-            id: raw['cid']?.toString() ?? raw['fid']?.toString() ?? '',
+            id: dir ? (cid.isNotEmpty ? cid : fid) : (pc.isNotEmpty ? pc : fid),
             name: name,
             path: parentPath == '/' ? '/$name' : '$parentPath/$name',
             isDirectory: dir,
