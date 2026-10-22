@@ -96,21 +96,15 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
                     child: const Icon(Icons.arrow_back_ios,
                         size: 20, color: GlassTheme.textSecondary),
                   ),
-            trailing: _current == null
+            trailing: _current != null
                 ? GlassButton.outlined(
-                    icon: Icons.add_rounded,
-                    label: '添加',
-                    height: 36,
-                    foregroundColor: GlassTheme.accentTeal,
-                    onTap: _showAddSheet,
-                  )
-                : GlassButton.outlined(
                     icon: Icons.refresh_rounded,
                     label: '刷新',
                     height: 36,
                     foregroundColor: GlassTheme.textSecondary,
                     onTap: _reload,
-                  ),
+                  )
+                : null,
           ),
         if (_loading)
           const SliverFillRemaining(
@@ -171,14 +165,6 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
                   color: GlassTheme.textSecondary, fontSize: 13),
             ),
           ),
-          if (_current == null)
-            GlassButton.outlined(
-              icon: Icons.add_rounded,
-              label: '添加',
-              height: 32,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: _showAddSheet,
-            ),
           if (_current != null)
             IconButton(
               icon: const Icon(Icons.refresh_rounded,
