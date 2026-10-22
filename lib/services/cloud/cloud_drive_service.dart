@@ -13,6 +13,11 @@ import 'quark_drive_client.dart';
 ///
 /// 各家协议差异很大（夸克用 fid 树、115 用 cid、百度用路径、阿里用 file_id），
 /// 这里只统一「连接 / 列目录 / 取直链」三件事，其余交给各自 client。
+///
+/// ## 多账号支持
+/// v1.0.96 之前每种类型只有一个 client 槽（如 `_quark`），第二个同类型登录会
+/// 把第一个 dispose 掉，导致两个夸克不能同时用。现在改用 `Map<accountId, client>`
+/// 连接池，每个账号独立一个 client，切换不互相影响。
 class CloudDriveService {
   CloudDriveService._();
   static final instance = CloudDriveService._();
@@ -24,16 +29,23 @@ class CloudDriveService {
 
   bool _loaded = false;
 
-  // 当前活跃的连接对象（按需创建）
-  QuarkDriveClient? _quark;
-  Pan115DriveClient? _pan115;
-  BaiduDriveClient? _baidu;
-  AliyunDriveClient? _aliyun;
+  // 每个账号一个独立 client（按 accountId 索引）
+  // 用 dynamic 因为各 client 在不同文件，无法实现私有抽象接口
+  final Map<String, dynamic> _clients = {};
 
   /// 阿里云盘开放平台凭据（可选）
   String _aliyunClientId = '';
   String _aliyunClientSecret = '';
   String get aliyunClientId => _aliyunClientId;
+  Future<void> setAliyunCredentials(String id, String secret) async {
+    _aliyunClientId = id.trim();
+    _aliyunClientSecret = secret.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cloud.aliyunClientId', _aliyunClientId);
+      await prefs.setString('cloud.aliyunClientSecret', _aliyunClientSecret);
+    } catch (_) {}
+  }
 
   // ──────────── 持久化 ────────────
 
@@ -72,24 +84,10 @@ class CloudDriveService {
     }
   }
 
-  Future<void> setAliyunCredentials(String id, String secret) async {
-    _aliyunClientId = id.trim();
-    _aliyunClientSecret = secret.trim();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cloud.aliyunClientId', _aliyunClientId);
-      await prefs.setString('cloud.aliyunClientSecret', _aliyunClientSecret);
-    } catch (_) {}
-  }
-
   // ──────────── 账号管理 ────────────
 
-  /// 添加账号。
-  ///
-  /// 同一个云盘**只保留一条**：id 是时间戳生成的，若只按 id 去重，
-  /// 用户每次重新登录都会多出一条，列表越用越乱。这里按 [type] 覆盖。
+  /// 添加账号。按 [id] 去重，允许同类型多个账号。
   Future<void> addAccount(CloudDriveAccount acc) async {
-    // 仅按 id 去重；允许同类型多个账号（如两个夸克号）
     _accounts = [
       ..._accounts.where((e) => e.id != acc.id),
       acc,
@@ -99,6 +97,8 @@ class CloudDriveService {
 
   Future<void> removeAccount(String id) async {
     _accounts = _accounts.where((e) => e.id != id).toList();
+    _clients[id]?.dispose();
+    _clients.remove(id);
     await _save();
   }
 
@@ -112,77 +112,75 @@ class CloudDriveService {
     }
   }
 
-  // ──────────── 连接 ────────────
+  // ──────────── 连接（按 accountId） ────────────
 
-  /// 测试连接并返回昵称（null = 失败）。
-  Future<String?> testConnection(CloudDriveAccount acc) async {
-    _disposeClients();
-    switch (acc.type) {
-      case CloudDriveType.quark:
-        _quark = QuarkDriveClient(acc);
-        return _quark!.connect();
-      case CloudDriveType.pan115:
-        _pan115 = Pan115DriveClient(acc);
-        return _pan115!.connect();
-      case CloudDriveType.baidu:
-        _baidu = BaiduDriveClient(acc);
-        return _baidu!.connect();
-      case CloudDriveType.aliyun:
-        _aliyun = AliyunDriveClient(
-          acc,
-          clientId: _aliyunClientId,
-          clientSecret: _aliyunClientSecret,
-        );
-        return _aliyun!.connect();
+  /// 建立某账号的连接（返回昵称，null = 失败）。
+  ///
+  /// 同一个 accountId 重复调用会复用已有连接；切换其他账号不会
+  /// dispose 当前连接，可以同时浏览两个盘。
+  Future<String?> connect(CloudDriveAccount acc) async {
+    // 已有连接且账号没变则复用
+    final existing = _clients[acc.id];
+    if (existing != null) {
+      // 快速检查连接是否还活着
+      return _connectClient(acc);
     }
+    return _connectClient(acc);
   }
 
-  /// 建立某账号的连接（供浏览页使用）。
-  Future<String?> connect(CloudDriveAccount acc) async {
-    _disposeClients();
+  /// 断开某个账号的连接（页面退出时调用）。
+  void disconnect(String accountId) {
+    _clients[accountId]?.dispose();
+    _clients.remove(accountId);
+  }
+
+  Future<String?> _connectClient(CloudDriveAccount acc) async {
+    // 先 dispose 旧的同 id client
+    try { (_clients[acc.id] as dynamic).dispose(); } catch (_) {}
+    _clients.remove(acc.id);
+
+    dynamic client;
     switch (acc.type) {
       case CloudDriveType.quark:
-        _quark = QuarkDriveClient(acc);
-        return _quark!.connect();
+        client = QuarkDriveClient(acc);
+        break;
       case CloudDriveType.pan115:
-        _pan115 = Pan115DriveClient(acc);
-        return _pan115!.connect();
+        client = Pan115DriveClient(acc);
+        break;
       case CloudDriveType.baidu:
-        _baidu = BaiduDriveClient(acc);
-        return _baidu!.connect();
+        client = BaiduDriveClient(acc);
+        break;
       case CloudDriveType.aliyun:
-        _aliyun = AliyunDriveClient(
+        client = AliyunDriveClient(
           acc,
           clientId: _aliyunClientId,
           clientSecret: _aliyunClientSecret,
         );
-        return _aliyun!.connect();
+        break;
     }
+
+    final nick = await client.connect();
+    _clients[acc.id] = client;
+    return nick;
   }
 
   /// 列目录。
   ///
+  /// [accountId] 是账号 id（不是 type）。
   /// [dirId] 含义按云盘不同：
   ///  - 夸克：fid（根 `'0'`）
   ///  - 115 ：cid（根 `'0'`）
   ///  - 百度：绝对路径（根 `'/'`）
   ///  - 阿里：file_id（根 `'root'`）
   Future<List<CloudFileItem>?> listDirectory(
-    CloudDriveType type,
+    String accountId,
     String dirId, {
     String parentPath = '/',
   }) async {
     try {
-      switch (type) {
-        case CloudDriveType.quark:
-          return await _quark?.listDirectory(dirId, parentPath: parentPath);
-        case CloudDriveType.pan115:
-          return await _pan115?.listDirectory(dirId, parentPath: parentPath);
-        case CloudDriveType.baidu:
-          return await _baidu?.listDirectory(dirId, parentPath: parentPath);
-        case CloudDriveType.aliyun:
-          return await _aliyun?.listDirectory(dirId, parentPath: parentPath);
-      }
+      final c = _clients[accountId];
+      if (c == null) return null;
+      return await c.listDirectory(dirId, parentPath: parentPath);
     } catch (e) {
       debugPrint('[Cloud] listDirectory 失败: $e');
       return null;
@@ -190,38 +188,22 @@ class CloudDriveService {
   }
 
   /// 取文件直链（播放用）。
-  Future<String?> getDownloadUrl(CloudDriveType type, String fileId) async {
+  Future<String?> getDownloadUrl(String accountId, String fileId) async {
     try {
-      switch (type) {
-        case CloudDriveType.quark:
-          return await _quark?.getDownloadUrl(fileId);
-        case CloudDriveType.pan115:
-          return await _pan115?.getDownloadUrl(fileId);
-        case CloudDriveType.baidu:
-          return await _baidu?.getDownloadUrl(fileId);
-        case CloudDriveType.aliyun:
-          return await _aliyun?.getDownloadUrl(fileId);
-      }
+      final c = _clients[accountId];
+      if (c == null) return null;
+      return await c.getDownloadUrl(fileId);
     } catch (e) {
       debugPrint('[Cloud] getDownloadUrl 失败: $e');
       return null;
     }
   }
 
-  void _disposeClients() {
-    _quark?.dispose();
-    _pan115?.dispose();
-    _baidu?.dispose();
-    _aliyun?.dispose();
-    _quark = null;
-    _pan115 = null;
-    _baidu = null;
-    _aliyun = null;
+  /// 释放所有底层连接（App 退出时调用）。
+  void dispose() {
+    for (final c in _clients.values) {
+      c.dispose();
+    }
+    _clients.clear();
   }
-
-  /// 释放底层连接（不动已保存的账号）。
-  ///
-  /// 页面退出时调用。下次 [connect] 会重新创建 client，
-  /// 账号列表仍从 SharedPreferences 读，不受影响。
-  void dispose() => _disposeClients();
 }

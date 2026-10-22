@@ -429,7 +429,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
     // 保存并测试
     setState(() => _loading = true);
     await _svc.addAccount(acc);
-    final nick = await _svc.testConnection(acc);
+    final nick = await _svc.connect(acc);
     if (nick != null) {
       await _svc.updateAccount(acc.copyWith(nickname: nick));
     }
@@ -483,7 +483,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       _error = null;
     });
     final list =
-        await _svc.listDirectory(acc.type, _dirId, parentPath: _dirPath);
+        await _svc.listDirectory(acc.id, _dirId, parentPath: _dirPath);
     if (!mounted) return;
     if (list == null) {
       setState(() {
@@ -558,7 +558,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
     // 否则点了没反应会以为卡死。
     _snack('正在获取播放地址…');
     try {
-      final url = await _svc.getDownloadUrl(acc.type, f.id);
+      final url = await _svc.getDownloadUrl(acc.id, f.id);
       if (!mounted) return;
       if (url == null || url.isEmpty) {
         _snack('取播放地址失败。链接可能已过期，刷新后再试。');

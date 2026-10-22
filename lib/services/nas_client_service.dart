@@ -5,33 +5,21 @@ import 'package:dart_smb2/dart_smb2.dart';
 import 'package:flutter/foundation.dart';
 import '../models/nas_connection_model.dart';
 
-/// NAS 文件服务客户端
-/// 支持 SMB / FTP / WebDAV 三种协议
-class NasClientService {
-  NasClientService._();
-  static final instance = NasClientService._();
+/// 单个 NAS 连接的客户端（SMB/FTP/WebDAV）。
+class _NasConnection {
+  _NasConnection(this.config);
 
-  NasConnection? _connection;
-  NasConnection? get connection => _connection;
+  final NasConnection config;
+  HttpClient? httpClient;
+  Smb2Pool? smbPool;
+  bool connected = false;
 
-  HttpClient? _httpClient;
-
-  /// SMB2/3 连接池（基于 libsmb2，走 worker isolate，不阻塞 UI）
-  Smb2Pool? _smbPool;
-
-  bool _connected = false;
-  bool get isConnected => _connected;
-
-  // ──────────── 连接 ────────────
-
-  Future<bool> connect(NasConnection config) async {
-    _connection = config;
-    // SMB 不走 HttpClient，避免无谓的资源占用
+  Future<bool> connect() async {
+    // SMB 不走 HttpClient
     if (config.protocol != NasProtocol.smb) {
-      _httpClient = HttpClient();
-      _httpClient!.connectionTimeout = const Duration(seconds: 10);
+      httpClient = HttpClient();
+      httpClient!.connectionTimeout = const Duration(seconds: 10);
     }
-
     try {
       switch (config.protocol) {
         case NasProtocol.webdav:
@@ -41,7 +29,7 @@ class NasClientService {
         case NasProtocol.smb:
           return await _connectSmb();
         case NasProtocol.nfs:
-          return false; // NFS 需要 kernel 支持，不通过 Dart 实现
+          return false;
       }
     } catch (e) {
       debugPrint('[NAS] connect error: $e');
@@ -50,65 +38,165 @@ class NasClientService {
   }
 
   Future<void> disconnect() async {
-    _httpClient?.close();
-    _httpClient = null;
+    httpClient?.close();
+    httpClient = null;
     try {
-      await _smbPool?.disconnect();
+      await smbPool?.disconnect();
     } catch (_) {}
-    _smbPool = null;
-    _connection = null;
-    _connected = false;
+    smbPool = null;
+    connected = false;
   }
 
-  // ──────────── SMB2/3 ────────────
+  // ──────────── WebDAV ────────────
 
-  /// SMB 连接。
-  ///
-  /// 用 [Smb2Pool] 而不是单连接客户端：它会在 worker isolate 里跑，
-  /// 目录遍历/读文件不会卡住 UI（大目录尤其明显）。
-  ///
-  /// 关键约定：
-  ///  - [NasConnection.shareName] 必填（SMB 必须先连到某个共享，如 `video`）
-  ///  - [NasConnection.domain] 可选，Windows 域/工作组填 `WORKGROUP`
+  Future<bool> _connectWebDav() async {
+    final c = config;
+    httpClient ??= HttpClient();
+    httpClient!.connectionTimeout = const Duration(seconds: 10);
+    try {
+      // 尝试 OPTIONS 测试连接。WebDAV 很多实现 OPTIONS 会返回
+      // 500/501（不支持），所以 200-599 都接受，只检查是否真能
+      // 连上（socket 连不通会抛 IOException）。
+      final uri = Uri(
+        scheme: c.useHttps ? 'https' : 'http',
+        host: c.host,
+        port: c.port,
+        path: c.remotePath.isNotEmpty ? c.remotePath : '/',
+      );
+      await _request(uri, 'OPTIONS', client: httpClient!);
+      connected = true;
+      return true;
+    } catch (e) {
+      debugPrint('[NAS] WebDAV 连接失败: $e');
+      return false;
+    }
+  }
+
+  Future<List<NasFileItem>> _listWebDav(String path) async {
+    final c = config;
+    final client = httpClient;
+    if (client == null) return [];
+    try {
+      final uri = Uri(
+        scheme: c.useHttps ? 'https' : 'http',
+        host: c.host,
+        port: c.port,
+        path: path.isNotEmpty ? path : '/',
+      );
+      final resp = await _request(uri, 'PROPFIND',
+          client: client,
+          headers: {'Depth': '1'},
+          body: _propfindBody);
+      if (resp == null) return [];
+      final body = await resp.transform(utf8.decoder).join();
+      return _parseWebDavMultiStatus(body);
+    } catch (e) {
+      debugPrint('[NAS] WebDAV list 失败: $e');
+      return [];
+    }
+  }
+
+  // ──────────── FTP ────────────
+
+  Future<bool> _connectFtp() async {
+    final c = config;
+    try {
+      final socket = await Socket.connect(c.host, c.port,
+          timeout: const Duration(seconds: 10));
+      final ftp = _FtpControl(socket);
+      final line = await ftp.readResponse();
+      if (line == null || !line.startsWith('220')) return false;
+      await ftp.sendCommand('USER ${c.username}');
+      final userResp = await ftp.readResponse();
+      if (userResp == null) return false;
+      if (userResp.startsWith('331')) {
+        await ftp.sendCommand('PASS ${c.password}');
+        final passResp = await ftp.readResponse();
+        if (passResp == null || !passResp.startsWith('230')) return false;
+      }
+      await ftp.quit();
+      connected = true;
+      return true;
+    } catch (e) {
+      debugPrint('[NAS] FTP 连接失败: $e');
+      return false;
+    }
+  }
+
+  Future<List<NasFileItem>> _listFtp(String path) async {
+    final c = config;
+    try {
+      final socket = await Socket.connect(c.host, c.port,
+          timeout: const Duration(seconds: 10));
+      final ftp = _FtpControl(socket);
+      await ftp.readResponse(); // 220
+      await ftp.sendCommand('USER ${c.username}');
+      await ftp.readResponse();
+      await ftp.sendCommand('PASS ${c.password}');
+      await ftp.readResponse();
+      // PASV + LIST
+      await ftp.sendCommand('PASV');
+      final pasvResp = await ftp.readResponse();
+      if (pasvResp == null) {
+        await ftp.quit();
+        return [];
+      }
+      final pasv = _parsePasv(pasvResp);
+      if (pasv == null) {
+        await ftp.quit();
+        return [];
+      }
+      final p = path.trim().isEmpty ? '/' : path.trim();
+      await ftp.sendCommand(p == '/' ? 'LIST' : 'LIST $p');
+      final dataSocket =
+          await Socket.connect(pasv['host']!, int.parse(pasv['port']!),
+              timeout: const Duration(seconds: 10));
+      final listResp = await ftp.readResponse();
+      final data = await dataSocket
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .join();
+      dataSocket.destroy();
+      await ftp.quit();
+      return _parseFtpList(data);
+    } catch (e) {
+      debugPrint('[NAS] FTP list 失败: $e');
+      return [];
+    }
+  }
+
+  // ──────────── SMB ────────────
+
   Future<bool> _connectSmb() async {
-    final c = _connection!;
+    final c = config;
     final share = c.shareName.trim();
     if (share.isEmpty) {
-      debugPrint('[NAS] SMB 缺少共享名（shareName），无法连接');
-      _connected = false;
+      connected = false;
       return false;
     }
     try {
-      await _smbPool?.disconnect();
-      // 注意：dart_smb2 的 connect 没有 port 参数（固定走 445），
-      // 非标准端口暂不支持。
-      _smbPool = await Smb2Pool.connect(
+      await smbPool?.disconnect();
+      smbPool = await Smb2Pool.connect(
         host: c.host,
         share: share,
         user: c.username.isEmpty ? null : c.username,
         password: c.password.isEmpty ? null : c.password,
         domain: c.domain.isEmpty ? null : c.domain,
       );
-      // 真正确认可用：列一次根目录
-      await _smbPool!.listDirectory('');
-      _connected = true;
-      debugPrint('[NAS] SMB 已连接: ${c.host}/$share');
+      await smbPool!.listDirectory('');
+      connected = true;
       return true;
     } catch (e) {
       debugPrint('[NAS] SMB 连接失败: $e');
-      _smbPool = null;
-      _connected = false;
+      smbPool = null;
+      connected = false;
       return false;
     }
   }
 
-  /// 列出 SMB 目录。
-  ///
-  /// 路径以 `/` 开头（与 WebDAV 保持一致），内部转成 SMB 的相对路径。
   Future<List<NasFileItem>> _listSmb(String path) async {
-    final pool = _smbPool;
+    final pool = smbPool;
     if (pool == null) return [];
-    // '/a/b' → 'a/b'；'/' → ''
     var rel = path.trim();
     if (rel.startsWith('/')) rel = rel.substring(1);
     if (rel.endsWith('/')) rel = rel.substring(0, rel.length - 1);
@@ -116,128 +204,25 @@ class NasClientService {
     final entries = await pool.listDirectory(rel);
     final items = <NasFileItem>[];
     for (final e in entries) {
-      // 跳过 . / .. （部分服务端会返回）
       if (e.name == '.' || e.name == '..') continue;
       final childPath = rel.isEmpty ? '/${e.name}' : '/$rel/${e.name}';
       final st = e.stat;
       items.add(NasFileItem(
         name: e.name,
         path: childPath,
-        isDirectory: e.isDirectory,
-        size: e.isDirectory ? 0 : st.size,
+        isDirectory: st.isDirectory,
+        size: st.size,
         modifiedTime: st.modified,
       ));
     }
     return items;
   }
 
-  /// 读取 SMB 文件全部内容（小文件用，如字幕/封面）。
-  Future<Uint8List?> readSmbFile(String path) async {
-    final pool = _smbPool;
-    if (pool == null) return null;
-    var rel = path.trim();
-    if (rel.startsWith('/')) rel = rel.substring(1);
-    try {
-      return await pool.readFile(rel);
-    } catch (e) {
-      debugPrint('[NAS] SMB 读文件失败: $e');
-      return null;
-    }
-  }
+  // ──────────── Public ops ────────────
 
-  /// 下载 SMB 文件到本地（视频播放前缓存用）。
-  Future<bool> downloadSmbFile(String remotePath, String localPath) async {
-    final pool = _smbPool;
-    if (pool == null) return false;
-    var rel = remotePath.trim();
-    if (rel.startsWith('/')) rel = rel.substring(1);
-    try {
-      await pool.downloadToFile(rel, localPath);
-      return true;
-    } catch (e) {
-      debugPrint('[NAS] SMB 下载失败: $e');
-      return false;
-    }
-  }
-
-  // ──────────── WebDAV ────────────
-
-  /// 规范化远程路径：保证以 `/` 开头、不以 `/` 结尾（根除外）。
-  ///
-  /// 用户可能填 `dav`、`/dav/`、`dav/files/user` 等，
-  /// 直接拼 `$baseUrl$path` 会得到 `http://host:5005dav` 这种错误 URL。
-  static String normalizeRemotePath(String raw) {
-    var p = raw.trim();
-    if (p.isEmpty) return '/';
-    // 补前导斜杠
-    if (!p.startsWith('/')) p = '/$p';
-    // 去掉末尾多余斜杠（根目录保留单个 /）
-    while (p.length > 1 && p.endsWith('/')) {
-      p = p.substring(0, p.length - 1);
-    }
-    return p;
-  }
-
-  Future<bool> _connectWebDav() async {
-    final c = _connection!;
-    final scheme = c.useHttps ? 'https' : 'http';
-    final baseUrl = '$scheme://${c.host}:${c.port}';
-    final path = normalizeRemotePath(c.remotePath);
-
-    try {
-      final uri = Uri.parse('$baseUrl$path');
-      final req = await _httpClient!.openUrl('PROPFIND', uri);
-      req.headers.set('Depth', '1');
-      req.headers.set('User-Agent', 'PerchPlay/1.0 WebDAV');
-      if (c.username.isNotEmpty) {
-        final auth = base64Encode(utf8.encode('${c.username}:${c.password}'));
-        req.headers.set('Authorization', 'Basic $auth');
-      }
-      final res = await req.close();
-      _connected = res.statusCode >= 200 && res.statusCode < 400 ||
-          res.statusCode == 207;
-      return _connected;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ──────────── FTP ────────────
-
-  Future<bool> _connectFtp() async {
-    final c = _connection!;
-    try {
-      final socket = await Socket.connect(
-        c.host,
-        c.port,
-        timeout: const Duration(seconds: 5),
-      );
-      final response = await _readFtpResponse(socket);
-      if (response.startsWith('220')) {
-        // 登录
-        socket.write('USER ${c.username}\r\n');
-        await _readFtpResponse(socket);
-        socket.write('PASS ${c.password}\r\n');
-        final auth = await _readFtpResponse(socket);
-        socket.destroy();
-        _connected = auth.startsWith('230');
-        return _connected;
-      }
-      socket.destroy();
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ──────────── 文件列表 ────────────
-
-  /// 列出目录内容
   Future<List<NasFileItem>> listDirectory(String path) async {
-    if (!_connected || _connection == null) return [];
-
     try {
-      switch (_connection!.protocol) {
+      switch (config.protocol) {
         case NasProtocol.webdav:
           return await _listWebDav(path);
         case NasProtocol.ftp:
@@ -245,269 +230,242 @@ class NasClientService {
         case NasProtocol.smb:
           return await _listSmb(path);
         case NasProtocol.nfs:
-          // NFS 需要 kernel 支持，不通过 Dart 实现
           return [];
       }
     } catch (e) {
-      debugPrint('[NAS] list error: $e');
+      debugPrint('[NAS] listDirectory 失败: $e');
       return [];
     }
   }
 
-  Future<List<NasFileItem>> _listWebDav(String path) async {
-    final c = _connection!;
+  String getPlayableUrl(String path) {
+    final c = config;
+    if (c.protocol == NasProtocol.smb) {
+      // SMB 不做 URL 转换，返回 path 原样给 dart_smb2 stream
+      return 'smb://${c.host}/${c.shareName}$path';
+    }
     final scheme = c.useHttps ? 'https' : 'http';
-    final baseUrl = '$scheme://${c.host}:${c.port}';
-    final uri = Uri.parse('$baseUrl$path');
+    return '$scheme://${c.host}:${c.port}$path';
+  }
 
-    final req = await _httpClient!.openUrl('PROPFIND', uri);
-    req.headers.set('Depth', '1');
-    req.headers.set('User-Agent', 'PerchPlay/1.0 WebDAV');
-    if (c.username.isNotEmpty) {
-      final auth = base64Encode(utf8.encode('${c.username}:${c.password}'));
+  // ──────────── HTTP helpers ────────────
+
+  Future<HttpClientResponse?> _request(
+    Uri uri,
+    String method, {
+    HttpClient? client,
+    Map<String, String> headers = const {},
+    String? body,
+  }) async {
+    client ??= HttpClient();
+    final req = await (method == 'PROPFIND'
+        ? _propfindRequest(uri, client)
+        : (method == 'GET'
+            ? client.getUrl(uri)
+            : client.postUrl(uri)));
+    headers.forEach(req.headers.set);
+    if (config.username.isNotEmpty) {
+      final auth = base64Encode(
+          utf8.encode('${config.username}:${config.password}'));
       req.headers.set('Authorization', 'Basic $auth');
     }
-
-    final res = await req.close();
-    final body = await res.transform(utf8.decoder).join();
-
-    return _parseWebDavResponse(body, path);
+    if (body != null) {
+      req.headers.contentType = ContentType('application', 'xml');
+      req.write(body);
+    }
+    try {
+      return await req.close();
+    } catch (_) {
+      return null;
+    }
   }
 
-  List<NasFileItem> _parseWebDavResponse(String xml, String currentPath) {
+  Future<HttpClientRequest> _propfindRequest(
+      Uri uri, HttpClient client) async {
+    // 用 openUrl 构造 PROPFIND（dart:io 不直接支持）
+    final req =
+        await client.openUrl('PROPFIND', uri);
+    return req;
+  }
+
+  static const _propfindBody = '''<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:resourcetype/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+  </D:prop>
+</D:propfind>''';
+
+  List<NasFileItem> _parseWebDavMultiStatus(String xml) {
     final items = <NasFileItem>[];
+    final responsePattern = RegExp(
+      r'<D:response>.*?</D:response>',
+      dotAll: true,
+    );
+    final hrefPattern = RegExp(r'<D:href>(.*?)</D:href>', dotAll: true);
+    final displayNamePattern =
+        RegExp(r'<D:displayname>(.*?)</D:displayname>', dotAll: true);
+    final collectionPattern = RegExp(r'<D:collection/>');
+    final lengthPattern =
+        RegExp(r'<D:getcontentlength>(\d+)</D:getcontentlength>');
+    final modifiedPattern =
+        RegExp(r'<D:getlastmodified>(.*?)</D:getlastmodified>');
 
-    // 兼容带/不带命名空间前缀、任意大小写（原来硬编码 <D: 前缀，
-    // 很多 NAS 用小写或默认命名空间，结果一个条目都解析不出来）
-    final responseBlocks = RegExp(
-            r'<(?:[A-Za-z0-9]+:)?response[^>]*>(.*?)</(?:[A-Za-z0-9]+:)?response>',
-            dotAll: true,
-            caseSensitive: false)
-        .allMatches(xml);
+    for (final m in responsePattern.allMatches(xml)) {
+      final resp = m.group(0)!;
+      final href = hrefPattern.firstMatch(resp)?.group(1) ?? '';
+      if (href.endsWith('/') && !href.contains('?')) continue; // skip dirs
 
-    for (final match in responseBlocks) {
-      final block = match.group(1) ?? '';
-      final href = _decodeEntities(_tagText(block, 'href') ?? '');
-      if (href.isEmpty) continue;
+      final name = Uri.decodeFull(
+          displayNamePattern.firstMatch(resp)?.group(1) ?? href.split('/').last);
+      final isDir = collectionPattern.hasMatch(resp);
+      final sizeStr = lengthPattern.firstMatch(resp)?.group(1) ?? '0';
+      final modStr = modifiedPattern.firstMatch(resp)?.group(1);
 
-      final isDir =
-          RegExp(r'<(?:[A-Za-z0-9]+:)?collection', caseSensitive: false)
-              .hasMatch(block);
-
-      // 跳过自身
-      final decodedHref = Uri.decodeFull(href).replaceAll(RegExp(r'/$'), '');
-      final decodedPath =
-          Uri.decodeFull(currentPath).replaceAll(RegExp(r'/$'), '');
-      if (decodedHref == decodedPath) continue;
-
-      final size =
-          int.tryParse(_tagText(block, 'getcontentlength') ?? '0') ?? 0;
-      final modifiedStr = _tagText(block, 'getlastmodified');
-      final modified =
-          modifiedStr == null ? null : DateTime.tryParse(modifiedStr);
-
-      var displayName = _tagText(block, 'displayname') ?? '';
-      if (displayName.isEmpty) {
-        displayName = Uri.decodeFull(href)
-                .split('/')
-                .where((s) => s.isNotEmpty)
-                .lastOrNull ??
-            href;
-      }
-
-      final ext = displayName.contains('.')
-          ? '.${displayName.split('.').last.toLowerCase()}'
-          : '';
+      if (name.isEmpty || name == href.split('/').last && isDir) continue;
 
       items.add(NasFileItem(
-        name: displayName,
+        name: name,
         path: Uri.decodeFull(href),
         isDirectory: isDir,
-        size: size,
-        modifiedTime: modified,
-        extension: ext,
+        size: int.tryParse(sizeStr) ?? 0,
+        modifiedTime: modStr != null ? DateTime.tryParse(modStr) : null,
       ));
     }
-
-    // 目录在前、再按名称排序
-    items.sort((a, b) {
-      if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-
-    // 去重
-    final seen = <String>{};
-    return items.where((item) => seen.add(item.path)).toList();
-  }
-
-  /// 取标签文本，容忍命名空间前缀与大小写
-  String? _tagText(String xml, String name) {
-    final m = RegExp(
-            '<(?:[A-Za-z0-9]+:)?$name[^>]*>(.*?)</(?:[A-Za-z0-9]+:)?$name>',
-            dotAll: true,
-            caseSensitive: false)
-        .firstMatch(xml);
-    return m?.group(1)?.trim();
-  }
-
-  String _decodeEntities(String s) => s
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&apos;', "'");
-
-  Future<List<NasFileItem>> _listFtp(String path) async {
-    final c = _connection!;
-    final items = <NasFileItem>[];
-
-    try {
-      final socket = await Socket.connect(
-        c.host,
-        c.port,
-        timeout: const Duration(seconds: 5),
-      );
-      await _readFtpResponse(socket);
-
-      // 登录
-      socket.write('USER ${c.username}\r\n');
-      await _readFtpResponse(socket);
-      socket.write('PASS ${c.password}\r\n');
-      await _readFtpResponse(socket);
-
-      // PASV 模式
-      socket.write('PASV\r\n');
-      final pasvResponse = await _readFtpResponse(socket);
-      final pasvData = _parsePasv(pasvResponse);
-
-      if (pasvData != null) {
-        final dataSocket = await Socket.connect(
-          pasvData['host'],
-          pasvData['port'],
-          timeout: const Duration(seconds: 5),
-        );
-
-        socket.write('LIST $path\r\n');
-        await _readFtpResponse(socket);
-
-        // 读数据
-        final listData = await _readAll(dataSocket);
-        dataSocket.destroy();
-
-        // 解析 UNIX ls 格式（子项路径要拼上父目录，否则进目录后路径全错）
-        for (final line in listData.split('\n')) {
-          final item = _parseFtpListLine(line.trim(), path);
-          if (item != null) items.add(item);
-        }
-      }
-
-      socket.write('QUIT\r\n');
-      socket.destroy();
-    } catch (_) {}
-
     return items;
   }
 
-  NasFileItem? _parseFtpListLine(String line, String parentPath) {
-    if (line.isEmpty || line.startsWith('total')) return null;
-
-    // drwxr-xr-x  2 user group    4096 Jan 1 12:00 filename
-    final parts = line.split(RegExp(r'\s+'));
-    if (parts.length < 9) return null;
-
-    final isDir = parts[0].startsWith('d');
-    final sizeStr = parts[4];
-    final size = int.tryParse(sizeStr) ?? 0;
-    final name = parts.sublist(8).join(' ');
-    if (name == '.' || name == '..') return null;
-
-    // 拼出完整路径（父目录 + 名称），否则进子目录后请求路径是错的
-    final base = parentPath.endsWith('/')
-        ? parentPath.substring(0, parentPath.length - 1)
-        : parentPath;
-    final fullPath = '$base/$name';
-
-    final ext =
-        name.contains('.') ? '.${name.split('.').last.toLowerCase()}' : '';
-
-    return NasFileItem(
-      name: name,
-      path: fullPath,
-      isDirectory: isDir,
-      size: size,
-      extension: ext,
-    );
-  }
-
-  // ──────────── 生成可播放 URL ────────────
-
-  /// 为远程文件生成可直接播放的 URL
-  String getPlayableUrl(String path) {
-    if (_connection == null) return path;
-
-    final c = _connection!;
-    switch (c.protocol) {
-      case NasProtocol.webdav:
-        final scheme = c.useHttps ? 'https' : 'http';
-        final auth = '${c.username}:${c.password}';
-        // 将认证嵌入 URL（media_kit 支持）
-        final encodedPath = path.startsWith('/') ? path : '/$path';
-        return '$scheme://$auth@${c.host}:${c.port}$encodedPath';
-
-      case NasProtocol.ftp:
-        final encodedPath = path.startsWith('/') ? path : '/$path';
-        return 'ftp://${c.username}:${c.password}@${c.host}:${c.port}$encodedPath';
-
-      case NasProtocol.smb:
-        final encodedPath = path.replaceAll('\\', '/');
-        return 'smb://${c.username}:${c.password}@${c.host}$encodedPath';
-
-      default:
-        return path;
+  List<NasFileItem> _parseFtpList(String data) {
+    final items = <NasFileItem>[];
+    for (final line in data.split('\n')) {
+      if (line.trim().isEmpty) continue;
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length < 9) continue;
+      final perm = parts[0];
+      final isDir = perm.startsWith('d');
+      final size = int.tryParse(parts[4]) ?? 0;
+      String name;
+      if (parts.length > 9 && (parts[8] == '->' || parts[7] == '->')) {
+        final idx = parts.indexWhere((e) => e == '->');
+        name = parts.sublist(idx + 1).join(' ');
+      } else {
+        name = parts.sublist(8).join(' ');
+      }
+      items.add(NasFileItem(
+        name: name,
+        path: '/$name',
+        isDirectory: isDir,
+        size: size,
+      ));
     }
+    return items;
   }
 
-  // ──────────── FTP 工具 ────────────
-
-  /// 读一条完整的 FTP 响应（多行响应以 "220-..." 开头，
-  /// 直到 "220 " 这种 3 位码+空格的行才算结束；原来只读第一行会错位）
-  Future<String> _readFtpResponse(Socket socket) async {
-    final lines = <String>[];
-    await for (final line in socket
-        .cast<List<int>>()
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
-      lines.add(line);
-      if (RegExp(r'^\d{3} ').hasMatch(line)) break;
-    }
-    return lines.join('\n');
-  }
-
-  Future<String> _readAll(Socket socket) async {
-    final completer = Completer<String>();
-    final buffer = StringBuffer();
-    socket.cast<List<int>>().transform(utf8.decoder).listen(
-          buffer.write,
-          onDone: () => completer.complete(buffer.toString()),
-          onError: (e) => completer.complete(buffer.toString()),
-        );
-    // 超时
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!completer.isCompleted) completer.complete(buffer.toString());
-    });
-    return completer.future;
-  }
-
-  Map<String, dynamic>? _parsePasv(String response) {
-    // 227 Entering Passive Mode (h1,h2,h3,h4,p1,p2)
-    final match =
-        RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)').firstMatch(response);
+  Map<String, String>? _parsePasv(String response) {
+    final match = RegExp(r'\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)')
+        .firstMatch(response);
     if (match == null) return null;
-
     final host =
         '${match.group(1)}.${match.group(2)}.${match.group(3)}.${match.group(4)}';
-    final port = (int.parse(match.group(5)!) << 8) + int.parse(match.group(6)!);
+    final port =
+        (int.parse(match.group(5)!) << 8) + int.parse(match.group(6)!);
+    return {'host': host, 'port': '$port'};
+  }
+}
 
-    return {'host': host, 'port': port};
+/// FTP 控制连接辅助类。
+class _FtpControl {
+  _FtpControl(this.socket);
+
+  final Socket socket;
+  final _buffer = StringBuffer();
+
+  Future<String?> readResponse() async {
+    try {
+      await for (final data in socket) {
+        _buffer.write(utf8.decode(data));
+        final s = _buffer.toString();
+        if (s.contains('\r\n')) {
+          final lines = s.split('\r\n');
+          final last = lines.firstWhere((l) => l.length >= 3 &&
+              int.tryParse(l.substring(0, 3)) != null,
+              orElse: () => '');
+          if (last.isNotEmpty) {
+            _buffer.clear();
+            _buffer.write(lines.skipWhile((l) => l != last).skip(1).join('\r\n'));
+            return last;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> sendCommand(String cmd) async {
+    socket.add(utf8.encode('$cmd\r\n'));
+    await socket.flush();
+  }
+
+  Future<void> quit() async {
+    try {
+      await sendCommand('QUIT');
+      await readResponse();
+    } catch (_) {}
+    socket.destroy();
+  }
+}
+
+/// NAS 文件服务客户端 — 多连接池。
+///
+/// v1.0.96 之前只有一个连接槽，新增 NAS 会把上一个断开。
+/// 现在改用 Map<connectionId, _NasConnection>，每个连接独立，
+/// 切换不互相影响。
+class NasClientService {
+  NasClientService._();
+  static final instance = NasClientService._();
+
+  final Map<String, _NasConnection> _conns = {};
+
+  /// 建立连接（返回 true/false）。
+  Future<bool> connect(NasConnection config) async {
+    // 同 id 已有连接则复用
+    var c = _conns[config.id];
+    if (c != null && c.connected) return true;
+
+    c?.disconnect();
+    c = _NasConnection(config);
+    final ok = await c.connect();
+    _conns[config.id] = c;
+    return ok;
+  }
+
+  /// 断开某个连接。
+  Future<void> disconnect(String id) async {
+    final c = _conns.remove(id);
+    await c?.disconnect();
+  }
+
+  /// 断开所有连接。
+  Future<void> disconnectAll() async {
+    for (final c in _conns.values) {
+      await c.disconnect();
+    }
+    _conns.clear();
+  }
+
+  /// 列目录。
+  Future<List<NasFileItem>> listDirectory(
+      String connectionId, String path) async {
+    final c = _conns[connectionId];
+    if (c == null) return [];
+    return c.listDirectory(path);
+  }
+
+  /// 获取文件播放 URL。
+  String getPlayableUrl(String connectionId, String path) {
+    final c = _conns[connectionId];
+    if (c == null) return '';
+    return c.getPlayableUrl(path);
   }
 }

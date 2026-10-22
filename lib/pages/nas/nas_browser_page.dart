@@ -135,7 +135,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   // ═══════════════ 手机 ═══════════════
 
   Widget _buildMobileLayout(NasState state) {
-    if (state.isConnected) return _buildFileBrowser(state);
+    if (state.isConnected && state.activeConnection != null)
+      return _buildFileBrowser(state);
     if (state.connections.isEmpty) {
       return _buildEmptyConnections();
     }
@@ -264,7 +265,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         ),
         const VerticalDivider(width: 0.5, color: Color(0x14000000)),
         Expanded(
-          child: state.isConnected
+          child: state.isConnected && state.activeConnection != null
               ? _buildFileBrowser(state)
               : Center(
                   child: Column(
@@ -470,6 +471,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         tint: GlassTheme.tintTeal,
         child: Row(
           children: [
+            GlassButton(
+              icon: Icons.arrow_back_rounded,
+              compact: true,
+              ghost: true,
+              foregroundColor: GlassTheme.textSecondary,
+              onTap: () => ref.read(nasProvider.notifier).backToList(),
+            ),
             GlassButton(
               icon: Icons.arrow_upward_rounded,
               compact: true,

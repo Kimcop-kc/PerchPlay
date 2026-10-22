@@ -78,7 +78,9 @@ class NasNotifier extends StateNotifier<NasState> {
       final list = (jsonDecode(raw) as List)
           .map((e) => NasConnection.fromJson(e as Map<String, dynamic>))
           .toList();
-      state = state.copyWith(connections: list);
+      if (mounted) {
+        state = state.copyWith(connections: list);
+      }
     } catch (_) {
       // 解析失败时忽略历史配置
     }
@@ -95,9 +97,6 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 连接管理 ────
 
   /// 局域网自动发现 NAS（群晖/威联通/TrueNAS/自建…）
-  ///
-  /// 页面打开时与定时刷新时后台静默调用，不需要用户点按钮；
-  /// 重新扫描期间保留上一次结果，避免列表闪烁。
   DateTime? _lastScanAt;
 
   Future<void> discoverNas({bool force = false}) async {
@@ -106,7 +105,7 @@ class NasNotifier extends StateNotifier<NasState> {
     if (!force &&
         _lastScanAt != null &&
         now.difference(_lastScanAt!) < const Duration(seconds: 30)) {
-      return; // 刚扫过，别重复占网络
+      return;
     }
     _lastScanAt = now;
     state = state.copyWith(isDiscovering: true, discoverProgress: 0);
@@ -118,21 +117,24 @@ class NasNotifier extends StateNotifier<NasState> {
           }
         },
       );
-      // 没有局域网（如刚开机还没拿到 IP）→ 不记“已扫描”，尽快重试
       if (list.isEmpty &&
           !await NasDiscoveryService.instance.hasLocalNetwork()) {
         _lastScanAt = null;
       }
-      state = state.copyWith(
-        isDiscovering: false,
-        candidates: list,
-        discoverProgress: 1,
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isDiscovering: false,
+          candidates: list,
+          discoverProgress: 1,
+        );
+      }
     } catch (e) {
-      state = state.copyWith(
-        isDiscovering: false,
-        errorMessage: '搜索失败：$e',
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isDiscovering: false,
+          errorMessage: '搜索失败：$e',
+        );
+      }
     }
   }
 
@@ -151,7 +153,7 @@ class NasNotifier extends StateNotifier<NasState> {
   Future<void> removeConnection(String id) async {
     final connections = state.connections.where((c) => c.id != id).toList();
     if (state.activeConnection?.id == id) {
-      await disconnect();
+      await disconnectFrom(id);
     }
     state = state.copyWith(connections: connections);
     await _persistConnections();
@@ -179,8 +181,44 @@ class NasNotifier extends StateNotifier<NasState> {
     return ok;
   }
 
-  Future<void> disconnect() async {
-    await _service.disconnect();
+  /// 断开某个连接并回到列表
+  Future<void> disconnectFrom(String id) async {
+    await _service.disconnect(id);
+    if (state.activeConnection?.id == id) {
+      state = state.copyWith(
+        isConnected: false,
+        activeConnection: null,
+        currentFiles: [],
+        currentPath: '/',
+      );
+    }
+  }
+
+  /// 切换到另一个 NAS 连接（当前有活跃连接时）
+  Future<bool> switchTo(NasConnection config) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+
+    final ok = await _service.connect(config);
+    if (ok) {
+      state = state.copyWith(
+        isLoading: false,
+        isConnected: true,
+        activeConnection: config,
+        currentPath: config.remotePath,
+        clearError: true,
+      );
+      await navigateTo(config.remotePath);
+    } else {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: '连接失败，请检查地址、端口和账号密码',
+      );
+    }
+    return ok;
+  }
+
+  /// 回到连接列表（不断开当前连接，允许再切回）
+  void backToList() {
     state = state.copyWith(
       isConnected: false,
       activeConnection: null,
@@ -192,19 +230,25 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 文件浏览 ────
 
   Future<void> navigateTo(String path) async {
+    final connId = state.activeConnection?.id;
+    if (connId == null) return;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final files = await _service.listDirectory(path);
-      state = state.copyWith(
-        currentFiles: files,
-        currentPath: path,
-        isLoading: false,
-      );
+      final files = await _service.listDirectory(connId, path);
+      if (mounted) {
+        state = state.copyWith(
+          currentFiles: files,
+          currentPath: path,
+          isLoading: false,
+        );
+      }
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: '读取目录失败，请检查连接或目录权限',
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: '读取目录失败，请检查连接或目录权限',
+        );
+      }
     }
   }
 
@@ -225,7 +269,9 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 获取播放 URL ────
 
   String getPlayableUrl(String path) {
-    return _service.getPlayableUrl(path);
+    final connId = state.activeConnection?.id;
+    if (connId == null) return '';
+    return _service.getPlayableUrl(connId, path);
   }
 
   /// 检测 URL 是否可被 media_kit 播放
