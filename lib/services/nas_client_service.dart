@@ -468,4 +468,15 @@ class NasClientService {
     if (c == null) return '';
     return c.getPlayableUrl(path);
   }
+
+  /// 规范化远程路径：补上前导 `/`，去掉末尾多余 `/`，去首尾空格。
+  static String normalizeRemotePath(String path) {
+    path = path.trim();
+    if (path.isEmpty) return '/';
+    if (!path.startsWith('/')) path = '/$path';
+    while (path.length > 1 && path.endsWith('/')) {
+      path = path.substring(0, path.length - 1);
+    }
+    return path.isEmpty ? '/' : path;
+  }
 }
