@@ -1198,16 +1198,34 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     return List<String>.from(lines);
   }
 
+  /// 时间偏移改变后立即刷新字幕命中下标。
+  ///
+  /// 设置页/字幕面板调整偏移后调用，不等 position 流。
+  void refreshSubtitlePosition() {
+    _updateActiveSubtitle();
+  }
+
   void _updateActiveSubtitle() {
     final pos = state.position;
-    final p = _entryIndexAt(state.subtitleEntries, pos);
+    final settings = AppSettingsService.instance;
+
+    // 主字幕：应用主字幕时间偏移（偏移正数 = 字幕延后，即用更早的播放时间去匹配）
+    final primaryOffset =
+        Duration(milliseconds: settings.subtitlePrimaryOffsetMs);
+    final primaryPos = pos - primaryOffset;
+    final p = _entryIndexAt(state.subtitleEntries, primaryPos);
     // 命中条目变化才更新；不在任何区间时把下标清回 -1，
     // 避免字幕过期后浮层仍显示上一条（旧状态残留）。
     final nextP = p ?? -1;
     if (nextP != state.activeSubtitleIndex) {
       state = state.copyWith(activeSubtitleIndex: nextP);
     }
-    final s = _entryIndexAt(state.secondaryEntries, pos);
+
+    // 第二字幕：应用第二字幕时间偏移
+    final secondaryOffset =
+        Duration(milliseconds: settings.subtitleSecondaryOffsetMs);
+    final secondaryPos = pos - secondaryOffset;
+    final s = _entryIndexAt(state.secondaryEntries, secondaryPos);
     final nextS = s ?? -1;
     if (nextS != state.secondarySubtitleIndex) {
       state = state.copyWith(secondarySubtitleIndex: nextS);
