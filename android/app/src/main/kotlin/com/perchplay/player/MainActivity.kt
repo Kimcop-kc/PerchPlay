@@ -342,6 +342,12 @@ class MainActivity : FlutterActivity() {
                     "getSystemName" -> {
                         result.success("Android ${Build.VERSION.RELEASE}")
                     }
+                    // Android API 等级（如 26 = Android 8.0）。
+                    // Dart 侧据此决定系统栏模式：edgeToEdge 是 Android 10(29)+ 才支持，
+                    // 低版本要用 manual 并显式保留状态栏/导航栏，否则导航栏会遮住内容。
+                    "getAndroidSdkInt" -> {
+                        result.success(Build.VERSION.SDK_INT)
+                    }
 
                     // ── 后台播放前台服务 ──
                     // 之前 Dart 侧从未启动过这个服务，「后台播放」开关等于空转；

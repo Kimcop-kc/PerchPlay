@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'core/router/app_router.dart';
 import 'core/system/orientation_policy.dart';
+import 'core/system/system_ui_policy.dart';
 import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
@@ -73,17 +74,14 @@ void main() async {
   // 导航栏挤到侧边（见 OrientationPolicy 注释）。
   await OrientationPolicy.applyIdle();
 
-  // 浸入式状态栏（浅色主题：深色图标）
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
+  // 系统栏策略：Android 10+ 用 edgeToEdge，Android 9 及以下用 manual。
+  // edgeToEdge 在低版本不受支持，会让导航栏变成不透明黑条遮住页面底部。
+  await SystemUiPolicy.init();
+  await SystemUiPolicy.applyIdle(
+    navigationBarColor: GlassTheme.bg,
+    navigationIconBrightness: Brightness.dark,
     statusBarIconBrightness: Brightness.dark,
-    systemNavigationBarColor: GlassTheme.bg,
-    systemNavigationBarIconBrightness: Brightness.dark,
-    systemNavigationBarDividerColor: Colors.transparent,
-  ));
-
-  // 启用边缘到边缘渲染（iOS 27 风格）
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  );
 
   // ── 外部 App「用其他应用打开」进来的视频 ──
   //

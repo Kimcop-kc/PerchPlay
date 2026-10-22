@@ -13,6 +13,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/system/orientation_policy.dart';
+import '../../core/system/system_ui_policy.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../models/video_model.dart';
 import '../../models/cast_device_model.dart';
@@ -157,7 +158,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 按设备类型决定（手机竖屏 / 平板跟随物理方向）。
   void _restoreIdleOrientation() {
     OrientationPolicy.applyIdle();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // 按 Android 版本恢复系统栏：低版本用 manual，避免导航栏遮住页面底部
+    SystemUiPolicy.applyPlayerExit();
     // 恢复浅色状态栏图标（首页等页面是浅色背景，深色图标）
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -184,11 +186,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       // 退出全屏 → 回到该设备的常规方向（手机竖屏 / 平板保持横屏），
       // 不能写死竖屏，否则平板上会突然转成竖的
       await OrientationPolicy.applyIdle();
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // 按 Android 版本恢复：低版本用 manual，避免导航栏遮住内容
+      await SystemUiPolicy.applyPlayerExit();
     } else {
       _isFullscreen = true;
       await OrientationPolicy.applyFullscreen();
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemUiPolicy.applyImmersive();
     }
     // 无论进出全屏，都保持白色状态栏图标（播放页黑底）
     _applyPlayerFullscreenUi();

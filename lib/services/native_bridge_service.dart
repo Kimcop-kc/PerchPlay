@@ -237,6 +237,20 @@ class NativeBridgeService {
     }
   }
 
+  /// Android API 等级（26 = Android 8.0，29 = Android 10）。
+  ///
+  /// 非 Android 平台返回 0。用于决定系统栏模式：
+  /// `edgeToEdge` 只有 Android 10(29)+ 支持，低版本必须用 `manual`，
+  /// 否则导航栏会变成不透明黑条遮住页面底部。
+  Future<int> getAndroidSdkInt() async {
+    if (kIsWeb || !Platform.isAndroid) return 0;
+    try {
+      return await _channel.invokeMethod<int>('getAndroidSdkInt') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<bool> isIPad() async {
     try {
       return await _channel.invokeMethod('isIPad') ?? false;
