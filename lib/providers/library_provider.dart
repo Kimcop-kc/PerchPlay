@@ -393,10 +393,12 @@ final folderVideosProvider =
 });
 
 // 播放历史
+final playbackVersionProvider = StateProvider<int>((ref) => 0);
+
 final playHistoryProvider = FutureProvider<List<VideoModel>>((ref) async {
+  ref.watch(playbackVersionProvider); // 版本号变了就重新查 DB
   final db = DatabaseService.instance;
   final history = await db.getPlayHistory();
-  // Convert back to VideoModel list
   return history.map((map) => VideoModel.fromJson(map)).toList();
 });
 

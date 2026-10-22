@@ -141,10 +141,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     } catch (e) {
       debugPrint('[Player] dispose 保存进度失败: $e');
     }
-    // 刷新首页进度条 + 历史页
+    // 进度已落库，通知历史页刷新（不 invalidate videoListProvider——dispose
+    // 阶段 invalidate 可能触发首页在 widget tree 销毁过程中重建导致闪退）
     try {
-      ref.invalidate(videoListProvider);
-      ref.invalidate(playHistoryProvider);
+      ref.read(playbackVersionProvider.notifier).state++;
     } catch (_) {}
     super.dispose();
   }
@@ -155,8 +155,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         state == AppLifecycleState.inactive) {
       try {
         ref.read(playerProvider.notifier).saveProgress();
-        ref.invalidate(videoListProvider);
-        ref.invalidate(playHistoryProvider);
       } catch (_) {}
     }
   }
@@ -185,10 +183,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     try {
       await ref.read(playerProvider.notifier).saveProgress();
     } catch (_) {}
-    // 刷新历史页
+    // 通知历史页刷新（版本号递增，不 invalidate 整个 provider）
     try {
-      ref.invalidate(videoListProvider);
-      ref.invalidate(playHistoryProvider);
+      ref.read(playbackVersionProvider.notifier).state++;
     } catch (_) {}
     _restoreIdleOrientation();
     if (mounted) context.pop();
@@ -198,18 +195,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _toggleFullscreen() async {
     if (_isFullscreen) {
       _isFullscreen = false;
-      // 退出全屏 → 回到该设备的常规方向（手机竖屏 / 平板保持横屏），
-      // 不能写死竖屏，否则平板上会突然转成竖的
       await OrientationPolicy.applyIdle();
-      // 按 Android 版本恢复：低版本用 manual，避免导航栏遮住内容
       await SystemUiPolicy.applyPlayerExit();
+      // 退出全屏后设 UI 样式
+      _applyPlayerFullscreenUi();
     } else {
       _isFullscreen = true;
       await OrientationPolicy.applyFullscreen();
       await SystemUiPolicy.applyImmersive();
+      // ⚠ 进入 immersive 后不要调 _applyPlayerFullscreenUi ——
+      // setSystemUIOverlayStyle 在某些 Android 版本上会覆盖 immersive，
+      // 导致状态栏重新显示为透明浮层。
     }
-    // 无论进出全屏，都保持白色状态栏图标（播放页黑底）
-    _applyPlayerFullscreenUi();
     if (mounted) setState(() {});
   }
 
