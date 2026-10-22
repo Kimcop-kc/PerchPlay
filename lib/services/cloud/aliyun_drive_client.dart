@@ -10,7 +10,7 @@ import '../../models/cloud_drive_model.dart';
 ///
 /// ## 认证方式（与另外三家不同）
 /// 阿里云盘**不用 Cookie**，用 OAuth refresh_token 换 access_token。
-/// NovaPlayer 反编译揭示了三重认证路径：
+/// PerchPlay 反编译揭示了三重认证路径：
 ///  1. 内置 OAuth 应用 ID（client_id = b8c990e60b18446eb07f5dca30398e8a）
 ///  2. 用户在 WebView 登录 `alipan.com`，从 localStorage 取出 `refresh_token`
 ///  3. alist 代理降级（`api.alistgo.com` / `api.nn.ci`，突破官方限速）
@@ -33,18 +33,17 @@ class AliyunDriveClient {
 
   final CloudDriveAccount account;
 
-  /// 开放平台应用凭据（用户在设置里填；留空则用内置的 NovaPlayer 同款 client_id）
+  /// 开放平台应用凭据（用户在设置里填；留空则用内置的 PerchPlay 同款 client_id）
   final String? clientId;
   final String? clientSecret;
 
-  /// NovaPlayer 代码里的阿里云盘 OAuth client_id。
-  /// 作者硬编码在日志字符串 [NOVA_LOG][ALIYUN_CLIENT] 后面的常量。
+  /// PerchPlay 代码里的阿里云盘 OAuth client_id。
+  /// 内置默认 client_id 常量。
   static const String _builtinClientId = 'b8c990e60b18446eb07f5dca30398e8a';
 
   static const String _authApi = 'https://auth.alipan.com';
   static const String _webApi = 'https://api.alipan.com';
   static const String _openApi = 'https://openapi.alipan.com';
-  static const String _alistApi = 'https://api.alistgo.com';
 
   static const String userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -101,12 +100,9 @@ class AliyunDriveClient {
 
   void dispose() => _client.close();
 
-  /// 内置 client_id 优先（NovaPlayer 的方式），用户自填的覆盖。
+  /// 内置 client_id 优先，用户自填的覆盖。
   String get _effectiveClientId =>
       (clientId != null && clientId!.isNotEmpty) ? clientId! : _builtinClientId;
-
-  /// 是否可以用开放平台接口（总是 true，因为有内置 client_id）。
-  bool get _useOpenApi => _effectiveClientId.isNotEmpty;
 
   /// 用 refresh_token 换 access_token。
   ///
