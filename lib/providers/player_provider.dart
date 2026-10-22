@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -17,6 +18,8 @@ import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/library_prune_service.dart';
 import '../services/playback_busy.dart';
+import '../services/subtitle/online_subtitle_service.dart';
+import '../services/subtitle/subtitle_auto_loader.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -682,6 +685,40 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     // 自动挂载：优先恢复上次选择，其次按优先级挑同名字幕
     await _autoAttachSubtitle(video.path, token);
+
+    // 在线字幕自动加载（后台执行，不阻塞播放；受设置开关控制）
+    _maybeAutoLoadOnlineSubtitle(effective, token);
+  }
+
+  /// 在线字幕自动加载：打开视频后后台搜索，高置信度自动下载/提示。
+  ///
+  /// 不阻塞 loadVideo（fire-and-forget），开关关闭或无 API Key 时直接跳过。
+  /// 已有本地/内嵌字幕时也跳过（不打扰已有字幕）。
+  void _maybeAutoLoadOnlineSubtitle(VideoModel video, int token) {
+    final settings = AppSettingsService.instance;
+    if (!settings.subtitleOnlineSearch) return;
+    // 已有字幕（内嵌/外挂）就不再自动搜在线字幕
+    if (state.activeSubtitle != null || state.activeTrackId != null) return;
+
+    unawaited(() async {
+      try {
+        final (action, best) =
+            await SubtitleAutoLoader.instance.evaluate(video);
+        // 已切换影片，丢弃结果
+        if (token != _loadToken) return;
+        if (action == AutoLoadAction.autoApply && best != null) {
+          final model = await OnlineSubtitleService.instance.download(best);
+          if (token != _loadToken) return;
+          await _applyExternalSubtitle(
+            model.path,
+            language: model.language,
+            title: model.title,
+          );
+        }
+      } catch (e) {
+        debugPrint('[OnlineSubtitle] 自动加载失败: $e');
+      }
+    }());
   }
 
   /// mpv 当前的内嵌字幕轨（直接读它属性，不等 tracks 事件）
