@@ -824,7 +824,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     showModalBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled: false,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) {
@@ -858,15 +858,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           final previewSize = fontSize > 0 ? fontSize : 16.0;
 
-          // 与播放设置选择器（速度/倍速）统一：顶部圆角 + 毛玻璃 + 白色渐变 + 拖拽条
-          final bottomInset = MediaQuery.of(sheetCtx).padding.bottom + 96;
+          // 半屏弹出：约束高度 50%，超出滚动
+          final safeBottom = MediaQuery.of(sheetCtx).padding.bottom;
           return ClipRRect(
             borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(GlassTheme.radiusXl)),
             child: SafeBackdropFilter(
               blurSigma: 24,
               child: Container(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset),
+                padding: EdgeInsets.fromLTRB(20, 16, 20, safeBottom + 16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -1811,7 +1811,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // 无极滑动条
+                  // 无极滑动条：拖拽时只更新本地显示，松手才持久化
                   Slider(
                     value: value,
                     min: min,
@@ -1821,6 +1821,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     inactiveColor: Colors.black.withValues(alpha: 0.08),
                     onChanged: (v) {
                       setSheetState(() => value = v);
+                    },
+                    onChangeEnd: (v) {
                       onChanged(v);
                     },
                   ),
