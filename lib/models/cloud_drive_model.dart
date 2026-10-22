@@ -25,14 +25,21 @@ extension CloudDriveTypeX on CloudDriveType {
   }
 
   /// 登录页 URL（WebView 打开这个让用户扫码/账号密码登录）
+  ///
+  /// 注意：必须指向**登录页**而不是网盘首页。
+  /// 夸克首页 pan.quark.cn 是下载引导页（会提示装 App），不是登录页；
+  /// 115 的登录入口也改版过，旧的 ?mode=login 已失效。
   String get loginUrl {
     switch (this) {
       case CloudDriveType.quark:
-        return 'https://pan.quark.cn/';
+        // 夸克网盘登录页（支持扫码/手机号登录）
+        return 'https://pan.quark.cn/signin';
       case CloudDriveType.pan115:
-        return 'https://115.com/?mode=login';
+        // 115 网盘登录页
+        return 'https://115.com/login';
       case CloudDriveType.baidu:
-        return 'https://pan.baidu.com/';
+        // 百度网盘登录页
+        return 'https://pan.baidu.com/login';
       case CloudDriveType.aliyun:
         return 'https://www.alipan.com/sign/in';
     }

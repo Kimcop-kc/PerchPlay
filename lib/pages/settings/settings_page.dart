@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
@@ -42,7 +43,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       } else if (mounted) {
         setState(() {});
       }
+      // 清理隐藏名单里已不存在的僵尸路径，避免「已隐藏的视频（N 个）」虚高
+      _pruneHiddenVideos();
     });
+  }
+
+  /// 清理隐藏名单里磁盘上已不存在的路径（后台执行，不阻塞设置页）。
+  Future<void> _pruneHiddenVideos() async {
+    try {
+      final removed = await _settings.pruneMissingHiddenVideos(
+        (path) async => File(path).existsSync(),
+      );
+      if (removed > 0 && mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override

@@ -517,12 +517,51 @@ class AppSettingsService {
   Future<void> hideVideoPath(String path) async {
     final normalized = LibraryHiddenService.normalizePath(path);
     if (normalized.isEmpty) return;
+    // 已存在就不重复写：避免同一视频被隐藏两次时反复落盘，
+    // 也保证「已隐藏的视频（N 个）」计数不会因为重复操作而虚高。
+    if (_hiddenVideoPaths.contains(normalized)) return;
     _hiddenVideoPaths.add(normalized);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
           LibraryHiddenService.prefsKey, _hiddenVideoPaths.toList());
     } catch (_) {}
+  }
+
+  /// 清理隐藏名单里「磁盘上已不存在」的僵尸路径。
+  ///
+  /// 为什么需要：用户隐藏视频后又删掉/移动了磁盘文件，路径还留在名单里，
+  /// 导致设置页「已隐藏的视频（N 个）」虚高、点「全部恢复」后数量对不上。
+  /// 这个方法只保留文件仍然存在的路径，返回清理掉的数量。
+  Future<int> pruneMissingHiddenVideos(
+    Future<bool> Function(String path) exists,
+  ) async {
+    if (_hiddenVideoPaths.isEmpty) return 0;
+    final kept = <String>{};
+    var removed = 0;
+    for (final path in _hiddenVideoPaths) {
+      try {
+        if (await exists(path)) {
+          kept.add(path);
+        } else {
+          removed++;
+        }
+      } catch (_) {
+        // 判存在失败（权限/网络源）：保守保留，不误删用户名单
+        kept.add(path);
+      }
+    }
+    if (removed == 0) return 0;
+    _hiddenVideoPaths = kept;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (kept.isEmpty) {
+        await prefs.remove(LibraryHiddenService.prefsKey);
+      } else {
+        await prefs.setStringList(LibraryHiddenService.prefsKey, kept.toList());
+      }
+    } catch (_) {}
+    return removed;
   }
 
   /// 清空隐藏名单（设置页「全部恢复」）

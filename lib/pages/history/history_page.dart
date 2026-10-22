@@ -8,6 +8,7 @@ import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/common/app_page_header.dart';
+import '../../widgets/video/cover_thumb.dart';
 
 class HistoryPage extends ConsumerWidget {
   const HistoryPage({super.key});
@@ -66,20 +67,13 @@ class HistoryPage extends ConsumerWidget {
                                 }),
                                 child: Row(
                                   children: [
-                                    // 缩略图
-                                    Container(
+                                    // 缩略图：与首页一致用真实封面（没有则回退图标）
+                                    CoverThumb(
+                                      video: video,
                                       width: 88,
                                       height: 56,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(
-                                            GlassTheme.radiusXs),
-                                        color: Colors.black
-                                            .withValues(alpha: 0.06),
-                                      ),
-                                      child: const Icon(
-                                          Icons.play_circle_rounded,
-                                          size: 28,
-                                          color: GlassTheme.textTertiary),
+                                      radius: GlassTheme.radiusXs,
+                                      iconSize: 28,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
