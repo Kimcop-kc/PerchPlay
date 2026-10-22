@@ -294,6 +294,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           _divider(),
           _settingRow(
+            Icons.cloud_download_rounded,
+            '在线字幕',
+            trailing: const Icon(Icons.chevron_right,
+                color: GlassTheme.textTertiary, size: 20),
+            onTap: () => _showOnlineSubtitleSettings(context),
+          ),
+          _divider(),
+          _settingRow(
             Icons.language_rounded,
             '界面语言',
             trailing: _unsupportedTag('中文'),
@@ -1282,6 +1290,212 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ],
                     ),
                   ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 「在线字幕」设置面板：搜索开关 / API Key / 默认语言 / 自动下载。
+  void _showOnlineSubtitleSettings(BuildContext context) {
+    final s = AppSettingsService.instance;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          bool onlineSearch = s.subtitleOnlineSearch;
+          String defaultLang = s.subtitleDefaultLang;
+          String secondaryLang = s.subtitleSecondaryLang;
+          bool autoDownload = s.subtitleAutoDownload;
+          bool autoApply = s.subtitleAutoApply;
+          final keyCtrl =
+              TextEditingController(text: s.subtitleOpenSubtitlesKey);
+
+          const langOptions = <(String, String)>[
+            ('zh', '中文'),
+            ('en', '英文'),
+            ('ja', '日文'),
+            ('ko', '韩文'),
+            ('fr', '法文'),
+            ('de', '德文'),
+          ];
+
+          final bottomInset = MediaQuery.of(sheetCtx).padding.bottom + 12;
+
+          return Container(
+            margin: EdgeInsets.only(
+              left: 12,
+              right: 12,
+              bottom: bottomInset,
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            decoration: BoxDecoration(
+              color: GlassTheme.bg,
+              borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.cloud_download_rounded,
+                            color: GlassTheme.accentPurple, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('在线字幕',
+                            style: TextStyle(
+                                color: GlassTheme.textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('在线搜索字幕',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14)),
+                      subtitle: const Text('从 OpenSubtitles 搜索并下载字幕',
+                          style: TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                      value: onlineSearch,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => onlineSearch = v);
+                        s.setSubtitleOnlineSearch(v);
+                      },
+                    ),
+
+                    // OpenSubtitles API Key 输入
+                    const SizedBox(height: 6),
+                    const Text('OpenSubtitles API Key',
+                        style: TextStyle(
+                            color: GlassTheme.textTertiary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: keyCtrl,
+                      obscureText: true,
+                      style: const TextStyle(
+                          color: GlassTheme.textPrimary, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: '免费注册 opensubtitles.com 获取',
+                        hintStyle: const TextStyle(
+                            color: GlassTheme.textTertiary, fontSize: 12),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(GlassTheme.radiusSm),
+                        ),
+                      ),
+                      onChanged: (v) {
+                        s.setSubtitleOpenSubtitlesKey(v.trim());
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'API Key 仅存本地，不会上传到任何地方。免费账户约 20 次下载/天。',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 10),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 默认语言
+                    const Text('默认字幕语言',
+                        style: TextStyle(
+                            color: GlassTheme.textTertiary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final (code, label) in langOptions)
+                          ChoiceChip(
+                            label: Text(label,
+                                style: const TextStyle(fontSize: 12)),
+                            selected: defaultLang == code,
+                            onSelected: (_) {
+                              setSheetState(() => defaultLang = code);
+                              s.setSubtitleDefaultLang(code);
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 第二字幕语言
+                    const Text('第二字幕语言（双语）',
+                        style: TextStyle(
+                            color: GlassTheme.textTertiary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final (code, label) in langOptions)
+                          ChoiceChip(
+                            label: Text(label,
+                                style: const TextStyle(fontSize: 12)),
+                            selected: secondaryLang == code,
+                            onSelected: (_) {
+                              setSheetState(() => secondaryLang = code);
+                              s.setSubtitleSecondaryLang(code);
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('自动下载高置信度字幕',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14)),
+                      subtitle: const Text('匹配评分 ≥ 75% 时自动下载（消耗 API 配额）',
+                          style: TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                      value: autoDownload,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => autoDownload = v);
+                        s.setSubtitleAutoDownload(v);
+                      },
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('自动应用高置信度字幕',
+                          style: TextStyle(
+                              color: GlassTheme.textPrimary, fontSize: 14)),
+                      subtitle: const Text('下载后自动加载到播放器',
+                          style: TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                      value: autoApply,
+                      activeThumbColor: GlassTheme.accentPurple,
+                      onChanged: (v) {
+                        setSheetState(() => autoApply = v);
+                        s.setSubtitleAutoApply(v);
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),

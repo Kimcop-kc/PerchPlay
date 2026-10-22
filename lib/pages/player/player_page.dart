@@ -27,6 +27,8 @@ import '../../services/subtitle_service.dart';
 import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
+import '../../widgets/player/online_subtitle_panel.dart';
+import '../../services/subtitle/online_subtitle_service.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -1055,6 +1057,33 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ],
 
               const SizedBox(height: 8),
+              // 字幕时间偏移
+              SizedBox(
+                width: double.infinity,
+                child: GlassButton.outlined(
+                  icon: Icons.schedule_rounded,
+                  label: '字幕时间偏移…',
+                  foregroundColor: GlassTheme.textSecondary,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showSubtitleOffsetSheet();
+                  },
+                ),
+              ),
+              // 在线搜索字幕
+              if (AppSettingsService.instance.subtitleOnlineSearch)
+                SizedBox(
+                  width: double.infinity,
+                  child: GlassButton.outlined(
+                    icon: Icons.cloud_download_rounded,
+                    label: '在线搜索字幕…',
+                    foregroundColor: GlassTheme.accentPurple,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showOnlineSubtitleSearch(st);
+                    },
+                  ),
+                ),
               SizedBox(
                 width: double.infinity,
                 child: GlassButton.outlined(
@@ -1073,6 +1102,205 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           ),
         ),
       ),
+    );
+  }
+
+  /// 在线字幕搜索面板。
+  void _showOnlineSubtitleSearch(PlayerState st) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          24 + MediaQuery.of(ctx).viewPadding.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '在线搜索字幕',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '从 OpenSubtitles 搜索字幕，下载后自动加载',
+              style: TextStyle(
+                color: GlassTheme.textTertiary,
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                child: OnlineSubtitlePanel(
+                  video: st.currentVideo,
+                  onDownloaded: (subtitle) async {
+                    final model =
+                        await OnlineSubtitleService.instance.download(subtitle);
+                    if (ctx.mounted) {
+                      await ref
+                          .read(playerProvider.notifier)
+                          .loadExternalSubtitle(
+                            model.path,
+                            language: model.language,
+                            title: model.title,
+                          );
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 字幕时间偏移调整面板：主副字幕分别调整。
+  void _showSubtitleOffsetSheet() {
+    final s = AppSettingsService.instance;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          int primary = s.subtitlePrimaryOffsetMs;
+          int secondary = s.subtitleSecondaryOffsetMs;
+
+          final bottomInset = MediaQuery.of(ctx).padding.bottom + 12;
+          return Container(
+            margin: EdgeInsets.only(left: 12, right: 12, bottom: bottomInset),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            decoration: BoxDecoration(
+              color: GlassTheme.bg,
+              borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('字幕时间偏移',
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  const Text('正数=字幕延后，负数=字幕提前',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 11)),
+                  const SizedBox(height: 16),
+                  _offsetRow(
+                    label: '主字幕',
+                    valueMs: primary,
+                    onChanged: (v) {
+                      setSheetState(() => primary = v);
+                      s.setSubtitlePrimaryOffsetMs(v);
+                      ref
+                          .read(playerProvider.notifier)
+                          .refreshSubtitlePosition();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _offsetRow(
+                    label: '第二字幕',
+                    valueMs: secondary,
+                    onChanged: (v) {
+                      setSheetState(() => secondary = v);
+                      s.setSubtitleSecondaryOffsetMs(v);
+                      ref
+                          .read(playerProvider.notifier)
+                          .refreshSubtitlePosition();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            primary = 0;
+                            secondary = 0;
+                          });
+                          s.setSubtitlePrimaryOffsetMs(0);
+                          s.setSubtitleSecondaryOffsetMs(0);
+                          ref
+                              .read(playerProvider.notifier)
+                              .refreshSubtitlePosition();
+                        },
+                        child:
+                            const Text('恢复默认', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 单行偏移调整（-1000ms ~ +1000ms，步进 50ms）。
+  Widget _offsetRow({
+    required String label,
+    required int valueMs,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(label,
+              style:
+                  const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
+        ),
+        Expanded(
+          child: Slider(
+            value: valueMs.clamp(-1000, 1000).toDouble(),
+            min: -1000,
+            max: 1000,
+            divisions: 40, // 50ms 步进
+            activeColor: GlassTheme.accentPurple,
+            inactiveColor: Colors.white24,
+            onChanged: (v) => onChanged(v.round()),
+          ),
+        ),
+        SizedBox(
+          width: 60,
+          child: Text(
+            '${valueMs > 0 ? '+' : ''}${(valueMs / 1000).toStringAsFixed(2)}s',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+                color: GlassTheme.accentPurple,
+                fontSize: 12,
+                fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 

@@ -116,6 +116,35 @@ void main() {
       expect(entries.length, 2);
       expect(entries[0].text, '你好世界');
       expect(entries[0].start, const Duration(seconds: 1));
+      // 修复：VTT 结束时间正确解析（之前硬编码为 0）
+      expect(entries[0].end, const Duration(seconds: 3));
+      expect(entries[1].end, const Duration(seconds: 5));
+    });
+
+    test('VTT 结束时间缺失时用下一条开始时间兜底', () async {
+      final dir = await Directory.systemTemp.createTemp('sub_test');
+      final f = File('${dir.path}/test.vtt');
+      await f.writeAsString(
+        'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n第一条\n\n00:00:05.000 --> 00:00:07.000\n第二条\n',
+      );
+
+      final entries = await SubtitleService.parseVtt(f.path);
+      expect(entries.length, 2);
+      // 第一条结束时间 = 3 秒（有明确时间戳）
+      expect(entries[0].end, const Duration(seconds: 3));
+      expect(entries[1].end, const Duration(seconds: 7));
+    });
+
+    test('最后一条无结束时间时默认 +3 秒', () async {
+      final dir = await Directory.systemTemp.createTemp('sub_test');
+      final f = File('${dir.path}/test.vtt');
+      await f.writeAsString(
+        'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n第一条\n\n00:00:05.000 --> 00:00:07.000\n第二条\n',
+      );
+
+      final entries = await SubtitleService.parseVtt(f.path);
+      // 最后一条有明确结束时间 7 秒，不触发默认
+      expect(entries.last.end, const Duration(seconds: 7));
     });
   });
 }

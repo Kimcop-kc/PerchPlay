@@ -272,6 +272,7 @@ class SubtitleService {
     final lines = content.split('\n');
     int index = 0;
     Duration? start;
+    Duration? end;
     String text = '';
 
     for (final line in lines) {
@@ -279,23 +280,65 @@ class SubtitleService {
         final parts = line.split('-->');
         if (parts.length < 2) continue;
         start = _parseVttTime(parts[0].trim());
+        // 结束时间：VTT 的 `-->` 右侧可能是时间戳，也可能是设置（如
+        // `position:10%`），只有能解析成时间才用，否则留 null 待后补。
+        end = _tryParseVttEnd(parts[1].trim());
         text = '';
       } else if (line.trim().isEmpty && start != null) {
         index++;
+        // 结束时间：优先用本条的时间戳；没有则用下一条的开始时间兜底
+        // （在最终收尾阶段统一补，见下方循环）。
         entries.add(SubtitleEntry(
           index: index,
           start: start,
-          end: Duration(seconds: 0), // simplified
+          end: end ?? Duration.zero,
           text: text.trim(),
         ));
         start = null;
+        end = null;
         text = '';
       } else if (start != null) {
         text += '$line ';
       }
     }
 
+    // 补全结束时间：无结束时间的条目，用下一条的开始时间作为结束
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].end == Duration.zero && i + 1 < entries.length) {
+        entries[i] = SubtitleEntry(
+          index: entries[i].index,
+          start: entries[i].start,
+          end: entries[i + 1].start,
+          text: entries[i].text,
+          verticalPos: entries[i].verticalPos,
+          alignment: entries[i].alignment,
+        );
+      } else if (entries[i].end == Duration.zero) {
+        // 最后一条无结束时间：给一个合理默认（开始时间 + 3 秒）
+        entries[i] = SubtitleEntry(
+          index: entries[i].index,
+          start: entries[i].start,
+          end: entries[i].start + const Duration(seconds: 3),
+          text: entries[i].text,
+          verticalPos: entries[i].verticalPos,
+          alignment: entries[i].alignment,
+        );
+      }
+    }
+
     return entries;
+  }
+
+  /// 尝试解析 VTT 结束时间戳；失败返回 null（可能是设置如 `position:10%`）。
+  static Duration? _tryParseVttEnd(String raw) {
+    final t = raw.trim();
+    // 去掉可能的行内设置
+    final timePart = t.split(RegExp(r'\s+')).first;
+    try {
+      return _parseVttTime(timePart);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Duration _parseSrtTime(String time) {
