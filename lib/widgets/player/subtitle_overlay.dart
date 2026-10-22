@@ -92,6 +92,12 @@ class SubtitleOverlay extends StatelessWidget {
   /// 是否应用 ASS 定位/对齐。默认 true。
   final bool useAssPosition;
 
+  /// 是否处于双字幕模式（用户已选择第二字幕轨道）。
+  ///
+  /// true 时主/副字幕各占固定槽位，即使某一路短暂为空也保持两行结构，
+  /// 避免单行/双行来回切换导致字幕位置跳动。
+  final bool dualMode;
+
   const SubtitleOverlay({
     super.key,
     this.entries = const [],
@@ -116,7 +122,11 @@ class SubtitleOverlay extends StatelessWidget {
     this.align = TextAlign.center,
     this.primaryAssEntry,
     this.useAssPosition = true,
+    this.dualMode = false,
   });
+
+  /// 是否处于双字幕模式。
+  bool get _isDualMode => dualMode;
 
   @override
   Widget build(BuildContext context) {
@@ -147,10 +157,36 @@ class SubtitleOverlay extends StatelessWidget {
 
     // 外层 Center 让内容按自身宽度居中；对齐方式用 effectiveAlign 调整。
     // 黑底只包住文字，不横向撑满屏幕。
+    //
+    // 关键：主/副字幕**各占固定槽位**。即使某一路上一秒为空（字幕间隙），
+    // 也不让另一路"降下来"变成单行居中 —— 那会造成双字幕播放时一行字幕
+    // 忽上忽下地跳动。空的那一路用等高占位保持整体高度稳定。
+    final bool hasAny = primaryText != null || secondaryText != null;
+    if (!hasAny) return const SizedBox.shrink();
+
     return Center(
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxWidth = constraints.maxWidth;
+          // 双字幕模式（任一时刻两路都参与渲染）时固定两行结构；
+          // 单语模式才允许单行。
+          final bool twoSlot = bilingual || _isDualMode;
+          if (!twoSlot) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: _crossAxis(assAlign),
+              children: [
+                _buildLine(
+                  context,
+                  (primaryText ?? secondaryText)!,
+                  primaryText != null ? primaryStyle : secondaryStyle,
+                  maxWidth,
+                  effectiveAlign,
+                ),
+              ],
+            );
+          }
+          // 双槽位：主在上、副在下，空位用 SizedBox 占位保持高度稳定
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: _crossAxis(assAlign),
@@ -162,8 +198,10 @@ class SubtitleOverlay extends StatelessWidget {
                   primaryStyle,
                   maxWidth,
                   effectiveAlign,
-                ),
-              if (bilingual) SizedBox(height: lineSpacing),
+                )
+              else
+                _placeholderLine(primaryStyle),
+              SizedBox(height: lineSpacing),
               if (secondaryText != null)
                 _buildLine(
                   context,
@@ -171,12 +209,21 @@ class SubtitleOverlay extends StatelessWidget {
                   secondaryStyle,
                   maxWidth,
                   effectiveAlign,
-                ),
+                )
+              else
+                _placeholderLine(secondaryStyle),
             ],
           );
         },
       ),
     );
+  }
+
+  /// 空槽位占位：与一行字幕同高，避免另一行上下跳动。
+  Widget _placeholderLine(TextStyle style) {
+    final size = style.fontSize ?? 16.0;
+    // 用一行文字的高度占位（不可见）
+    return SizedBox(height: size * (style.height ?? 1.35));
   }
 
   /// 命中主字幕条目的 ASS 定位（主字幕 entries 才有位置信息）。

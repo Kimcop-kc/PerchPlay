@@ -507,6 +507,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     align: _subtitleAlign(_settings.subtitleAlign),
                     primaryAssEntry: _primaryAssEntry(live),
                     useAssPosition: _settings.subtitleUseAssPosition,
+                    // 已选第二字幕轨道 → 双字幕模式：主/副各占固定槽位，
+                    // 避免某一路短暂为空时另一路"降下来"单行显示。
+                    dualMode: live.secondaryTrackId != null ||
+                        live.secondarySubtitle != null,
                   ),
                 );
               },
