@@ -200,5 +200,65 @@ void main() {
       expect(prefs.getString('settings.subtitle.align'), 'start');
       expect(prefs.getBool('settings.subtitle.useAssPosition'), true);
     });
+
+    test('batchSetSubtitleStyle 一次写入全部 16 项', () async {
+      final s = AppSettingsService.instance;
+      await s.batchSetSubtitleStyle(
+        fontSize: 28,
+        position: 0.15,
+        bgOpacity: 0.7,
+        textColor: 0xFF81C784,
+        stroke: true,
+        secScale: 0.9,
+        secDim: true,
+        fontFamily: 'serif',
+        fontWeightIdx: 7,
+        lineSpacing: 6,
+        lineHeight: 1.4,
+        bgRadius: 8,
+        bgColor: 0xFF1A1A2E,
+        showBg: false,
+        align: 'center',
+        useAssPos: false,
+      );
+
+      // 内存立即生效
+      expect(s.subtitleFontSize, 28);
+      expect(s.subtitlePosition, 0.15);
+      expect(s.subtitleBgOpacity, 0.7);
+      expect(s.subtitleTextColorValue, 0xFF81C784);
+      expect(s.subtitleStroke, isTrue);
+      expect(s.subtitleSecondaryScale, 0.9);
+      expect(s.subtitleSecondaryDim, isTrue);
+      expect(s.subtitleFontFamily, 'serif');
+      expect(s.subtitleFontWeight, 7);
+      expect(s.subtitleLineSpacing, 6);
+      expect(s.subtitleLineHeight, 1.4);
+      expect(s.subtitleBgRadius, 8);
+      expect(s.subtitleBgColorValue, 0xFF1A1A2E);
+      expect(s.subtitleShowBg, isFalse);
+      expect(s.subtitleAlign, 'center');
+      expect(s.subtitleUseAssPosition, isFalse);
+
+      // SP 也已落盘
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getDouble('settings.subtitle.fontSize'), 28.0);
+      expect(prefs.getDouble('settings.subtitle.position'), 0.15);
+      expect(prefs.getDouble('settings.subtitle.bgOpacity'), 0.7);
+      expect(prefs.getInt('settings.subtitle.textColor'), 0xFF81C784);
+      expect(prefs.getBool('settings.subtitle.stroke'), isTrue);
+      expect(prefs.getDouble('settings.subtitle.secondaryScale'), 0.9);
+      expect(prefs.getBool('settings.subtitle.secondaryDim'), isTrue);
+      expect(prefs.getString('settings.subtitle.fontFamily'), 'serif');
+      expect(prefs.getInt('settings.subtitle.fontWeight'), 7);
+      expect(prefs.getDouble('settings.subtitle.lineSpacing'), 6.0);
+      expect(prefs.getDouble('settings.subtitle.lineHeight'), 1.4);
+      expect(prefs.getDouble('settings.subtitle.bgRadius'), 8.0);
+      expect(prefs.getInt('settings.subtitle.bgColor'), 0xFF1A1A2E);
+      expect(prefs.getBool('settings.subtitle.showBg'), isFalse);
+      expect(prefs.getString('settings.subtitle.align'), 'center');
+      expect(prefs.getBool('settings.subtitle.useAssPosition'), isFalse);
+    });
   });
 }

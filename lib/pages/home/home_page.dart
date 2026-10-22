@@ -119,6 +119,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     if (state == AppLifecycleState.resumed) {
       _onResumed();
     }
+    // App 进入后台时强制落盘设置，防止系统杀进程丢数据
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      AppSettingsService.instance.flush();
+    }
   }
 
   Future<void> _onResumed() async {

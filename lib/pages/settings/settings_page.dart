@@ -829,22 +829,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) {
           void persist() {
-            s.setSubtitleFontSize(fontSize);
-            s.setSubtitlePosition(position);
-            s.setSubtitleBgOpacity(bgOpacity);
-            s.setSubtitleTextColor(textColor);
-            s.setSubtitleStroke(stroke);
-            s.setSubtitleSecondaryScale(secScale);
-            s.setSubtitleSecondaryDim(secDim);
-            s.setSubtitleFontFamily(fontFamily);
-            s.setSubtitleFontWeight(fontWeightIdx);
-            s.setSubtitleLineSpacing(lineSpacing);
-            s.setSubtitleLineHeight(lineHeight);
-            s.setSubtitleBgRadius(bgRadius);
-            s.setSubtitleBgColor(bgColor);
-            s.setSubtitleShowBg(showBg);
-            s.setSubtitleAlign(align);
-            s.setSubtitleUseAssPosition(useAssPos);
+            // 一次批量写入：16 个参数 1 次 SP batch + 1 次 JSON flush，
+            // 代替原来 16 次独立 setter（每次 openWrite + setXxx）。
+            s.batchSetSubtitleStyle(
+              fontSize: fontSize,
+              position: position,
+              bgOpacity: bgOpacity,
+              textColor: textColor,
+              stroke: stroke,
+              secScale: secScale,
+              secDim: secDim,
+              fontFamily: fontFamily,
+              fontWeightIdx: fontWeightIdx,
+              lineSpacing: lineSpacing,
+              lineHeight: lineHeight,
+              bgRadius: bgRadius,
+              bgColor: bgColor,
+              showBg: showBg,
+              align: align,
+              useAssPos: useAssPos,
+            );
             // 通知播放页重建：字幕浮层读的是同步 getter，
             // 不重建就会出现「改了设置但正在播的视频没反应」。
             try {

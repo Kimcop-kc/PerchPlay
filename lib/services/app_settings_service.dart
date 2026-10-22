@@ -1,3 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/playlist_model.dart';
@@ -9,12 +15,19 @@ import 'video_source_service.dart';
 
 /// 应用设置持久化服务
 ///
-/// 所有播放/界面设置统一通过 SharedPreferences 持久化，
-/// 播放器通过 [AppSettingsService.instance] 读取实际生效值。
+/// **双存储架构**：SharedPreferences + JSON 文件镜像。
+/// - SP 是主存储，读写性能好，适合少量键值
+/// - JSON 文件每次 setter 调用后在 150ms 内异步落盘（debounce），且 flush 为同步写
+/// - 启动时 JSON 文件优先（它的写入更可靠），SP 兜底
+/// - App 进入后台时通过 [flush] 立即强制落盘，防止进程被杀丢数据
+///
+/// 为什么需要双存储：SharedPreferences Android 底层用 `Editor.apply()` 异步写盘，
+/// 国产 ROM（小米/华为/OPPO 等）杀进程时未完成的写入直接丢失，导致"改了设置但没保存"。
 class AppSettingsService {
   AppSettingsService._();
   static final instance = AppSettingsService._();
 
+  // ─────────── SP 键名 ───────────
   static const _kDefaultSpeed = 'settings.defaultSpeed';
   static const _kLongPressSpeed = 'settings.longPressSpeed';
   static const _kSkipSeconds = 'settings.skipSeconds';
@@ -47,175 +60,98 @@ class AppSettingsService {
   static const _kSubtitleAlign = 'settings.subtitle.align';
   static const _kSubtitleUseAssPos = 'settings.subtitle.useAssPosition';
 
+  // ─────────── 内存字段 ───────────
   double _defaultSpeed = 1.0;
-
-  /// 长按视频画面时的临时倍速（松手恢复原速），默认 2.0x
   double _longPressSpeed = 2.0;
-
   int _skipSeconds = 10;
   bool _autoPlayNext = true;
   bool _backgroundPlay = true;
   bool _hardwareDecoding = true;
-
-  /// 打开视频时的屏幕方向：'auto'（跟随手机）| 'landscape'（横屏）| 'portrait'（竖屏）
   String _playerOrientation = 'auto';
-  String get playerOrientation => _playerOrientation;
-  bool _loaded = false;
-
-  double get defaultSpeed => _defaultSpeed;
-
-  /// 长按画面时的临时倍速（松手恢复原速）
-  double get longPressSpeed => _longPressSpeed;
-
-  int get skipSeconds => _skipSeconds;
-  bool get autoPlayNext => _autoPlayNext;
-  bool get backgroundPlay => _backgroundPlay;
-
-  /// 硬件解码（默认开启；关闭则用软解，兼容花屏/黑屏的机型）
-  bool get hardwareDecoding => _hardwareDecoding;
-
-  /// 是否已经引导过「所有文件访问权限」（只自动跳一次，避免反复打扰）
   bool _allFilesPrompted = false;
-  bool get allFilesPrompted => _allFilesPrompted;
-
-  /// 毛玻璃实时模糊（液态玻璃观感的核心）
-  ///
-  /// **默认开启**：效果优先。性能问题用真实优化解决（重建范围收敛、
-  /// RepaintBoundary、动画改用 FadeTransition 等），不靠关特效。
-  /// 低端机可以在设置里关掉以省电/防发热。
   bool _glassBlur = true;
-  bool get glassBlur => _glassBlur;
-
-  /// TMDB API Key（用于刮削电影/电视剧海报与元数据）
-  ///
-  /// 留空 = 不启用刮削。去 https://www.themoviedb.org/settings/api
-  /// 免费注册即可拿到 key。
   String _tmdbApiKey = '';
-  String get tmdbApiKey => _tmdbApiKey;
-
-  /// 影库列表的排序方式（LibrarySort.id，默认按名称）
   String _librarySort = 'name';
-  String get librarySort => _librarySort;
-
-  /// 影库列表的筛选方式（LibraryFilter.id，默认全部）
   String _libraryFilter = 'all';
-  String get libraryFilter => _libraryFilter;
 
-  // ─────────── 字幕外观（全部可在设置里调）───────────
-
-  /// 字幕字号（逻辑像素，14~30）。0 = 跟随屏幕自适应（旧行为）。
+  // 字幕外观
   double _subtitleFontSize = 0;
-  double get subtitleFontSize => _subtitleFontSize;
-
-  /// 字幕黑底不透明度（0 = 无黑底，1 = 全黑）。默认 0.62。
   double _subtitleBgOpacity = 0.62;
-  double get subtitleBgOpacity => _subtitleBgOpacity;
-
-  /// 字幕文字颜色（ARGB int）。默认白色。
-  ///
-  /// 用 int 而不是 Color：本服务是纯数据层，不引入 Flutter UI 依赖。
   int _subtitleTextColor = 0xFFFFFFFF;
-  int get subtitleTextColorValue => _subtitleTextColor;
-
-  /// 是否给字幕文字加描边阴影（复杂画面上更清晰）。
   bool _subtitleStroke = true;
-  bool get subtitleStroke => _subtitleStroke;
-
-  /// 字幕垂直位置：0.0 = 贴底，1.0 = 屏幕中部偏上。默认 0.12。
   double _subtitlePosition = 0.12;
-  double get subtitlePosition => _subtitlePosition;
-
-  /// 双语字幕时，译文相对原文的字号比例（0.5~1.0）。默认 0.82。
   double _subtitleSecondaryScale = 0.82;
-  double get subtitleSecondaryScale => _subtitleSecondaryScale;
-
-  /// 双语字幕时译文是否用灰色（弱化，突出原文）。
   bool _subtitleSecondaryDim = true;
-  bool get subtitleSecondaryDim => _subtitleSecondaryDim;
-
-  /// 字幕字体族：'system' = 系统默认；其余为内置字体名。默认 'system'。
   String _subtitleFontFamily = 'system';
-  String get subtitleFontFamily => _subtitleFontFamily;
-
-  /// 字幕字体粗细（FontWeight 索引 3~8，即 w300~w800）。默认 5（w500）。
   int _subtitleFontWeight = 5;
-  int get subtitleFontWeight => _subtitleFontWeight;
-
-  /// 双语文两行之间的间距（逻辑像素，0~12）。默认 3。
   double _subtitleLineSpacing = 3;
-  double get subtitleLineSpacing => _subtitleLineSpacing;
-
-  /// 字幕行高（TextStyle.height，1.0~1.8）。默认 1.35。
   double _subtitleLineHeight = 1.35;
-  double get subtitleLineHeight => _subtitleLineHeight;
-
-  /// 字幕背景圆角（逻辑像素，0~12）。默认 4。
   double _subtitleBgRadius = 4;
-  double get subtitleBgRadius => _subtitleBgRadius;
-
-  /// 字幕背景色（ARGB int）。默认黑色。
   int _subtitleBgColor = 0xFF000000;
-  int get subtitleBgColorValue => _subtitleBgColor;
-
-  /// 是否显示字幕黑底。默认 true。
   bool _subtitleShowBg = true;
-  bool get subtitleShowBg => _subtitleShowBg;
-
-  /// 字幕对齐方式：'center' | 'start' | 'end'。默认 'center'。
   String _subtitleAlign = 'center';
-  String get subtitleAlign => _subtitleAlign;
-
-  /// 是否应用 ASS 定位/对齐（垂直位置 + numpad 对齐）。默认 true。
   bool _subtitleUseAssPosition = true;
-  bool get subtitleUseAssPosition => _subtitleUseAssPosition;
 
-  /// 【已废弃】字幕统一由 Flutter 渲染，mpv/libass 原生渲染已移除。
-  ///
-  /// 保留此 getter 仅为兼容旧代码/旧设置键，恒返回 false。
-  /// 不再持久化，历史设置值自动忽略。
-  bool get subtitleNativeAss => false;
-
-  /// 每个视频「上次选了什么字幕」（外挂文件 / 内嵌轨 / 关掉，三态）
-  ///
-  /// 为什么放这里：SharedPreferences 的读写统一收敛在这个单例，播放器不用关心
-  /// 持久化细节。键格式、最近使用排序、条数上限（[SubtitleMemory.maxEntries]）
-  /// 全在 [SubtitleMemory] 里 —— 那个类是纯逻辑，能直接单测淘汰规则。
-  ///
-  /// 存成 StringList（每行一条 JSON），而不是一个大 JSON 字符串：
-  /// 单条坏掉时只丢那一条，不会整份记忆都读不出来。
+  // 集合类型
   static const _kSubtitleMemory = 'settings.subtitleMemory';
   List<SubtitleMemory> _subtitleMemory = const <SubtitleMemory>[];
 
-  /// 用户手动删掉的「自动列表」id
-  ///
-  /// 自动列表是每次扫描后重建的，如果只删数据库记录，下次扫描就长回来，
-  /// 所以这里记住用户的删除意图，重建时跳过这些 id。
   static const _kHiddenAutoPlaylists = 'settings.hiddenAutoPlaylists';
   Set<String> _hiddenAutoPlaylists = <String>{};
-  Set<String> get hiddenAutoPlaylists => _hiddenAutoPlaylists;
-  bool isAutoPlaylistHidden(String id) => _hiddenAutoPlaylists.contains(id);
 
-  /// 被「仅从影库移除（保留文件）」移出去的视频路径
-  ///
-  /// 为什么必须记下来：只删数据库记录的话，下次全盘扫描会把磁盘上还在的
-  /// 文件重新写回影库（见 [LibraryHiddenService]）。键/归一化规则都在那个
-  /// 纯逻辑类里，这里只负责读写。
   Set<String> _hiddenVideoPaths = <String>{};
-  Set<String> get hiddenVideoPaths => _hiddenVideoPaths;
 
-  /// 隐藏了多少个视频（设置页「已隐藏的视频（N 个）」用）
-  int get hiddenVideoCount => _hiddenVideoPaths.length;
-
-  /// 用户在「自动列表」里手动加进来 / 手动移出去的视频
-  ///
-  /// 自动列表每次扫描都会按文件名重建；如果不管用户的增删，手动加进去的会被
-  /// 清掉、手动删掉的会长回来（用起来就是"锁死、改不动"）。这里记住差异，
-  /// 重建时套用：
-  ///   最终成员 =（按文件名算出的成员 − 手动移出）∪ 手动加入
   static const _kAutoAdded = 'settings.autoPlaylistAdded';
   static const _kAutoRemoved = 'settings.autoPlaylistRemoved';
   Set<String> _autoAdded = <String>{};
   Set<String> _autoRemoved = <String>{};
+
+  // ─────────── 加载状态 & JSON 文件 ───────────
+  bool _loaded = false;
+  File? _jsonFile;
+  Timer? _flushTimer;
+  bool _dirty = false;
+
+  // ─────────── getter ───────────
+  double get defaultSpeed => _defaultSpeed;
+  double get longPressSpeed => _longPressSpeed;
+  int get skipSeconds => _skipSeconds;
+  bool get autoPlayNext => _autoPlayNext;
+  bool get backgroundPlay => _backgroundPlay;
+  bool get hardwareDecoding => _hardwareDecoding;
+  String get playerOrientation => _playerOrientation;
+  bool get allFilesPrompted => _allFilesPrompted;
+  bool get glassBlur => _glassBlur;
+  String get tmdbApiKey => _tmdbApiKey;
+  String get librarySort => _librarySort;
+  String get libraryFilter => _libraryFilter;
+
+  // 字幕外观
+  double get subtitleFontSize => _subtitleFontSize;
+  double get subtitleBgOpacity => _subtitleBgOpacity;
+  int get subtitleTextColorValue => _subtitleTextColor;
+  bool get subtitleStroke => _subtitleStroke;
+  double get subtitlePosition => _subtitlePosition;
+  double get subtitleSecondaryScale => _subtitleSecondaryScale;
+  bool get subtitleSecondaryDim => _subtitleSecondaryDim;
+  String get subtitleFontFamily => _subtitleFontFamily;
+  int get subtitleFontWeight => _subtitleFontWeight;
+  double get subtitleLineSpacing => _subtitleLineSpacing;
+  double get subtitleLineHeight => _subtitleLineHeight;
+  double get subtitleBgRadius => _subtitleBgRadius;
+  int get subtitleBgColorValue => _subtitleBgColor;
+  bool get subtitleShowBg => _subtitleShowBg;
+  String get subtitleAlign => _subtitleAlign;
+  bool get subtitleUseAssPosition => _subtitleUseAssPosition;
+
+  bool get subtitleNativeAss => false; // 已废弃，恒 false
+
+  List<SubtitleMemory> get subtitleMemory => _subtitleMemory;
+  Set<String> get hiddenAutoPlaylists => _hiddenAutoPlaylists;
+  Set<String> get hiddenVideoPaths => _hiddenVideoPaths;
+  int get hiddenVideoCount => _hiddenVideoPaths.length;
+
+  bool isAutoPlaylistHidden(String id) => _hiddenAutoPlaylists.contains(id);
 
   static String _ovKey(String playlistId, String videoId) =>
       '$playlistId\u0000$videoId';
@@ -225,109 +161,273 @@ class AppSettingsService {
       .map((e) => e.substring(playlistId.length + 1))
       .toSet();
 
-  /// 某个自动列表里被用户手动加入的视频 id
   Set<String> autoAddedFor(String playlistId) =>
       _idsFor(_autoAdded, playlistId);
-
-  /// 某个自动列表里被用户手动移除的视频 id
   Set<String> autoRemovedFor(String playlistId) =>
       _idsFor(_autoRemoved, playlistId);
 
-  /// 记录「用户手动加入」
-  Future<void> markAutoAdded(String playlistId, String videoId) async {
-    _autoAdded.add(_ovKey(playlistId, videoId));
-    _autoRemoved.remove(_ovKey(playlistId, videoId));
-    await _saveOverlays();
+  // ═══════════════════════════════════════════════════════════
+  // JSON 文件路径
+  // ═══════════════════════════════════════════════════════════
+
+  Future<File> _getJsonFile() async {
+    if (_jsonFile != null) return _jsonFile!;
+    final dir = await getApplicationDocumentsDirectory();
+    _jsonFile = File('${dir.path}/perchplay_settings.json');
+    return _jsonFile!;
   }
 
-  /// 记录「用户手动移除」
-  Future<void> markAutoRemoved(String playlistId, String videoId) async {
-    _autoRemoved.add(_ovKey(playlistId, videoId));
-    _autoAdded.remove(_ovKey(playlistId, videoId));
-    await _saveOverlays();
+  // ═══════════════════════════════════════════════════════════
+  // JSON 序列化 / 反序列化
+  // ═══════════════════════════════════════════════════════════
+
+  Map<String, dynamic> _toJson() => {
+        _kDefaultSpeed: _defaultSpeed,
+        _kLongPressSpeed: _longPressSpeed,
+        _kSkipSeconds: _skipSeconds,
+        _kAutoPlayNext: _autoPlayNext,
+        _kBackgroundPlay: _backgroundPlay,
+        _kHardwareDecoding: _hardwareDecoding,
+        _kPlayerOrientation: _playerOrientation,
+        _kAllFilesPrompted: _allFilesPrompted,
+        _kGlassBlurV2: _glassBlur,
+        _kTmdbApiKey: _tmdbApiKey,
+        _kLibrarySort: _librarySort,
+        _kLibraryFilter: _libraryFilter,
+        _kSubtitleFontSize: _subtitleFontSize,
+        _kSubtitleBgOpacity: _subtitleBgOpacity,
+        _kSubtitleTextColor: _subtitleTextColor,
+        _kSubtitleStroke: _subtitleStroke,
+        _kSubtitlePosition: _subtitlePosition,
+        _kSubtitleSecondaryScale: _subtitleSecondaryScale,
+        _kSubtitleSecondaryDim: _subtitleSecondaryDim,
+        _kSubtitleFontFamily: _subtitleFontFamily,
+        _kSubtitleFontWeight: _subtitleFontWeight,
+        _kSubtitleLineSpacing: _subtitleLineSpacing,
+        _kSubtitleLineHeight: _subtitleLineHeight,
+        _kSubtitleBgRadius: _subtitleBgRadius,
+        _kSubtitleBgColor: _subtitleBgColor,
+        _kSubtitleShowBg: _subtitleShowBg,
+        _kSubtitleAlign: _subtitleAlign,
+        _kSubtitleUseAssPos: _subtitleUseAssPosition,
+        _kSubtitleMemory:
+            [for (final m in _subtitleMemory) m.encode()],
+        _kHiddenAutoPlaylists: _hiddenAutoPlaylists.toList(),
+        LibraryHiddenService.prefsKey: _hiddenVideoPaths.toList(),
+        _kAutoAdded: _autoAdded.toList(),
+        _kAutoRemoved: _autoRemoved.toList(),
+      };
+
+  // ═══════════════════════════════════════════════════════════
+  // Debounced flush
+  // ═══════════════════════════════════════════════════════════
+
+  /// 标记脏数据，150ms 内自动落盘 JSON 文件。
+  ///
+  /// 连续多次调用（如滑杆拖动触发 17 次 setter）会被 debounce 合并成一次写入。
+  void _scheduleJsonFlush() {
+    _dirty = true;
+    _flushTimer?.cancel();
+    _flushTimer = Timer(const Duration(milliseconds: 150), () {
+      _doJsonFlush();
+    });
   }
 
-  Future<void> _saveOverlays() async {
+  void _doJsonFlush() {
+    if (!_dirty) return;
+    _dirty = false;
+    _getJsonFile().then((file) {
+      try {
+        final json = _toJson();
+        final sink = file.openWrite(mode: FileMode.write);
+        sink.write(jsonEncode(json));
+        sink.flush().then((_) => sink.close());
+      } catch (e) {
+        debugPrint('[PerchPlay] JSON settings flush failed: $e');
+      }
+    }).catchError((Object e) {
+      debugPrint('[PerchPlay] JSON settings file access failed: $e');
+    });
+  }
+
+  /// 强制立即落盘 JSON 文件（供 App 进入后台时调用）。
+  ///
+  /// 不等待 debounce，直接同步写入。调用后 150ms 内的自动 flush 会被跳过。
+  Future<void> flush() async {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    if (!_dirty) return;
+    _dirty = false;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_kAutoAdded, _autoAdded.toList());
-      await prefs.setStringList(_kAutoRemoved, _autoRemoved.toList());
-    } catch (_) {}
+      final file = await _getJsonFile();
+      final json = _toJson();
+      final sink = file.openWrite(mode: FileMode.write);
+      sink.write(jsonEncode(json));
+      await sink.flush();
+      await sink.close();
+    } catch (e) {
+      debugPrint('[PerchPlay] flush() failed: $e');
+    }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 启动加载（JSON 优先 → SP 兜底）
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _defaultSpeed = prefs.getDouble(_kDefaultSpeed) ?? 1.0;
-      _longPressSpeed = prefs.getDouble(_kLongPressSpeed) ?? 2.0;
-      _skipSeconds = prefs.getInt(_kSkipSeconds) ?? 10;
-      _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
-      _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
-      _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
-      _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
-      _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
-      // 用 v2 键：早期版本 Android 默认关闭时可能写入了 false，
-      // 那些残留值会把新默认值（开启）盖掉，看起来像"开关没用/默认关闭"
-      if (prefs.containsKey(_kGlassBlurV2)) {
-        _glassBlur = prefs.getBool(_kGlassBlurV2) ?? true;
-      } else {
-        _glassBlur = true;
-        await prefs.remove(_kGlassBlur); // 清掉旧键，避免继续误导
-      }
 
-      // 字幕外观
-      _subtitleFontSize =
-          (prefs.getDouble(_kSubtitleFontSize) ?? 0).clamp(0, 30);
-      _subtitleBgOpacity =
-          (prefs.getDouble(_kSubtitleBgOpacity) ?? 0.62).clamp(0.0, 1.0);
-      _subtitleTextColor = prefs.getInt(_kSubtitleTextColor) ?? 0xFFFFFFFF;
-      _subtitleStroke = prefs.getBool(_kSubtitleStroke) ?? true;
-      _subtitlePosition =
-          (prefs.getDouble(_kSubtitlePosition) ?? 0.12).clamp(0.0, 0.6);
-      _subtitleSecondaryScale =
-          (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
-      _subtitleSecondaryDim = prefs.getBool(_kSubtitleSecondaryDim) ?? true;
-      _subtitleFontFamily = prefs.getString(_kSubtitleFontFamily) ?? 'system';
-      _subtitleFontWeight =
-          (prefs.getInt(_kSubtitleFontWeight) ?? 5).clamp(3, 8);
-      _subtitleLineSpacing =
-          (prefs.getDouble(_kSubtitleLineSpacing) ?? 3).clamp(0, 12);
-      _subtitleLineHeight =
-          (prefs.getDouble(_kSubtitleLineHeight) ?? 1.35).clamp(1.0, 1.8);
-      _subtitleBgRadius =
-          (prefs.getDouble(_kSubtitleBgRadius) ?? 4).clamp(0, 12);
-      _subtitleBgColor = prefs.getInt(_kSubtitleBgColor) ?? 0xFF000000;
-      _subtitleShowBg = prefs.getBool(_kSubtitleShowBg) ?? true;
-      _subtitleAlign = prefs.getString(_kSubtitleAlign) ?? 'center';
-      _subtitleUseAssPosition = prefs.getBool(_kSubtitleUseAssPos) ?? true;
-      _hiddenAutoPlaylists =
-          (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
-              .toSet();
-      _hiddenVideoPaths = LibraryHiddenService.normalizeAll(
-          prefs.getStringList(LibraryHiddenService.prefsKey) ??
-              const <String>[]);
-      _autoAdded =
-          (prefs.getStringList(_kAutoAdded) ?? const <String>[]).toSet();
-      _autoRemoved =
-          (prefs.getStringList(_kAutoRemoved) ?? const <String>[]).toSet();
-      _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
-      _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
-      _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
-      _subtitleMemory = _decodeSubtitleMemory(
-          prefs.getStringList(_kSubtitleMemory) ?? const <String>[]);
-    } catch (_) {
-      // 读取失败时保留默认值
+    // 先尝试 JSON 文件
+    final jsonLoaded = await _tryLoadJson();
+
+    // SP 兜底：JSON 没读到或不存在时，从 SP 读
+    final prefs = await SharedPreferences.getInstance();
+    if (!jsonLoaded) {
+      await _loadFromPrefs(prefs);
     }
+
+    // 集合类型 SP 仍作为权威源（JSON 可能不完整）
+    _hiddenAutoPlaylists =
+        (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
+            .toSet();
+    _hiddenVideoPaths = LibraryHiddenService.normalizeAll(
+        prefs.getStringList(LibraryHiddenService.prefsKey) ??
+            const <String>[]);
+    _autoAdded =
+        (prefs.getStringList(_kAutoAdded) ?? const <String>[]).toSet();
+    _autoRemoved =
+        (prefs.getStringList(_kAutoRemoved) ?? const <String>[]).toSet();
+    _subtitleMemory = _decodeSubtitleMemory(
+        prefs.getStringList(_kSubtitleMemory) ?? const <String>[]);
+
+    // 确保 JSON 文件存在（首次启动 / 从旧版本升级时可能没有）
+    _scheduleJsonFlush();
+
     _loaded = true;
   }
+
+  /// 从 JSON 文件加载，成功返回 true。
+  Future<bool> _tryLoadJson() async {
+    try {
+      final file = await _getJsonFile();
+      if (!await file.exists()) {
+        debugPrint('[PerchPlay] No JSON settings file, will load from SP');
+        return false;
+      }
+      final raw = await file.readAsString();
+      if (raw.isEmpty) return false;
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      _applyJsonMap(map);
+      debugPrint('[PerchPlay] Settings loaded from JSON file');
+      return true;
+    } catch (e) {
+      debugPrint('[PerchPlay] JSON settings load failed: $e, falling back to SP');
+      return false;
+    }
+  }
+
+  void _applyJsonMap(Map<String, dynamic> map) {
+    _defaultSpeed = (map[_kDefaultSpeed] as num?)?.toDouble() ?? 1.0;
+    _longPressSpeed = (map[_kLongPressSpeed] as num?)?.toDouble() ?? 2.0;
+    _skipSeconds = (map[_kSkipSeconds] as num?)?.toInt() ?? 10;
+    _autoPlayNext = map[_kAutoPlayNext] as bool? ?? true;
+    _backgroundPlay = map[_kBackgroundPlay] as bool? ?? true;
+    _hardwareDecoding = map[_kHardwareDecoding] as bool? ?? true;
+    _playerOrientation = map[_kPlayerOrientation] as String? ?? 'auto';
+    _allFilesPrompted = map[_kAllFilesPrompted] as bool? ?? false;
+    _glassBlur = map[_kGlassBlurV2] as bool? ?? true;
+    _tmdbApiKey = map[_kTmdbApiKey] as String? ?? '';
+    _librarySort = map[_kLibrarySort] as String? ?? 'name';
+    _libraryFilter = map[_kLibraryFilter] as String? ?? 'all';
+    _subtitleFontSize =
+        ((map[_kSubtitleFontSize] as num?)?.toDouble() ?? 0).clamp(0, 30);
+    _subtitleBgOpacity =
+        ((map[_kSubtitleBgOpacity] as num?)?.toDouble() ?? 0.62)
+            .clamp(0.0, 1.0);
+    _subtitleTextColor = map[_kSubtitleTextColor] as int? ?? 0xFFFFFFFF;
+    _subtitleStroke = map[_kSubtitleStroke] as bool? ?? true;
+    _subtitlePosition =
+        ((map[_kSubtitlePosition] as num?)?.toDouble() ?? 0.12).clamp(0.0, 0.6);
+    _subtitleSecondaryScale =
+        ((map[_kSubtitleSecondaryScale] as num?)?.toDouble() ?? 0.82)
+            .clamp(0.5, 1.0);
+    _subtitleSecondaryDim = map[_kSubtitleSecondaryDim] as bool? ?? true;
+    _subtitleFontFamily =
+        map[_kSubtitleFontFamily] as String? ?? 'system';
+    _subtitleFontWeight =
+        ((map[_kSubtitleFontWeight] as num?)?.toInt() ?? 5).clamp(3, 8);
+    _subtitleLineSpacing =
+        ((map[_kSubtitleLineSpacing] as num?)?.toDouble() ?? 3).clamp(0, 12);
+    _subtitleLineHeight =
+        ((map[_kSubtitleLineHeight] as num?)?.toDouble() ?? 1.35)
+            .clamp(1.0, 1.8);
+    _subtitleBgRadius =
+        ((map[_kSubtitleBgRadius] as num?)?.toDouble() ?? 4).clamp(0, 12);
+    _subtitleBgColor = map[_kSubtitleBgColor] as int? ?? 0xFF000000;
+    _subtitleShowBg = map[_kSubtitleShowBg] as bool? ?? true;
+    _subtitleAlign = map[_kSubtitleAlign] as String? ?? 'center';
+    _subtitleUseAssPosition =
+        map[_kSubtitleUseAssPos] as bool? ?? true;
+  }
+
+  Future<void> _loadFromPrefs(SharedPreferences prefs) async {
+    _defaultSpeed = prefs.getDouble(_kDefaultSpeed) ?? 1.0;
+    _longPressSpeed = prefs.getDouble(_kLongPressSpeed) ?? 2.0;
+    _skipSeconds = prefs.getInt(_kSkipSeconds) ?? 10;
+    _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
+    _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
+    _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
+    _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
+    _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
+    if (prefs.containsKey(_kGlassBlurV2)) {
+      _glassBlur = prefs.getBool(_kGlassBlurV2) ?? true;
+    } else {
+      _glassBlur = true;
+      await prefs.remove(_kGlassBlur);
+    }
+    _subtitleFontSize =
+        (prefs.getDouble(_kSubtitleFontSize) ?? 0).clamp(0, 30);
+    _subtitleBgOpacity =
+        (prefs.getDouble(_kSubtitleBgOpacity) ?? 0.62).clamp(0.0, 1.0);
+    _subtitleTextColor = prefs.getInt(_kSubtitleTextColor) ?? 0xFFFFFFFF;
+    _subtitleStroke = prefs.getBool(_kSubtitleStroke) ?? true;
+    _subtitlePosition =
+        (prefs.getDouble(_kSubtitlePosition) ?? 0.12).clamp(0.0, 0.6);
+    _subtitleSecondaryScale =
+        (prefs.getDouble(_kSubtitleSecondaryScale) ?? 0.82).clamp(0.5, 1.0);
+    _subtitleSecondaryDim = prefs.getBool(_kSubtitleSecondaryDim) ?? true;
+    _subtitleFontFamily = prefs.getString(_kSubtitleFontFamily) ?? 'system';
+    _subtitleFontWeight =
+        (prefs.getInt(_kSubtitleFontWeight) ?? 5).clamp(3, 8);
+    _subtitleLineSpacing =
+        (prefs.getDouble(_kSubtitleLineSpacing) ?? 3).clamp(0, 12);
+    _subtitleLineHeight =
+        (prefs.getDouble(_kSubtitleLineHeight) ?? 1.35).clamp(1.0, 1.8);
+    _subtitleBgRadius =
+        (prefs.getDouble(_kSubtitleBgRadius) ?? 4).clamp(0, 12);
+    _subtitleBgColor = prefs.getInt(_kSubtitleBgColor) ?? 0xFF000000;
+    _subtitleShowBg = prefs.getBool(_kSubtitleShowBg) ?? true;
+    _subtitleAlign = prefs.getString(_kSubtitleAlign) ?? 'center';
+    _subtitleUseAssPosition = prefs.getBool(_kSubtitleUseAssPos) ?? true;
+    _tmdbApiKey = prefs.getString(_kTmdbApiKey) ?? '';
+    _librarySort = prefs.getString(_kLibrarySort) ?? 'name';
+    _libraryFilter = prefs.getString(_kLibraryFilter) ?? 'all';
+    debugPrint('[PerchPlay] Settings loaded from SharedPreferences');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Setter（每个同时写 SP + schedule JSON flush）
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> setLibrarySort(String value) async {
     _librarySort = value;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLibrarySort, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setLibrarySort SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setLibraryFilter(String value) async {
@@ -335,29 +435,20 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLibraryFilter, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setLibraryFilter SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  // ═══════════════ 字幕记忆（外挂 / 内嵌 / 关掉） ═══════════════
+  // ═══════════════ 字幕记忆 ═══════════════
 
-  /// 当前全部字幕记忆（最近使用的在最前）
-  List<SubtitleMemory> get subtitleMemory => _subtitleMemory;
-
-  /// 查这个视频上次选了什么字幕；没记录返回 null
-  ///
-  /// 键统一归一化（[LibraryHiddenService.normalizePath]）：Windows 路径大小写
-  /// 不敏感，`D:\A\b.mp4` 和 `d:\a\B.mp4` 是同一个文件，不归一化会记成两条，
-  /// 记忆时好时坏。
   SubtitleMemory? subtitleMemoryFor(String videoPath) {
     final key = LibraryHiddenService.normalizePath(videoPath);
     if (key.isEmpty) return null;
     return SubtitleMemory.find(_subtitleMemory, key);
   }
 
-  /// 记住某个视频「上次选的外挂字幕」
-  ///
-  /// [subtitlePath] 为 null 表示用户手动关掉了字幕：下次打开这个视频不要再自动挂。
-  /// 覆盖 + 淘汰规则见 [SubtitleMemory.upsert]（最近使用优先，最多 300 条）。
   Future<void> rememberSubtitle(String videoPath, String? subtitlePath) async {
     final key = LibraryHiddenService.normalizePath(videoPath);
     if (key.isEmpty) return;
@@ -373,10 +464,6 @@ class AppSettingsService {
     );
   }
 
-  /// 记住某个视频「上次选的内嵌字幕轨」
-  ///
-  /// 内嵌轨用 mpv 的 track id 恢复（同一文件每次打开 id 稳定）；
-  /// 换文件/id 对不上时由 [Subtitles.pick] 判定记忆失效并回落到自动逻辑。
   Future<void> rememberEmbeddedSubtitle(
     String videoPath,
     String trackId, {
@@ -394,16 +481,11 @@ class AppSettingsService {
     );
   }
 
-  /// 刷新某条记忆的「最近使用」时间（打开视频命中记忆时调用）
-  ///
-  /// 淘汰按最近使用来的：只在"手动改选"时更新时间的话，常看的片子会被
-  /// 后来选过字幕的其它片子挤出上限，明明一直在看却丢了记忆。
   Future<void> touchSubtitleMemory(SubtitleMemory memory) =>
       _storeSubtitleMemory(
         memory.touch(DateTime.now().millisecondsSinceEpoch),
       );
 
-  /// 写入一条记忆并落盘（同一视频覆盖旧记录）
   Future<void> _storeSubtitleMemory(SubtitleMemory entry) async {
     _subtitleMemory = SubtitleMemory.upsert(_subtitleMemory, entry);
     try {
@@ -412,24 +494,23 @@ class AppSettingsService {
         _kSubtitleMemory,
         [for (final memory in _subtitleMemory) memory.encode()],
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] _storeSubtitleMemory SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 清空字幕记忆（设置项复位 / 单测用）
-  ///
-  /// 不给出口的话，用户手动选错一次就会一直被自动挂上，没法回到「自动挑选」。
   Future<void> clearSubtitleMemory() async {
     _subtitleMemory = const <SubtitleMemory>[];
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kSubtitleMemory);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] clearSubtitleMemory SP remove failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 解析存储的 StringList
-  ///
-  /// 先按时间倒序再按视频去重：老版本/手工写入的数据不保证顺序，
-  /// 去重必须保留「最新的那条」，否则会恢复到上上次的选择。
   static List<SubtitleMemory> _decodeSubtitleMemory(List<String> raw) {
     final parsed = <SubtitleMemory>[];
     for (final line in raw) {
@@ -452,7 +533,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kDefaultSpeed, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setDefaultSpeed SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setLongPressSpeed(double value) async {
@@ -460,7 +544,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kLongPressSpeed, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setLongPressSpeed SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSkipSeconds(int value) async {
@@ -468,7 +555,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSkipSeconds, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSkipSeconds SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setAutoPlayNext(bool value) async {
@@ -476,7 +566,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kAutoPlayNext, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setAutoPlayNext SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setBackgroundPlay(bool value) async {
@@ -484,7 +577,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kBackgroundPlay, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setBackgroundPlay SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setHardwareDecoding(bool value) async {
@@ -492,7 +588,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kHardwareDecoding, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setHardwareDecoding SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setPlayerOrientation(String value) async {
@@ -500,39 +599,39 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPlayerOrientation, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setPlayerOrientation SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 记住「这个自动列表被用户删了」，重建时不再生成
   Future<void> hideAutoPlaylist(String id) async {
     _hiddenAutoPlaylists.add(id);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
           _kHiddenAutoPlaylists, _hiddenAutoPlaylists.toList());
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] hideAutoPlaylist SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 记住「这个文件的路径被用户从影库移除了」（保留磁盘文件）
   Future<void> hideVideoPath(String path) async {
     final normalized = LibraryHiddenService.normalizePath(path);
     if (normalized.isEmpty) return;
-    // 已存在就不重复写：避免同一视频被隐藏两次时反复落盘，
-    // 也保证「已隐藏的视频（N 个）」计数不会因为重复操作而虚高。
     if (_hiddenVideoPaths.contains(normalized)) return;
     _hiddenVideoPaths.add(normalized);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
           LibraryHiddenService.prefsKey, _hiddenVideoPaths.toList());
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] hideVideoPath SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 清理隐藏名单里「磁盘上已不存在」的僵尸路径。
-  ///
-  /// 为什么需要：用户隐藏视频后又删掉/移动了磁盘文件，路径还留在名单里，
-  /// 导致设置页「已隐藏的视频（N 个）」虚高、点「全部恢复」后数量对不上。
-  /// 这个方法只保留文件仍然存在的路径，返回清理掉的数量。
   Future<int> pruneMissingHiddenVideos(
     Future<bool> Function(String path) exists,
   ) async {
@@ -547,7 +646,6 @@ class AppSettingsService {
           removed++;
         }
       } catch (_) {
-        // 判存在失败（权限/网络源）：保守保留，不误删用户名单
         kept.add(path);
       }
     }
@@ -560,34 +658,35 @@ class AppSettingsService {
       } else {
         await prefs.setStringList(LibraryHiddenService.prefsKey, kept.toList());
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] pruneMissingHiddenVideos SP write failed: $e');
+    }
+    _scheduleJsonFlush();
     return removed;
   }
 
-  /// 清空隐藏名单（设置页「全部恢复」）
-  ///
-  /// 清空后下次扫描会把这些文件重新写回影库；不提供这个出口的话，
-  /// 用户误点一次「仅从影库移除」就永远找不回来了。
   Future<void> restoreHiddenVideos() async {
     _hiddenVideoPaths = <String>{};
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(LibraryHiddenService.prefsKey);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] restoreHiddenVideos SP remove failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 恢复所有被删掉的自动列表（下次扫描重建）
   Future<void> restoreAutoPlaylists() async {
     _hiddenAutoPlaylists = <String>{};
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kHiddenAutoPlaylists);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] restoreAutoPlaylists SP remove failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 清掉「手动加入 / 手动移出」的记忆（设置里恢复默认用；单测也用它复位）
-  ///
-  /// 不清的话这些记录会一直累积，用户在界面里再也没有"回到自动分组"的办法。
   Future<void> clearAutoOverlays() async {
     _autoAdded = <String>{};
     _autoRemoved = <String>{};
@@ -595,19 +694,12 @@ class AppSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kAutoAdded);
       await prefs.remove(_kAutoRemoved);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] clearAutoOverlays SP remove failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  /// 把「按文件名（+刮削修正）算出的分组」变成最终的自动列表。
-  ///
-  /// 放在这里而不是 notifier 里，是因为这层规则完全由本服务的状态决定
-  /// （隐藏 / 手动加 / 手动移出），而且它是纯函数 —— 没有数据库依赖，
-  /// 可以直接写单测钉住"重建不会冲掉用户的手动增删"。
-  ///
-  /// 规则（原有行为，别改）：
-  ///   最终成员 =（分组内成员 − 手动移出）∪（手动加入 ∩ 库里还有 − 手动移出）
-  ///   列表为空就不生成（某个视频从剧集挪到电影后，旧剧集组空了要能消失）
-  ///   被删掉的列表（[isAutoPlaylistHidden]）直接跳过
   List<Playlist> applyAutoOverrides(
     List<SourceGroup> groups,
     List<VideoModel> videos,
@@ -615,9 +707,6 @@ class AppSettingsService {
     final existingVidIds = videos.map((v) => v.id).toSet();
     final auto = <Playlist>[];
 
-    // 自动列表按类型排：电影 → 剧集 → 其它（兜底分组 / 个人来源这类杂项）。
-    // 这里用「按优先级分桶再拼接」而不是 List.sort：Dart 的 sort 不稳定，
-    // 直接按优先级排序会打乱同类型内 groupAll 的原始相对顺序。
     final ordered = <SourceGroup>[
       for (final g in groups)
         if (g.kindPriority == 0) g,
@@ -627,9 +716,6 @@ class AppSettingsService {
         if (g.kindPriority == 2) g,
     ];
 
-    // 从 -1000 起递增：负数编号保证自动列表整体排在手动列表
-    // （sortOrder 默认 0）**之前**，两者不会交错；分组数远小于 1000，
-    // 不会溢出到非负数去占手动列表的位置。
     var order = -1000;
 
     for (final g in ordered) {
@@ -669,12 +755,38 @@ class AppSettingsService {
     return auto;
   }
 
+  Future<void> markAutoAdded(String playlistId, String videoId) async {
+    _autoAdded.add(_ovKey(playlistId, videoId));
+    _autoRemoved.remove(_ovKey(playlistId, videoId));
+    await _saveOverlays();
+  }
+
+  Future<void> markAutoRemoved(String playlistId, String videoId) async {
+    _autoRemoved.add(_ovKey(playlistId, videoId));
+    _autoAdded.remove(_ovKey(playlistId, videoId));
+    await _saveOverlays();
+  }
+
+  Future<void> _saveOverlays() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kAutoAdded, _autoAdded.toList());
+      await prefs.setStringList(_kAutoRemoved, _autoRemoved.toList());
+    } catch (e) {
+      debugPrint('[PerchPlay] _saveOverlays SP write failed: $e');
+    }
+    _scheduleJsonFlush();
+  }
+
   Future<void> setAllFilesPrompted(bool value) async {
     _allFilesPrompted = value;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kAllFilesPrompted, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setAllFilesPrompted SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setGlassBlur(bool value) async {
@@ -682,17 +794,23 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kGlassBlurV2, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setGlassBlur SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
-  // ─────────── 字幕外观 setter ───────────
+  // ═══════════════ 字幕外观 setter ═══════════════
 
   Future<void> setSubtitleFontSize(double v) async {
     _subtitleFontSize = v.clamp(0, 30);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitleFontSize, _subtitleFontSize);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleFontSize SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleBgOpacity(double v) async {
@@ -700,7 +818,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitleBgOpacity, _subtitleBgOpacity);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleBgOpacity SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleTextColor(int argb) async {
@@ -708,7 +829,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSubtitleTextColor, _subtitleTextColor);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleTextColor SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleStroke(bool v) async {
@@ -716,7 +840,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleStroke, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleStroke SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitlePosition(double v) async {
@@ -724,15 +851,22 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitlePosition, _subtitlePosition);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitlePosition SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleSecondaryScale(double v) async {
     _subtitleSecondaryScale = v.clamp(0.5, 1.0);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_kSubtitleSecondaryScale, _subtitleSecondaryScale);
-    } catch (_) {}
+      await prefs.setDouble(
+          _kSubtitleSecondaryScale, _subtitleSecondaryScale);
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleSecondaryScale SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleSecondaryDim(bool v) async {
@@ -740,7 +874,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleSecondaryDim, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleSecondaryDim SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleFontFamily(String v) async {
@@ -748,7 +885,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kSubtitleFontFamily, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleFontFamily SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleFontWeight(int v) async {
@@ -756,7 +896,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSubtitleFontWeight, _subtitleFontWeight);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleFontWeight SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleLineSpacing(double v) async {
@@ -764,7 +907,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitleLineSpacing, _subtitleLineSpacing);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleLineSpacing SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleLineHeight(double v) async {
@@ -772,7 +918,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitleLineHeight, _subtitleLineHeight);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleLineHeight SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleBgRadius(double v) async {
@@ -780,7 +929,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_kSubtitleBgRadius, _subtitleBgRadius);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleBgRadius SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleBgColor(int argb) async {
@@ -788,7 +940,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kSubtitleBgColor, _subtitleBgColor);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleBgColor SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleShowBg(bool v) async {
@@ -796,7 +951,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleShowBg, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleShowBg SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleAlign(String v) async {
@@ -804,7 +962,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kSubtitleAlign, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleAlign SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setSubtitleUseAssPosition(bool v) async {
@@ -812,7 +973,10 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleUseAssPos, v);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setSubtitleUseAssPosition SP write failed: $e');
+    }
+    _scheduleJsonFlush();
   }
 
   Future<void> setTmdbApiKey(String value) async {
@@ -820,6 +984,81 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kTmdbApiKey, value);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PerchPlay] setTmdbApiKey SP write failed: $e');
+    }
+    _scheduleJsonFlush();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 批量设置字幕样式（字幕面板用，一次 SP 批量写入 + 一次 JSON flush）
+  // ═══════════════════════════════════════════════════════════
+
+  /// 一次性设置全部字幕外观参数，减少 SP 写入次数。
+  ///
+  /// 字幕样式面板有 15 个参数，逐个 setter 调用会触发 15 次 SP 写入 +
+  /// 15 次 debounce 重置。改用此方法：一次 SP batch + 一次 JSON flush。
+  Future<void> batchSetSubtitleStyle({
+    required double fontSize,
+    required double position,
+    required double bgOpacity,
+    required int textColor,
+    required bool stroke,
+    required double secScale,
+    required bool secDim,
+    required String fontFamily,
+    required int fontWeightIdx,
+    required double lineSpacing,
+    required double lineHeight,
+    required double bgRadius,
+    required int bgColor,
+    required bool showBg,
+    required String align,
+    required bool useAssPos,
+  }) async {
+    // 先更新内存
+    _subtitleFontSize = fontSize.clamp(0, 30);
+    _subtitlePosition = position.clamp(0.0, 0.6);
+    _subtitleBgOpacity = bgOpacity.clamp(0.0, 1.0);
+    _subtitleTextColor = textColor;
+    _subtitleStroke = stroke;
+    _subtitleSecondaryScale = secScale.clamp(0.5, 1.0);
+    _subtitleSecondaryDim = secDim;
+    _subtitleFontFamily = fontFamily;
+    _subtitleFontWeight = fontWeightIdx.clamp(3, 8);
+    _subtitleLineSpacing = lineSpacing.clamp(0, 12);
+    _subtitleLineHeight = lineHeight.clamp(1.0, 1.8);
+    _subtitleBgRadius = bgRadius.clamp(0, 12);
+    _subtitleBgColor = bgColor;
+    _subtitleShowBg = showBg;
+    _subtitleAlign = align;
+    _subtitleUseAssPosition = useAssPos;
+
+    // SP 批量写入
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await Future.wait([
+        prefs.setDouble(_kSubtitleFontSize, _subtitleFontSize),
+        prefs.setDouble(_kSubtitlePosition, _subtitlePosition),
+        prefs.setDouble(_kSubtitleBgOpacity, _subtitleBgOpacity),
+        prefs.setInt(_kSubtitleTextColor, _subtitleTextColor),
+        prefs.setBool(_kSubtitleStroke, _subtitleStroke),
+        prefs.setDouble(_kSubtitleSecondaryScale, _subtitleSecondaryScale),
+        prefs.setBool(_kSubtitleSecondaryDim, _subtitleSecondaryDim),
+        prefs.setString(_kSubtitleFontFamily, _subtitleFontFamily),
+        prefs.setInt(_kSubtitleFontWeight, _subtitleFontWeight),
+        prefs.setDouble(_kSubtitleLineSpacing, _subtitleLineSpacing),
+        prefs.setDouble(_kSubtitleLineHeight, _subtitleLineHeight),
+        prefs.setDouble(_kSubtitleBgRadius, _subtitleBgRadius),
+        prefs.setInt(_kSubtitleBgColor, _subtitleBgColor),
+        prefs.setBool(_kSubtitleShowBg, _subtitleShowBg),
+        prefs.setString(_kSubtitleAlign, _subtitleAlign),
+        prefs.setBool(_kSubtitleUseAssPos, _subtitleUseAssPosition),
+      ]);
+    } catch (e) {
+      debugPrint('[PerchPlay] batchSetSubtitleStyle SP write failed: $e');
+    }
+
+    _scheduleJsonFlush();
   }
 }
