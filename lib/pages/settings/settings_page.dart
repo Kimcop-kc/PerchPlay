@@ -9,6 +9,7 @@ import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/storage_manager.dart';
+import '../../services/library_prune_service.dart';
 import '../../services/update_service.dart';
 import '../../services/app_version.dart';
 import '../../providers/library_provider.dart';
@@ -49,10 +50,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   /// 清理隐藏名单里磁盘上已不存在的路径（后台执行，不阻塞设置页）。
+  ///
+  /// 注意：网络来源（smb/http/云盘/UNC）的路径**必须跳过** ——
+  /// `File().existsSync()` 对它们恒为 false，会把合法的隐藏项误删，
+  /// 导致下次扫描又把视频写回影库（用户以为「隐藏失效」）。
   Future<void> _pruneHiddenVideos() async {
     try {
       final removed = await _settings.pruneMissingHiddenVideos(
-        (path) async => File(path).existsSync(),
+        (path) async {
+          if (LibraryPruneService.isRemotePath(path)) return true; // 视为存在
+          return File(path).existsSync();
+        },
       );
       if (removed > 0 && mounted) setState(() {});
     } catch (_) {}

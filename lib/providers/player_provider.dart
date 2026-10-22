@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -533,10 +534,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 网络源（云盘/NAS/直链）不写库：它们的 id 是 URL，写进去会污染影库。
       final v = state.currentVideo;
       if (v != null && !LibraryPruneService.isRemotePath(v.path)) {
-        _db.updatePlayPosition(
-          v.id,
-          0,
-          durationMs: state.duration.inMilliseconds,
+        // 不 await：完成事件在 stream 回调里，await 会把异常抛进监听器；
+        // 进度清零失败不影响自动播放下一集。
+        unawaited(
+          _db
+              .updatePlayPosition(
+            v.id,
+            0,
+            durationMs: state.duration.inMilliseconds,
+          )
+              .catchError((Object e) {
+            debugPrint('[Player] 播完清零进度失败: $e');
+          }),
         );
       }
       // 自动播放下一个（受设置控制）
@@ -553,8 +562,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 事件抢在新媒体之前消费掉 resume。
   Duration? _pendingResume;
   int _pendingResumeLoadId = 0;
-
-  /// seek 竞态令牌：每次新 seek 递增，旧 seek 回来发现编号落后就丢弃。
 
   /// seek 竞态令牌：每次新 seek 递增，旧 seek 回来发现编号落后就丢弃。
   int _seekToken = 0;
