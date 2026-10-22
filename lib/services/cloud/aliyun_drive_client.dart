@@ -10,10 +10,10 @@ import '../../models/cloud_drive_model.dart';
 ///
 /// ## 认证方式（与另外三家不同）
 /// 阿里云盘**不用 Cookie**，用 OAuth refresh_token 换 access_token。
-/// PerchPlay 反编译揭示了三重认证路径：
+/// 三重认证路径：
 ///  1. 内置 OAuth 应用 ID（client_id = b8c990e60b18446eb07f5dca30398e8a）
 ///  2. 用户在 WebView 登录 `alipan.com`，从 localStorage 取出 `refresh_token`
-///  3. alist 代理降级（`api.alistgo.com` / `api.nn.ci`，突破官方限速）
+///  3. 直用 refresh_token 试探降级
 ///
 /// ## 端点
 ///  - 换 token: `auth.alipan.com/v2/account/token`（内置 client_id）
@@ -33,7 +33,7 @@ class AliyunDriveClient {
 
   final CloudDriveAccount account;
 
-  /// 开放平台应用凭据（用户在设置里填；留空则用内置的 PerchPlay 同款 client_id）
+  /// 开放平台应用凭据（用户在设置里填；留空则用内置的 内置 client_id）
   final String? clientId;
   final String? clientSecret;
 
