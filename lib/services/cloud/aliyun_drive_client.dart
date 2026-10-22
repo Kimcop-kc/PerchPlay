@@ -59,7 +59,10 @@ class AliyunDriveClient {
   /// 探测到的 drive_id（空串 = 备份盘，非空 = 资源库）
   String _driveId = '';
 
-  /// 取可用 token：缓存 → account 里的 → 刷新。
+  /// 取可用 token：
+  ///  1. 内存缓存
+  ///  2. account.accessToken（WebView 登录时从 localStorage 直接抓的，最可靠）
+  ///  3. 用 refresh_token 换（OAuth / Web / 直用）
   Future<String?> _token() async {
     if (_cachedToken.isNotEmpty) return _cachedToken;
     if (account.accessToken.isNotEmpty) {
@@ -82,29 +85,29 @@ class AliyunDriveClient {
 
   /// 用 refresh_token 换 access_token。
   ///
-  /// 阿里云盘 WebView 登录拿到的 refresh_token 有两类：
-  ///  - OAuth 格式（长串 base64，走 auth.alipan.com）
-  ///  - Web 格式（短串，已经是 access_token，直接用）
+  /// 阿里云盘 WebView 登录拿到的 token 有两类：
+  ///  - access_token（直接从 localStorage 取，优先使用，有效期约 7200s）
+  ///  - refresh_token（需换 access_token，可能因 client_id 失效）
   ///
-  /// 这里先试 OAuth 端点（带 client_id），失败再试 Web 端点，
-  /// 再失败就把 token 本身当作 access_token 直接用。
+  /// 换 token 时先试 Web API（`api.alipan.com`，**不需要** client_id），
+  /// 失败再试 OAuth（`auth.alipan.com`，需要 client_id），
+  /// 最后把 refresh_token 当成 access_token 直接试。
   Future<String?> refreshAccessToken() async {
     final rt = account.refreshToken;
     if (rt.isEmpty) return null;
 
-    // 如果 refresh_token 很短（< 80 字符），很可能是 web 版 access_token，
-    // 直接试一下能不能用，再走 refresh 流程。
+    // 如果 refresh_token 很短（< 80 字符），很可能是 web 版 access_token
     if (rt.length < 80) {
       final ok = await _tryToken(rt);
       if (ok) return rt;
     }
 
-    // 方案 1: OAuth 端点（带 client_id）
-    final tok = await _refreshAtOAuth(rt);
+    // 方案 1: Web API（api.alipan.com，无需 client_id，成功率最高）
+    final tok = await _refreshAtWeb(rt);
     if (tok != null) return tok;
 
-    // 方案 2: Web API 端点（无须 client_id）
-    final tok2 = await _refreshAtWeb(rt);
+    // 方案 2: OAuth 端点（auth.alipan.com，需要有效 client_id）
+    final tok2 = await _refreshAtOAuth(rt);
     if (tok2 != null) return tok2;
 
     // 方案 3: 直接用 refresh_token 当 access_token
@@ -114,8 +117,27 @@ class AliyunDriveClient {
     return null;
   }
 
-  /// 测试 token 是否有效（列根目录一条）
+  /// 测试 token 是否有效（先用 web API，降级 open API）
   Future<bool> _tryToken(String token) async {
+    try {
+      // 先试 web API（access_token 不需要 client_id）
+      final req = await _client.postUrl(
+          Uri.parse('$_webApi/adrive/v3/file/list'));
+      _authHeaders(token).forEach(req.headers.set);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({
+        'drive_id': _driveId,
+        'parent_file_id': 'root',
+        'limit': 1,
+        'image_thumbnail_process': 'image/resize,w_160/format,jpeg',
+        'video_thumbnail_process': 'video/snapshot,t_0,f_jpg,ar_auto,w_160',
+      }));
+      final resp = await req.close();
+      if (resp.statusCode == 200) return true;
+      debugPrint('[Aliyun] _tryToken webApi ${resp.statusCode}');
+    } catch (_) {}
+
+    // 降级 open API
     try {
       final req = await _client.postUrl(
           Uri.parse('$_openApi/adrive/v1.0/openFile/list'));
@@ -224,7 +246,27 @@ class AliyunDriveClient {
         return null;
       }
 
-      // 取昵称
+      // 取昵称（web API 优先）
+      try {
+        // 方案 1: web API
+        final r1 = await _client.postUrl(
+            Uri.parse('$_webApi/v1.0/user/getDriveInfo'));
+        _authHeaders(token).forEach(r1.headers.set);
+        r1.headers.contentType = ContentType.json;
+        r1.write(jsonEncode({}));
+        final resp1 = await r1.close();
+        if (resp1.statusCode == 200) {
+          final body = await resp1.transform(utf8.decoder).join();
+          final j = jsonDecode(body);
+          if (j is Map) {
+            final n = j['name']?.toString() ??
+                j['nick_name']?.toString() ??
+                j['user_name']?.toString();
+            if (n != null && n.isNotEmpty) return n;
+          }
+        }
+      } catch (_) {}
+      // 方案 2: open API
       try {
         final req = await _client.getUrl(
             Uri.parse('$_openApi/adrive/v1.0/user/getDriveInfo'));
@@ -250,11 +292,29 @@ class AliyunDriveClient {
 
   /// 探测可用的 drive_id。
   ///
-  /// 阿里云盘把存储分为「备份盘」(drive_id = "") 和「资源库」(drive_id != "")。
-  /// NovaPlayer 会在首次连接时探测：先查默认 drive，再查 drive list，
-  /// 取第一个可用的 drive_id。这里简化：用空串试一次，失败再查列表。
+  /// 先用 web API（`api.alipan.com`，access_token 就行），
+  /// 失败再降级 open API（`openapi.alipan.com`，需要 OAuth client）。
   Future<String> _probeDriveId(String token) async {
-    // 先试默认（空串 = 备份盘）
+    // 方案 1: web API
+    try {
+      final req = await _client.postUrl(
+          Uri.parse('$_webApi/adrive/v1.0/user/getDriveInfo'));
+      _authHeaders(token).forEach(req.headers.set);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({}));
+      final resp = await req.close();
+      if (resp.statusCode == 200) {
+        final body = await resp.transform(utf8.decoder).join();
+        final j = jsonDecode(body);
+        if (j is Map) {
+          final did = j['default_drive_id']?.toString() ?? '';
+          debugPrint('[Aliyun] web drive_id=$did');
+          return did;
+        }
+      }
+    } catch (_) {}
+
+    // 方案 2: open API
     try {
       final req = await _client.getUrl(
           Uri.parse('$_openApi/adrive/v1.0/user/getDriveInfo'));
@@ -265,13 +325,13 @@ class AliyunDriveClient {
         final j = jsonDecode(body);
         if (j is Map) {
           final did = j['default_drive_id']?.toString() ?? '';
-          debugPrint('[Aliyun] 探测到 default_drive_id=$did');
+          debugPrint('[Aliyun] open drive_id=$did');
           return did;
         }
       }
     } catch (_) {}
 
-    // 降级：查 drive list
+    // 方案 3: listDrives
     try {
       final req = await _client.postUrl(
           Uri.parse('$_openApi/adrive/v1.0/user/listDrives'));
@@ -289,7 +349,7 @@ class AliyunDriveClient {
               if (item is Map) {
                 final did = item['drive_id']?.toString() ?? '';
                 if (did.isNotEmpty) {
-                  debugPrint('[Aliyun] 探测到 drive_id=$did');
+                  debugPrint('[Aliyun] listDrives drive_id=$did');
                   return did;
                 }
               }
@@ -303,22 +363,100 @@ class AliyunDriveClient {
   }
 
   /// 列目录。`parentId` 根目录是 `'root'`。
+  ///
+  /// 先试 web API（`api.alipan.com`，access_token 即可），
+  /// 失败降级 open API（`openapi.alipan.com`，需 OAuth client_id）。
   Future<List<CloudFileItem>?> listDirectory(String parentId,
       {String parentPath = '/'}) async {
     final token = await _token();
     if (token == null || token.isEmpty) return null;
 
+    // 先试 web API
+    final webItems = await _listDirWeb(token, parentId, parentPath);
+    if (webItems != null) return webItems;
+
+    // 降级 open API
+    final openItems = await _listDirOpen(token, parentId, parentPath);
+    if (openItems != null) return openItems;
+
+    return null;
+  }
+
+  // ──────────── web API 列表 ────────────
+
+  Future<List<CloudFileItem>?> _listDirWeb(
+      String token, String parentId, String parentPath) async {
     try {
       final items = <CloudFileItem>[];
       var marker = '';
       const limit = 100;
 
       while (true) {
-        // 优先开放平台（有内置 client_id），降级网页版
-        final base = _openApi;
-        final path = '/adrive/v1.0/openFile/list';
-        final uri = Uri.parse('$base$path');
-        final req = await _client.postUrl(uri);
+        final req = await _client.postUrl(
+            Uri.parse('$_webApi/adrive/v3/file/list'));
+        _authHeaders(token).forEach(req.headers.set);
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode({
+          'drive_id': _driveId,
+          'parent_file_id': parentId,
+          'limit': limit,
+          'marker': marker,
+          'order_by': 'name',
+          'order_direction': 'ASC',
+          'image_thumbnail_process': 'image/resize,w_160/format,jpeg',
+          'video_thumbnail_process': 'video/snapshot,t_0,f_jpg,ar_auto,w_160',
+        }));
+        final resp = await req.close();
+        if (resp.statusCode != 200) {
+          debugPrint('[Aliyun] web list HTTP ${resp.statusCode}');
+          return null;
+        }
+        final body = await resp.transform(utf8.decoder).join();
+        final j = jsonDecode(body);
+        if (j is! Map) return null;
+        final list = j['items'];
+        if (list is! List || list.isEmpty) break;
+
+        for (final raw in list) {
+          if (raw is! Map) continue;
+          final name = raw['name']?.toString() ?? '';
+          if (name.isEmpty) continue;
+          final dir = raw['type']?.toString() == 'folder';
+          items.add(CloudFileItem(
+            id: raw['file_id']?.toString() ?? '',
+            name: name,
+            path: parentPath == '/' ? '/$name' : '$parentPath/$name',
+            isDirectory: dir,
+            size: (raw['size'] as num?)?.toInt() ?? 0,
+            modified: DateTime.tryParse(raw['updated_at']?.toString() ?? ''),
+            extension: _extOf(name),
+          ));
+        }
+
+        final next = j['next_marker']?.toString() ?? '';
+        if (next.isEmpty) break;
+        marker = next;
+        if (items.length > 5000) break;
+      }
+      return items;
+    } catch (e) {
+      debugPrint('[Aliyun] web list 失败: $e');
+      return null;
+    }
+  }
+
+  // ──────────── 开放平台列表 ────────────
+
+  Future<List<CloudFileItem>?> _listDirOpen(
+      String token, String parentId, String parentPath) async {
+    try {
+      final items = <CloudFileItem>[];
+      var marker = '';
+      const limit = 100;
+
+      while (true) {
+        final req = await _client.postUrl(
+            Uri.parse('$_openApi/adrive/v1.0/openFile/list'));
         _authHeaders(token).forEach(req.headers.set);
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode({
@@ -331,9 +469,8 @@ class AliyunDriveClient {
         }));
         final resp = await req.close();
         if (resp.statusCode != 200) {
-          debugPrint('[Aliyun] 列表 HTTP ${resp.statusCode}');
-          // 开放平台失败，尝试网页版（alist 代理留到后续优化）
-          return await _listViaWebApi(parentId, parentPath, token);
+          debugPrint('[Aliyun] open list HTTP ${resp.statusCode}');
+          return null;
         }
         final body = await resp.transform(utf8.decoder).join();
         final j = jsonDecode(body);
@@ -364,74 +501,37 @@ class AliyunDriveClient {
       }
       return items;
     } catch (e) {
-      debugPrint('[Aliyun] listDirectory 失败: $e');
+      debugPrint('[Aliyun] open list 失败: $e');
       return null;
     }
   }
 
-  /// 网页版 API 降级（当开放平台不可用时）。
-  Future<List<CloudFileItem>?> _listViaWebApi(
-      String parentId, String parentPath, String token) async {
-    try {
-      final items = <CloudFileItem>[];
-      var marker = '';
-      const limit = 100;
-
-      while (true) {
-        final uri = Uri.parse('$_webApi/adrive/v3/file/list');
-        final req = await _client.postUrl(uri);
-        _authHeaders(token).forEach(req.headers.set);
-        req.headers.contentType = ContentType.json;
-        req.write(jsonEncode({
-          'drive_id': _driveId,
-          'parent_file_id': parentId,
-          'limit': limit,
-          'marker': marker,
-          'order_by': 'name',
-          'order_direction': 'ASC',
-        }));
-        final resp = await req.close();
-        if (resp.statusCode != 200) return null;
-        final body = await resp.transform(utf8.decoder).join();
-        final j = jsonDecode(body);
-        if (j is! Map) return null;
-        final list = j['items'];
-        if (list is! List || list.isEmpty) break;
-
-        for (final raw in list) {
-          if (raw is! Map) continue;
-          final name = raw['name']?.toString() ?? '';
-          if (name.isEmpty) continue;
-          final dir = raw['type']?.toString() == 'folder';
-          items.add(CloudFileItem(
-            id: raw['file_id']?.toString() ?? '',
-            name: name,
-            path: parentPath == '/' ? '/$name' : '$parentPath/$name',
-            isDirectory: dir,
-            size: (raw['size'] as num?)?.toInt() ?? 0,
-            modified: DateTime.tryParse(raw['updated_at']?.toString() ?? ''),
-            extension: _extOf(name),
-          ));
-        }
-
-        final next = j['next_marker']?.toString() ?? '';
-        if (next.isEmpty) break;
-        marker = next;
-        if (items.length > 5000) break;
-      }
-      return items;
-    } catch (e) {
-      debugPrint('[Aliyun] webApi 列表失败: $e');
-      return null;
-    }
-  }
-
-  /// 取直链（开放平台优先，网页版降级）。
+  /// 取直链（web API 优先，开放平台降级）。
   Future<String?> getDownloadUrl(String fileId) async {
     final token = await _token();
     if (token == null || token.isEmpty) return null;
 
-    // 先试开放平台
+    // 先试 web API
+    try {
+      final req = await _client.postUrl(
+          Uri.parse('$_webApi/v2/file/get_download_url'));
+      _authHeaders(token).forEach(req.headers.set);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({'drive_id': _driveId, 'file_id': fileId}));
+      final resp = await req.close();
+      if (resp.statusCode == 200) {
+        final body = await resp.transform(utf8.decoder).join();
+        final j = jsonDecode(body);
+        if (j is Map) {
+          final url = j['url']?.toString() ?? j['download_url']?.toString();
+          if (url != null && url.isNotEmpty) return url;
+        }
+      }
+    } catch (e) {
+      debugPrint('[Aliyun] web 取直链失败: $e');
+    }
+
+    // 降级开放平台
     try {
       final req = await _client.postUrl(
           Uri.parse('$_openApi/adrive/v1.0/openFile/getDownloadUrl'));
@@ -448,25 +548,7 @@ class AliyunDriveClient {
         }
       }
     } catch (e) {
-      debugPrint('[Aliyun] 开放平台取直链失败: $e');
-    }
-
-    // 降级网页版
-    try {
-      final req = await _client.postUrl(
-          Uri.parse('$_webApi/v2/file/get_download_url'));
-      _authHeaders(token).forEach(req.headers.set);
-      req.headers.contentType = ContentType.json;
-      req.write(jsonEncode({'drive_id': _driveId, 'file_id': fileId}));
-      final resp = await req.close();
-      if (resp.statusCode != 200) return null;
-      final body = await resp.transform(utf8.decoder).join();
-      final j = jsonDecode(body);
-      if (j is Map) {
-        return j['url']?.toString() ?? j['download_url']?.toString();
-      }
-    } catch (e) {
-      debugPrint('[Aliyun] 网页版取直链失败: $e');
+      debugPrint('[Aliyun] open 取直链失败: $e');
     }
     return null;
   }

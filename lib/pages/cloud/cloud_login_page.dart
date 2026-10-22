@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -41,17 +42,16 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
   void initState() {
     super.initState();
     _cookieManager = CookieManager.instance();
-    // 自动轮询：Cookie 类云盘登录后页面不一定会跳转（尤其扫码登录），
-    // 定时检查 cookie 确保能抓取到。
-    if (!widget.type.usesToken) {
-      _pollTimer = Timer.periodic(
-        const Duration(seconds: 3),
-        (_) {
-          final c = _controller;
-          if (c != null && mounted && !_saving) _tryGrab(c);
-        },
-      );
-    }
+    // 持续轮询：无论 Token 还是 Cookie 类云盘，都定时检查。
+    // 阿里云盘等 SPA 登录后可能 onLoadStop 先到、localStorage 后写入，
+    // 所以统一用轮询兜底。
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) {
+        final c = _controller;
+        if (c != null && mounted && !_saving) _tryGrab(c);
+      },
+    );
   }
 
   @override
@@ -113,6 +113,18 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
                 useShouldOverrideUrlLoading: true,
                 // 允许混合内容（部分云盘登录页有 http 资源）
                 mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                // 桌面版视口：不缩小页面，避免 115/夸克 切换移动版
+                useWideViewPort: true,
+                loadWithOverviewMode: false,
+                supportZoom: true,
+                textZoom: 100,
+                // 缓存
+                cacheEnabled: true,
+                // 允许所有类型的 URL 打开
+                allowsInlineMediaPlayback: true,
+                // Android 需要明确允许文件访问以兼容某些云盘登录页
+                allowFileAccessFromFileURLs: true,
+                allowUniversalAccessFromFileURLs: true,
               ),
               onWebViewCreated: (c) => _controller = c,
               onLoadStop: (controller, url) => _tryGrab(controller),
@@ -160,11 +172,19 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
         } catch (_) {}
       }
 
-      // 阿里云盘：从 localStorage 取 refresh_token（不依赖 cookie）
+      // 阿里云盘：从 localStorage 取 refresh_token / access_token（不依赖 cookie）
       if (widget.type.usesToken) {
-        final rt = await _extractAliyunRefreshToken(controller);
-        if (rt != null && rt.isNotEmpty) {
-          await _save(cookie: '', refreshToken: rt);
+        final raw = await _extractAliyunRefreshToken(controller);
+        if (raw != null && raw.isNotEmpty) {
+          // JS 返回 JSON: {"at":"...","rt":"..."}
+          try {
+            final j = jsonDecode(raw) as Map<String, dynamic>;
+            final at = j['at']?.toString() ?? '';
+            final rt = j['rt']?.toString() ?? '';
+            if (at.isNotEmpty || rt.isNotEmpty) {
+              await _save(cookie: '', refreshToken: rt, accessToken: at);
+            }
+          } catch (_) {}
         }
         return;
       }
@@ -198,29 +218,42 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
     }
   }
 
-  /// 从网页 localStorage / sessionStorage 里找阿里云盘的 refresh_token。
+  /// 从网页 localStorage 里找阿里云盘的 refresh_token / access_token。
   ///
-  /// 阿里云盘把 token 存在 `token` key 的 JSON 里。
-  /// NovaPlayer 的做法：先等用户登录 alipan.com → 页面跳转到网盘首页后，
-  /// localStorage 里会出现 token。JS 遍历所有 key，匹配 JSON 中的
-  /// `refresh_token` 字段，也支持正则降级提取（token value 不是合法 JSON 时）。
+  /// 阿里云盘 SPA 登录后会往 localStorage 写 `token` key，JSON 结构：
+  /// ```json
+  /// {"access_token":"...","refresh_token":"...","user_id":"...",...}
+  /// ```
+  ///
+  /// **优先返回 access_token**（可直接用于 API 调用，绕开 client_id 限制）；
+  /// 降级返回 refresh_token（需走 OAuth 换 access_token，可能因内置
+  /// client_id 失效而失败）。
+  ///
+  /// 返回值是 JSON：`{"at":"...","rt":"..."}`，Dart 端再拆开。
   Future<String?> _extractAliyunRefreshToken(
       InAppWebViewController controller) async {
-    // NovaPlayer 同款 JS：先找 `token` key，再用正则扫全量后备
     const js = r'''
 (function(){
   try {
-    // 方案1：直接读 'token' key（阿里云盘标准存储位置）
     var v = localStorage.getItem('token');
     if (v) {
+      // 尝试 JSON 解析
       try {
         var o = JSON.parse(v);
-        if (o && o.refresh_token) return o.refresh_token;
+        if (o) {
+          var at = o.access_token || '';
+          var rt = o.refresh_token || '';
+          if (at || rt) return JSON.stringify({at: at, rt: rt});
+        }
       } catch (e) {}
-      var m = v.match(/"refresh_token"\s*:\s*"([^"]+)"/);
-      if (m && m[1]) return m[1];
+      // 正则降级
+      var am = v.match(/"access_token"\s*:\s*"([^"]+)"/);
+      var rm = v.match(/"refresh_token"\s*:\s*"([^"]+)"/);
+      var at2 = am ? am[1] : '';
+      var rt2 = rm ? rm[1] : '';
+      if (at2 || rt2) return JSON.stringify({at: at2, rt: rt2});
     }
-    // 方案2：扫所有 key
+    // 全量扫描 localStorage + sessionStorage
     var keys = [];
     for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
     for (var i = 0; i < sessionStorage.length; i++) keys.push(sessionStorage.key(i));
@@ -228,14 +261,21 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       var k = keys[i];
       if (!k) continue;
       var v2 = localStorage.getItem(k) || sessionStorage.getItem(k);
-      if (!v2 || v2.indexOf('refresh_token') < 0) continue;
+      if (!v2) continue;
+      if (v2.indexOf('refresh_token') < 0 && v2.indexOf('access_token') < 0) continue;
       try {
         var o = JSON.parse(v2);
-        if (o && o.refresh_token) return o.refresh_token;
-        if (o && o.token && o.token.refresh_token) return o.token.refresh_token;
+        if (o) {
+          var at = o.access_token || (o.token && o.token.access_token) || '';
+          var rt = o.refresh_token || (o.token && o.token.refresh_token) || '';
+          if (at || rt) return JSON.stringify({at: at, rt: rt});
+        }
       } catch (e) {
-        var m = v2.match(/"refresh_token"\s*:\s*"([^"]+)"/);
-        if (m && m[1]) return m[1];
+        var am = v2.match(/"access_token"\s*:\s*"([^"]+)"/);
+        var rm = v2.match(/"refresh_token"\s*:\s*"([^"]+)"/);
+        var at2 = am ? am[1] : '';
+        var rt2 = rm ? rm[1] : '';
+        if (at2 || rt2) return JSON.stringify({at: at2, rt: rt2});
       }
     }
   } catch (e) {}
@@ -246,7 +286,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       final r = await controller.evaluateJavascript(source: js);
       if (r is String && r.isNotEmpty && r != 'null') return r;
     } catch (e) {
-      debugPrint('[CloudLogin] 取 refresh_token 失败: $e');
+      debugPrint('[CloudLogin] 取 token 失败: $e');
     }
     return null;
   }
@@ -269,6 +309,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
   Future<void> _save({
     required String cookie,
     required String refreshToken,
+    String accessToken = '',
   }) async {
     if (_saving || !mounted) return;
     setState(() => _saving = true);
@@ -280,6 +321,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       name: type.displayName,
       cookie: cookie,
       refreshToken: refreshToken,
+      accessToken: accessToken,
       lastConnected: DateTime.now(),
     );
 
