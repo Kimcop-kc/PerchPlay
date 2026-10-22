@@ -218,12 +218,11 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
     }
   }
 
-  /// 从网页 localStorage 里找阿里云盘的 refresh_token / access_token。
+  /// 从网页 localStorage/cookie 里找阿里云盘的 refresh_token / access_token。
   ///
-  /// 阿里云盘 SPA 登录后会往 localStorage 写 `token` key，JSON 结构：
-  /// ```json
-  /// {"access_token":"...","refresh_token":"...","user_id":"...",...}
-  /// ```
+  /// 阿里云盘 SPA 登录后会往 localStorage 写 token，但不同版本位置不同：
+  ///  - 新版 alipan.com: localStorage.token = {"access_token":"...","refresh_token":"..."}
+  ///  - 旧版 aliyundrive.com: 可能在 cookie 或其他 key 里
   ///
   /// **优先返回 access_token**（可直接用于 API 调用，绕开 client_id 限制）；
   /// 降级返回 refresh_token（需走 OAuth 换 access_token，可能因内置
@@ -235,9 +234,9 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
     const js = r'''
 (function(){
   try {
+    // 方案1: 从 localStorage.token 取（新版 alipan.com）
     var v = localStorage.getItem('token');
     if (v) {
-      // 尝试 JSON 解析
       try {
         var o = JSON.parse(v);
         if (o) {
@@ -246,14 +245,29 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
           if (at || rt) return JSON.stringify({at: at, rt: rt});
         }
       } catch (e) {}
-      // 正则降级
-      var am = v.match(/"access_token"\s*:\s*"([^"]+)"/);
-      var rm = v.match(/"refresh_token"\s*:\s*"([^"]+)"/);
-      var at2 = am ? am[1] : '';
-      var rt2 = rm ? rm[1] : '';
-      if (at2 || rt2) return JSON.stringify({at: at2, rt: rt2});
     }
-    // 全量扫描 localStorage + sessionStorage
+    
+    // 方案2: 从 cookie 取（部分情况下 token 在 cookie 里）
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var c = cookies[i].trim();
+      if (c.indexOf('token=') === 0 || c.indexOf('refresh_token=') === 0) {
+        var val = decodeURIComponent(c.substring(c.indexOf('=') + 1));
+        try {
+          var o = JSON.parse(val);
+          if (o && (o.access_token || o.refresh_token)) {
+            return JSON.stringify({at: o.access_token || '', rt: o.refresh_token || ''});
+          }
+        } catch (e) {
+          // 如果是纯 token 字符串
+          if (val.length > 50) {
+            return JSON.stringify({at: val, rt: ''});
+          }
+        }
+      }
+    }
+    
+    // 方案3: 全量扫描 localStorage + sessionStorage
     var keys = [];
     for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
     for (var i = 0; i < sessionStorage.length; i++) keys.push(sessionStorage.key(i));
@@ -277,6 +291,16 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
         var rt2 = rm ? rm[1] : '';
         if (at2 || rt2) return JSON.stringify({at: at2, rt: rt2});
       }
+    }
+    
+    // 方案4: 从 window 对象取（某些 SPA 会挂在全局）
+    if (window.__TOKEN__) {
+      try {
+        var o = window.__TOKEN__;
+        if (o.access_token || o.refresh_token) {
+          return JSON.stringify({at: o.access_token || '', rt: o.refresh_token || ''});
+        }
+      } catch (e) {}
     }
   } catch (e) {}
   return null;
