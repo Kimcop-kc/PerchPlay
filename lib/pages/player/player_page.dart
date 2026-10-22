@@ -42,6 +42,9 @@ class PlayerPage extends ConsumerStatefulWidget {
   /// 播放队列（视频 id 列表，来自播放列表/文件夹），按顺序播放
   final List<String>? queueIds;
   final int startIndex;
+  
+  /// 自定义 HTTP 请求头（网盘播放需要带 Cookie/UA 等）
+  final Map<String, String>? headers;
 
   const PlayerPage({
     super.key,
@@ -49,6 +52,7 @@ class PlayerPage extends ConsumerStatefulWidget {
     required this.videoTitle,
     this.queueIds,
     this.startIndex = 0,
+    this.headers,
   });
 
   @override
@@ -382,6 +386,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           queue: queue,
           startIndex:
               queue == null ? 0 : widget.startIndex.clamp(0, queue.length - 1),
+          headers: widget.headers,
         );
   }
 
