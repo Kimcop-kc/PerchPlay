@@ -16,6 +16,7 @@ import '../services/app_settings_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/library_prune_service.dart';
+import '../services/playback_busy.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -322,6 +323,26 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
       await platform.setProperty('framedrop', 'vo');
 
+      // ── 内核缓冲优化（本地文件）──
+      //
+      // media_kit 默认 `cache=yes` + `cache-on-disk=yes`：对网络流有用，
+      // 但本地文件（/storage/...）本身就是随机可读的，磁盘缓存反而多一层
+      // 磁盘 IO，高码率/4K 时可能因为缓存写盘抖动导致「突然卡一下」。
+      //
+      // 这里按视频路径判断：本地文件关掉磁盘缓存，网络源（网盘/NAS/直链）
+      // 保留缓存与更大的 demuxer 缓冲，减少网络抖动带来的卡顿。
+      final path = state.currentVideo?.path ?? '';
+      final remote = LibraryPruneService.isRemotePath(path);
+      await platform.setProperty('cache', remote ? 'yes' : 'no');
+      await platform.setProperty('cache-on-disk', remote ? 'yes' : 'no');
+      // 网络源把 demuxer 缓存调到 128MB，本地文件保持默认 32MB 足够
+      await platform.setProperty(
+          'demuxer-max-bytes', remote ? '134217728' : '33554432');
+      await platform.setProperty(
+          'demuxer-max-back-bytes', remote ? '134217728' : '33554432');
+      // 网络超时：5 秒太短，网盘/NAS 偶尔慢响应会频繁超时重连，调到 15 秒
+      await platform.setProperty('network-timeout', remote ? '15' : '5');
+
       // ── 字幕渲染：统一由 Flutter 自绘 ──
       //
       // mpv/libass 只负责**解析**字幕文本（sub-text / secondary-sub-text），
@@ -446,6 +467,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+      // 更新全局「播放中」标志：缩略图解码、TMDB 刮削等后台任务
+      // 会轮询它，在播放时暂停，把 CPU/网络让给播放器。
+      PlaybackBusy.playing = playing;
       // 「后台播放」开关原来是个空转设置：Dart 侧从未启动过前台服务。
       // 现在按设置真正启停，才能在息屏/内存回收下继续播。
       _syncBackgroundService(playing);
@@ -779,6 +803,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (_) {}
     // 停止播放后不再需要前台服务（否则通知会一直挂着耗电）
     _shutdownBackgroundService();
+    // 恢复后台任务（缩略图/刮削）
+    PlaybackBusy.playing = false;
     state = state.copyWith(
       clearCurrentVideo: true,
       isPlaying: false,

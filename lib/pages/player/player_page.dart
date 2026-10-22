@@ -435,7 +435,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         extendBody: true,
         body: Stack(
           children: [
-            _buildVideoLayer(state),
+            // 播放页全屏：视频层不做圆角裁剪（避免每帧纹理裁剪合成的卡顿）
+            _buildVideoLayer(state, rounded: false),
             // 手势层需要实时的播放位置作为拖动基准，
             // 单独用一个只订阅 position 的 Consumer 包住（不重建整页）
             _LivePosition(
@@ -1669,29 +1670,37 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   // ═══════════════ Video Layer ═══════════════
 
   Widget _buildVideoLayer(PlayerState state, {bool rounded = true}) {
+    final video = Video(
+      controller: _videoController,
+      fit: BoxFit.contain,
+      controls: NoVideoControls,
+      // 关闭 media_kit 内置的 Flutter 字幕层（SubtitleView）。
+      //
+      // 这是「字幕显示两个」的根因：SubtitleView 由
+      // subtitleViewConfiguration.visible 控制，**默认 true**，
+      // 和 mpv 的 libass 是两套独立的绘制路径。
+      // 只关 mpv 的 sub-visibility 不够，SubtitleView 仍会画一份，
+      // 叠加上本项目自绘的字幕浮层就是双字幕。
+      subtitleViewConfiguration: const SubtitleViewConfiguration(
+        visible: false,
+      ),
+    );
+
+    // 视频纹理层单独包 RepaintBoundary：控制栏/字幕/进度条等上层重建时，
+    // 不会连带重绘视频纹理（media_kit 的 Video 是每帧推送的外接纹理，
+    // 被上层重建连带触发合成是播放卡顿的常见来源）。
+    final bounded = RepaintBoundary(child: video);
+
+    // 播放页全屏沉浸：不做圆角裁剪（ClipRRect 会让视频纹理每帧都被
+    // 裁剪重绘）。只有 mini player 等需要圆角的场景才裁剪。
+    if (!rounded) return Positioned.fill(child: bounded);
     return Positioned.fill(
       child: ClipRRect(
-        borderRadius: rounded
-            ? const BorderRadius.only(
-                topLeft: Radius.circular(GlassTheme.radiusLg),
-                topRight: Radius.circular(GlassTheme.radiusLg),
-              )
-            : BorderRadius.zero,
-        child: Video(
-          controller: _videoController,
-          fit: BoxFit.contain,
-          controls: NoVideoControls,
-          // 关闭 media_kit 内置的 Flutter 字幕层（SubtitleView）。
-          //
-          // 这是「字幕显示两个」的根因：SubtitleView 由
-          // subtitleViewConfiguration.visible 控制，**默认 true**，
-          // 和 mpv 的 libass 是两套独立的绘制路径。
-          // 只关 mpv 的 sub-visibility 不够，SubtitleView 仍会画一份，
-          // 叠加上本项目自绘的字幕浮层就是双字幕。
-          subtitleViewConfiguration: const SubtitleViewConfiguration(
-            visible: false,
-          ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(GlassTheme.radiusLg),
+          topRight: Radius.circular(GlassTheme.radiusLg),
         ),
+        child: bounded,
       ),
     );
   }

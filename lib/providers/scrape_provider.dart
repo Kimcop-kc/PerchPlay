@@ -6,6 +6,7 @@ import 'package:perchplay/services/scrape_cache_service.dart';
 import 'package:perchplay/services/database_service.dart';
 import 'package:perchplay/services/app_settings_service.dart';
 import 'package:perchplay/services/video_source_service.dart';
+import 'package:perchplay/services/playback_busy.dart';
 
 /// 刮削状态
 class ScrapeState {
@@ -124,6 +125,11 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
 
   Future<void> _next() async {
     while (_queue.isNotEmpty) {
+      // 播放中暂停刮削：网络请求 + JSON 解析会占资源，和播放器抢 CPU/网络，
+      // 导致播放中「突然卡一下」。等播放停止/暂停后再继续。
+      while (PlaybackBusy.playing) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
       final path = _queue.removeAt(0);
       state = state.copyWith(queueLength: _queue.length, error: null);
       try {

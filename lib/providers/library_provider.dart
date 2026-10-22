@@ -9,6 +9,7 @@ import '../services/library_prune_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/thumbnail_service.dart';
 import '../services/video_scanner_service.dart';
+import '../services/playback_busy.dart';
 import 'playlist_provider.dart';
 import 'scrape_provider.dart';
 
@@ -130,6 +131,12 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     var cursor = 0;
     Future<void> worker() async {
       while (cursor < todo.length) {
+        if (_disposed) return;
+        // 播放中暂停缩略图解码：原生解码吃 CPU，会和播放器抢资源
+        // 导致「播着播着突然卡一下」。等播放停止/暂停后再继续。
+        while (PlaybackBusy.playing && !_disposed) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        }
         if (_disposed) return;
         final video = todo[cursor++];
         try {
