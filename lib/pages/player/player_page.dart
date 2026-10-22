@@ -27,6 +27,8 @@ import '../../services/subtitle_service.dart';
 import '../../services/native_bridge_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
+import '../../widgets/player/online_subtitle_panel.dart';
+import '../../services/subtitle/online_subtitle_service.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_slider.dart';
 import '../../widgets/glass/safe_glass.dart';
@@ -1055,6 +1057,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ],
 
               const SizedBox(height: 8),
+              // 在线搜索字幕
+              if (AppSettingsService.instance.subtitleOnlineSearch)
+                SizedBox(
+                  width: double.infinity,
+                  child: GlassButton.outlined(
+                    icon: Icons.cloud_download_rounded,
+                    label: '在线搜索字幕…',
+                    foregroundColor: GlassTheme.accentPurple,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showOnlineSubtitleSearch(st);
+                    },
+                  ),
+                ),
               SizedBox(
                 width: double.infinity,
                 child: GlassButton.outlined(
@@ -1071,6 +1087,75 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 在线字幕搜索面板。
+  void _showOnlineSubtitleSearch(PlayerState st) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          24 + MediaQuery.of(ctx).viewPadding.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '在线搜索字幕',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '从 OpenSubtitles 搜索字幕，下载后自动加载',
+              style: TextStyle(
+                color: GlassTheme.textTertiary,
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                child: OnlineSubtitlePanel(
+                  video: st.currentVideo,
+                  onDownloaded: (subtitle) async {
+                    final model =
+                        await OnlineSubtitleService.instance.download(subtitle);
+                    if (ctx.mounted) {
+                      await ref
+                          .read(playerProvider.notifier)
+                          .loadExternalSubtitle(
+                            model.path,
+                            language: model.language,
+                            title: model.title,
+                          );
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
