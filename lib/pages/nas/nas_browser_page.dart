@@ -617,6 +617,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     // 很多服务在根目录会返回 404/405。留空时按 `/` 处理。
     final pathCtrl = TextEditingController();
     var protocol = presetProtocol ?? NasProtocol.webdav;
+    // HTTPS 开关：默认根据端口猜测（443 开 HTTPS，其余开 HTTP）
+    var useHttps = (presetPort ?? 5005) == 443;
 
     showDialog(
       context: context,
@@ -740,6 +742,35 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       ],
                       const SizedBox(height: 14),
                       _dialogField('端口', portCtrl, isNumber: true),
+                      // HTTPS 开关：WebDAV / FTP 都需要明确选择加密方式
+                      if (protocol == NasProtocol.webdav ||
+                          protocol == NasProtocol.ftp) ...[
+                        const SizedBox(height: 12),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            '使用 HTTPS（加密）',
+                            style: TextStyle(
+                              color: GlassTheme.textPrimary,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            useHttps
+                                ? 'https://${hostCtrl.text.isEmpty ? 'your-nas' : hostCtrl.text}:${portCtrl.text}'
+                                : 'http://${hostCtrl.text.isEmpty ? 'your-nas' : hostCtrl.text}:${portCtrl.text}',
+                            style: const TextStyle(
+                              color: GlassTheme.textTertiary,
+                              fontSize: 11,
+                            ),
+                          ),
+                          value: useHttps,
+                          activeColor: GlassTheme.accentTeal,
+                          onChanged: (v) =>
+                              setDialogState(() => useHttps = v),
+                        ),
+                      ],
                       // WebDAV / FTP 需要远程路径
                       if (protocol == NasProtocol.webdav ||
                           protocol == NasProtocol.ftp) ...[
@@ -800,6 +831,7 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                       ? '/'
                                       : pathCtrl.text.trim(),
                                   savePassword: true,
+                                  useHttps: useHttps,
                                 );
                                 ref
                                     .read(nasProvider.notifier)

@@ -180,7 +180,7 @@ class NasClientService {
 
   Future<bool> _connectWebDav() async {
     final c = _connection!;
-    final scheme = c.port == 443 ? 'https' : 'http';
+    final scheme = c.useHttps ? 'https' : 'http';
     final baseUrl = '$scheme://${c.host}:${c.port}';
     final path = normalizeRemotePath(c.remotePath);
 
@@ -256,7 +256,7 @@ class NasClientService {
 
   Future<List<NasFileItem>> _listWebDav(String path) async {
     final c = _connection!;
-    final scheme = c.port == 443 ? 'https' : 'http';
+    final scheme = c.useHttps ? 'https' : 'http';
     final baseUrl = '$scheme://${c.host}:${c.port}';
     final uri = Uri.parse('$baseUrl$path');
 
@@ -448,7 +448,7 @@ class NasClientService {
     final c = _connection!;
     switch (c.protocol) {
       case NasProtocol.webdav:
-        final scheme = c.port == 443 ? 'https' : 'http';
+        final scheme = c.useHttps ? 'https' : 'http';
         final auth = '${c.username}:${c.password}';
         // 将认证嵌入 URL（media_kit 支持）
         final encodedPath = path.startsWith('/') ? path : '/$path';

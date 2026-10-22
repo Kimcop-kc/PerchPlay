@@ -21,6 +21,9 @@ class NasConnection {
   final DateTime? lastConnected;
   final bool savePassword;
 
+  /// WebDAV / FTP 使用 HTTPS（默认根据端口猜测：443 = true）
+  final bool useHttps;
+
   const NasConnection({
     required this.id,
     required this.name,
@@ -36,6 +39,7 @@ class NasConnection {
     this.errorMessage = '',
     this.lastConnected,
     this.savePassword = false,
+    this.useHttps = false,
   });
 
   NasConnection copyWith({
@@ -52,8 +56,12 @@ class NasConnection {
     NasConnectionStatus? status,
     String? errorMessage,
     DateTime? lastConnected,
-    bool? savePassword,
+    String? useHttpsStr,
+    bool? useHttps,
   }) {
+    // 兼容 JSON 反序列化：可能传入字符串 "true"/"false"
+    final https = useHttps ??
+        (useHttpsStr != null ? useHttpsStr == 'true' : this.useHttps);
     return NasConnection(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -69,6 +77,7 @@ class NasConnection {
       errorMessage: errorMessage ?? this.errorMessage,
       lastConnected: lastConnected ?? this.lastConnected,
       savePassword: savePassword ?? this.savePassword,
+      useHttps: https,
     );
   }
 
@@ -88,10 +97,18 @@ class NasConnection {
       'errorMessage': errorMessage,
       'lastConnected': lastConnected?.toIso8601String(),
       'savePassword': savePassword,
+      'useHttps': useHttps,
     };
   }
 
   factory NasConnection.fromJson(Map<String, dynamic> json) {
+    // useHttps 兼容布尔 或 字符串 "true"/"false"
+    final rawHttps = json['useHttps'];
+    final useHttps = rawHttps is bool
+        ? rawHttps
+        : rawHttps is String
+            ? rawHttps == 'true'
+            : false;
     return NasConnection(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -109,6 +126,7 @@ class NasConnection {
           ? DateTime.parse(json['lastConnected'] as String)
           : null,
       savePassword: json['savePassword'] as bool? ?? false,
+      useHttps: useHttps,
     );
   }
 
