@@ -60,6 +60,10 @@ dependencies:
   image: ^4.12.0
   dart_smb2: ^0.2.1
   flutter_inappwebview: ^6.1.5
+  # 在线字幕下载：解压 zip 压缩包（安全解压，防路径穿越/压缩炸弹）
+  archive: ^4.0.0
+  # 中文字幕编码（GBK/GB2312）真正解码，不依赖 allowMalformed 兜底
+  enough_convert: ^1.6.0
 
 dev_dependencies:
   flutter_test:
