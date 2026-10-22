@@ -255,9 +255,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 第一行：切换器 +（返回）+ 右端 排序/筛选/刷新 + 视图切换。
-          // 排序/筛选/刷新提到本行右端 —— 之前它们单独占第三行，
-          // 导致文件夹视图比「全部视频」多一行、内容整体下移。
+          // 第一行：切换器 +（返回）+ 视图切换 —— 右端固定 排序/筛选/刷新。
+          // 排序/筛选/刷新必须是最右三个，与「全部视频」页完全对齐；
+          // 视图切换（宫格/列表）放到左侧，否则会把三个控件挤离右端。
           Row(
             children: [
               _buildViewSwitcher(),
@@ -271,16 +271,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                   onTap: _navigateUp,
                 ),
               ],
-              const Spacer(),
-              _buildSortMenu(),
-              _buildFilterMenu(),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                color: GlassTheme.textTertiary,
-                tooltip: '刷新',
-                onPressed: () => _navigate(
-                    _currentPath.isNotEmpty ? _currentPath : _rootPath),
-              ),
+              const SizedBox(width: 8),
+              // 宫格/列表切换：属于"展示方式"，放在左侧工具区
               GlassButton(
                 icon: _gridView
                     ? Icons.view_list_rounded
@@ -289,6 +281,17 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 ghost: true,
                 foregroundColor: GlassTheme.textSecondary,
                 onTap: () => setState(() => _gridView = !_gridView),
+              ),
+              const Spacer(),
+              // 右端三个控件：与「全部视频」页顺序、间距完全一致
+              _buildSortMenu(),
+              _buildFilterMenu(),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                color: GlassTheme.textTertiary,
+                tooltip: '刷新',
+                onPressed: () => _navigate(
+                    _currentPath.isNotEmpty ? _currentPath : _rootPath),
               ),
             ],
           ),
@@ -343,31 +346,37 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
     required String label,
     required VoidCallback onTap,
   }) {
+    // 与首页 home_page 的分段项**完全同尺寸**：
+    // 固定宽高 + 固定字重，否则「全部视频」(4字) 与「文件夹」(3字) 宽度不同，
+    // 切换时整枚胶囊会忽大忽小；且两页字号不一致会让切换时控件"跳一下"。
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        width: 92,
+        height: 30,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? GlassTheme.accentPurple : Colors.transparent,
           borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
-              size: 16,
-              color: selected ? Colors.white : GlassTheme.textSecondary,
+              size: 14,
+              color: selected ? Colors.white : GlassTheme.textTertiary,
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 color: selected ? Colors.white : GlassTheme.textSecondary,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

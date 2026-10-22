@@ -416,6 +416,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   }
 
   /// 分段里的单个胶囊项
+  ///
+  /// 尺寸必须**固定**：两项文字宽度不同（「全部视频」4 字 /「文件夹」3 字），
+  /// 且选中态若改字重会让文字再变宽，切换时整枚胶囊会忽大忽小地跳。
+  /// 这里给每个分段统一固定宽度，选中/未选中只改颜色与字重以外的东西。
   Widget _buildSegmentItem({
     required bool selected,
     required IconData icon,
@@ -427,7 +431,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        // 固定宽高：两个分段完全等宽，切换时外框不会变
+        width: 92,
+        height: 30,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? GlassTheme.accentPurple : Colors.transparent,
           borderRadius: BorderRadius.circular(GlassTheme.radiusFull),
@@ -436,6 +443,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -445,10 +453,12 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             const SizedBox(width: 4),
             Text(
               label,
+              // 固定字重：选中态改字重会改变文字宽度，进而撑动固定宽度里的
+              // 布局（文字被压缩/溢出），只用颜色区分选中状态。
               style: TextStyle(
                 color: selected ? Colors.white : GlassTheme.textSecondary,
                 fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
