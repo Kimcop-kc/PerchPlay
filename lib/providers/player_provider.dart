@@ -575,29 +575,40 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 历史里插入多条相同记录
       if (state.isCompleted) return;
       state = state.copyWith(isCompleted: true);
-      // 播完清零进度并记入历史，下次从头播放。
-      // 网络源（云盘/NAS/直链）不写库：它们的 id 是 URL，写进去会污染影库。
-      final v = state.currentVideo;
-      if (v != null && !LibraryPruneService.isRemotePath(v.path)) {
-        // 不 await：完成事件在 stream 回调里，await 会把异常抛进监听器；
-        // 进度清零失败不影响自动播放下一集。
-        unawaited(
-          _db
-              .updatePlayPosition(
-            v.id,
-            0,
-            durationMs: state.duration.inMilliseconds,
-          )
-              .catchError((Object e) {
-            debugPrint('[Player] 播完清零进度失败: $e');
-          }),
-        );
-      }
-      // 自动播放下一个（受设置控制）
-      if (AppSettingsService.instance.autoPlayNext) {
-        _playNext();
-      }
+      // 使用安全的异步处理，避免 stream listener 中的 async 异常
+      unawaited(_handleCompleted().catchError((Object e) {
+        debugPrint('[Player] completed 处理失败: $e');
+      }));
     });
+  }
+
+  /// 处理播放完成事件（安全的异步包装）
+  ///
+  /// 1. 清零进度并记入历史
+  /// 2. 自动播放下一集
+  Future<void> _handleCompleted() async {
+    // 播完清零进度并记入历史，下次从头播放。
+    // 网络源（云盘/NAS/直链）不写库：它们的 id 是 URL，写进去会污染影库。
+    final v = state.currentVideo;
+    if (v != null && !LibraryPruneService.isRemotePath(v.path)) {
+      // 必须 await：确保清零落库后再换片，否则下一集加载后会覆盖清零操作
+      try {
+        await _db.updatePlayPosition(
+          v.id,
+          0,
+          durationMs: state.duration.inMilliseconds,
+        );
+      } catch (e) {
+        debugPrint('[Player] 播完清零进度失败: $e');
+      }
+    }
+    
+    // 自动播放下一个（受设置控制）
+    // 确保暖清零完成后再换片
+    if (AppSettingsService.instance.autoPlayNext) {
+      await _playNext();
+    }
+  }
   }
 
   /// 上次进度落盘时间（5s 节流）
@@ -619,25 +630,39 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   int _loadToken = 0;
 
   /// 把当前进度写库（真实视频 id）
+  ///
+  /// 使用快照避免竞态：如果在 await 期间换片了，丢弃这次写入
   Future<void> _persistProgress() async {
+    // 快照当前状态，避免 await 期间状态变化导致写错数据
+    final token = _loadToken;
     final video = state.currentVideo;
     if (video == null) return;
+    
     // 云盘 / NAS / 投屏这类网络源不写进度：
     //  1) 它们的 id 就是 URL（或临时串），插进 videos 表会污染影库与观看历史；
     //  2) 云盘直链有时效（几小时就失效），存下来也永远续播不了。
     if (LibraryPruneService.isRemotePath(video.path)) return;
+    
     final ms = state.position.inMilliseconds;
     if (ms <= 0) return;
     final durMs = state.duration.inMilliseconds;
+    
     // 只有较长视频播到结尾附近才清零（短视频不适用，否则进度永远存不下来）
     final nearEnd = durMs > 30000 && ms >= durMs - 3000;
+    
+    // 再次检查是否换片了（在获取快照后可能有其他异步操作触发换片）
+    if (token != _loadToken) return;
+    
     try {
       await _db.saveProgress(
         video.id,
         nearEnd ? 0 : ms.toDouble(),
         durationMs: durMs,
       );
-    } catch (_) {}
+      // 写库完成后再次检查，如果换片了，这次写入可能已被覆盖，但无害
+    } catch (e) {
+      debugPrint('[Player] 保存进度失败: $e');
+    }
   }
 
   /// 外部调用：立即保存进度（退出播放器 / 关闭小窗时）
@@ -648,6 +673,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     VideoModel video, {
     List<VideoModel>? queue,
     int? startIndex,
+    Map<String, String>? headers,
   }) async {
     final token = ++_loadToken;
     // 作废在途 seek：换片瞬间上一次 seek 可能还在 await 里，
@@ -674,6 +700,19 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _applyOptionsForSource(video.path);
 
     try {
+      // 如果有自定义请求头，先设置到 mpv（网盘播放需要 Cookie/UA）
+      if (headers != null && headers.isNotEmpty) {
+        final platform = state.player.platform;
+        if (platform is NativePlayer) {
+          // mpv 的 http-header-fields 格式：'Cookie:value','User-Agent:value'
+          final headerStr = headers.entries
+              .map((e) => "'${e.key}:${e.value}'")
+              .join(',');
+          await platform.setProperty('http-header-fields', headerStr);
+          debugPrint('[Player] 设置 HTTP 请求头: $headerStr');
+        }
+      }
+      
       await state.player.open(Media(video.path));
     } catch (e) {
       debugPrint('[Player] 打开视频失败: $e');
