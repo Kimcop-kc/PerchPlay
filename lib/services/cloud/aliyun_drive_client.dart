@@ -60,18 +60,43 @@ class AliyunDriveClient {
   String _driveId = '';
 
   /// 取可用 token：
-  ///  1. 内存缓存
+  ///  1. 内存缓存（检查是否过期）
   ///  2. account.accessToken（WebView 登录时从 localStorage 直接抓的，最可靠）
   ///  3. 用 refresh_token 换（OAuth / Web / 直用）
   Future<String?> _token() async {
-    if (_cachedToken.isNotEmpty) return _cachedToken;
-    if (account.accessToken.isNotEmpty) {
-      _cachedToken = account.accessToken;
+    // 检查缓存 token 是否过期（阿里云盘 access_token 有效期约 7200s）
+    if (_cachedToken.isNotEmpty && !_isTokenExpired()) {
       return _cachedToken;
     }
+    
+    // 如果有 accessToken，检查是否过期
+    if (account.accessToken.isNotEmpty) {
+      _cachedToken = account.accessToken;
+      if (!_isTokenExpired()) {
+        return _cachedToken;
+      }
+    }
+    
+    // token 过期或不存在，用 refresh_token 刷新
     final t = await refreshAccessToken();
-    if (t != null && t.isNotEmpty) _cachedToken = t;
+    if (t != null && t.isNotEmpty) {
+      _cachedToken = t;
+      _tokenFetchedAt = DateTime.now();
+    }
     return _cachedToken.isEmpty ? null : _cachedToken;
+  }
+
+  /// token 获取时间（用于判断过期）
+  DateTime? _tokenFetchedAt;
+
+  /// 检查 token 是否已过期（默认 7200 秒 = 2 小时）
+  bool _isTokenExpired() {
+    if (_tokenFetchedAt == null) {
+      // 如果没有记录获取时间，保守认为已过期
+      return account.tokenExpireAt?.isBefore(DateTime.now()) ?? true;
+    }
+    final elapsed = DateTime.now().difference(_tokenFetchedAt!);
+    return elapsed.inSeconds > 7000; // 提前 200 秒刷新
   }
 
   void dispose() => _client.close();
