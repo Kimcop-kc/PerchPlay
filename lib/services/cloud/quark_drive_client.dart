@@ -148,30 +148,57 @@ class QuarkDriveClient {
     }
   }
 
-  /// 取视频直链。
+/// 取直链。
   ///
   /// 夸克的直链有时效（约几小时），播放前现取即可。
+  /// 增加重试机制，网络抖动时提高成功率。
   Future<String?> getDownloadUrl(String fid) async {
-    try {
-      final uri =
-          Uri.parse('$_base/file/download?pr=ucpro&fr=pc&uc_param_str=');
-      final req = await _client.postUrl(uri);
-      _headers.forEach(req.headers.set);
-      req.headers.contentType = ContentType.json;
-      req.write(jsonEncode({
-        'fids': [fid],
-      }));
-      final resp = await req.close();
-      if (resp.statusCode != 200) return null;
-      final body = await resp.transform(utf8.decoder).join();
-      final j = jsonDecode(body);
-      if (j is! Map) return null;
-      final data = j['data'];
-      if (data is! List || data.isEmpty) return null;
-      final first = data.first;
-      if (first is Map) return first['download_url']?.toString();
-    } catch (e) {
-      debugPrint('[Quark] 取直链失败: $e');
+    int retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        final uri =
+            Uri.parse('$_base/file/download?pr=ucpro&fr=pc&uc_param_str=');
+        final req = await _client.postUrl(uri);
+        _headers.forEach(req.headers.set);
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode({
+          'fids': [fid],
+        }));
+        final resp = await req.close();
+        if (resp.statusCode == 200) {
+          final body = await resp.transform(utf8.decoder).join();
+          final j = jsonDecode(body);
+          if (j is Map) {
+            final data = j['data'];
+            if (data is List && data.isNotEmpty) {
+              final first = data.first;
+              if (first is Map) {
+                final url = first['download_url']?.toString();
+                if (url != null && url.isNotEmpty) return url;
+              }
+            }
+          }
+        } else if (resp.statusCode == 403 || resp.statusCode == 401) {
+          // 认证失败，不重试
+          debugPrint('[Quark] 取直链认证失败 HTTP ${resp.statusCode}');
+          return null;
+        }
+        
+        // 如果没返回 URL 或者状态码不对，重试
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          debugPrint('[Quark] 取直链重试 $retryCount/$maxRetries');
+          await Future.delayed(Duration(milliseconds: 500 * retryCount));
+        }
+      } catch (e) {
+        debugPrint('[Quark] 取直链失败 (尝试 $retryCount): $e');
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * retryCount));
+        }
+      }
     }
     return null;
   }
