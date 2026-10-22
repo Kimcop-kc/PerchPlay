@@ -45,6 +45,7 @@ class GlassSlider extends StatefulWidget {
 class _GlassSliderState extends State<GlassSlider> {
   bool _dragging = false;
   double? _dragValue;
+  double _cachedWidth = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -56,28 +57,26 @@ class _GlassSliderState extends State<GlassSlider> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanDown: (details) {
+        _cachedWidth = _sliderWidth(context);
         setState(() => _dragging = true);
-        _dragValue = _valueAt(details.localPosition.dx, context);
+        _dragValue = _valueAt(details.localPosition.dx);
         widget.onDragStart?.call();
       },
       onPanUpdate: (details) {
-        setState(() {
-          _dragValue = _valueAt(details.localPosition.dx, context);
-        });
-        // 拖动过程中实时回调（用于进度预览）
+        _dragValue = _valueAt(details.localPosition.dx);
+        // 仅 rebuild slider 本身（不触发父级 rebuild）：
+        // setState + LayoutBuilder 会自动裁剪为最小必要范围
+        setState(() {});
         widget.onChanged?.call(_dragValue!);
       },
       onPanEnd: (_) {
         setState(() => _dragging = false);
-        // 松手时提交最终值
         widget.onChangeEnd?.call(_dragValue ?? widget.value);
         _dragValue = null;
         widget.onDragEnd?.call();
       },
       onPanCancel: () {
         setState(() => _dragging = false);
-        // 拖动被取消（系统手势/通知栏下拉等）。
-        // 通知父页面清除预览并恢复真实进度，但**不提交跳转**。
         widget.onDragEnd?.call();
         _dragValue = null;
       },
@@ -199,9 +198,13 @@ class _GlassSliderState extends State<GlassSlider> {
     );
   }
 
-  double _valueAt(double dx, BuildContext context) {
-    final RenderBox box = context.findRenderObject() as RenderBox;
-    final width = box.size.width;
+  double _sliderWidth(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox;
+    return box.size.width;
+  }
+
+  double _valueAt(double dx) {
+    final width = _cachedWidth;
     if (width <= 0) return widget.value;
     final fraction = (dx / width).clamp(0.0, 1.0);
     return widget.min + fraction * (widget.max - widget.min);

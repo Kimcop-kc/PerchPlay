@@ -26,17 +26,16 @@ extension CloudDriveTypeX on CloudDriveType {
 
   /// 登录页 URL（WebView 打开这个让用户扫码/账号密码登录）
   ///
-  /// 注意：必须指向**登录页**而不是网盘首页。
-  /// 夸克首页 pan.quark.cn 是下载引导页（会提示装 App），不是登录页；
-  /// 115 的登录入口也改版过，旧的 ?mode=login 已失效。
+  /// 必须用桌面版 URL + 桌面版 UA，否则夸克 / 115 会检测到移动端，
+  /// 强制跳转 App 下载页而不是登录页。
   String get loginUrl {
     switch (this) {
       case CloudDriveType.quark:
-        // 夸克网盘手机版首页：未登录时展示登录入口，登录后是文件列表
+        // 夸克网盘桌面版：需桌面 UA 才不会跳转下载页
         return 'https://pan.quark.cn/';
       case CloudDriveType.pan115:
-        // 115 网盘手机版（m.115.com 才是真正的移动网页登录）
-        return 'https://m.115.com/';
+        // 115 桌面版（m.115.com 是手机版，桌面 UA 下也能用但登录入口难找）
+        return 'https://115.com/';
       case CloudDriveType.baidu:
         // 百度网盘登录页
         return 'https://pan.baidu.com/login';

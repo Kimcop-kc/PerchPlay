@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../models/cloud_drive_model.dart';
+import 'cloud_drive_service.dart';
 
 /// 115 网盘客户端。
 ///
@@ -14,19 +15,27 @@ import '../../models/cloud_drive_model.dart';
 ///  - 列表: `webapi.115.com/files`
 ///  - 直链: `proapi.115.com/app/chrome/downurl?t=`
 class Pan115DriveClient {
-  Pan115DriveClient(this.account);
-
   final CloudDriveAccount account;
 
   static const String _webApi = 'https://webapi.115.com';
   static const String _proApi = 'https://proapi.115.com';
 
   static const String userAgent =
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
+
+  Pan115DriveClient(this.account) {
+    _client.findProxy = _findProxyFn;
+  }
+
+  String Function(Uri) get _findProxyFn {
+    final p = CloudDriveService.instance.proxy;
+    if (p.isEmpty) return HttpClient.findProxyFromEnvironment;
+    return (Uri url) => 'PROXY $p';
+  }
 
   void dispose() => _client.close();
 

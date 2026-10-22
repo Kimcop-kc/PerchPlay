@@ -171,6 +171,14 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
                   color: GlassTheme.textSecondary, fontSize: 13),
             ),
           ),
+          if (_current == null)
+            GlassButton.outlined(
+              icon: Icons.add_rounded,
+              label: '添加',
+              height: 32,
+              foregroundColor: GlassTheme.accentTeal,
+              onTap: _showAddSheet,
+            ),
           if (_current != null)
             IconButton(
               icon: const Icon(Icons.refresh_rounded,
@@ -230,8 +238,22 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       sliver: SliverList.builder(
-        itemCount: accounts.length,
+        itemCount: accounts.length + 1, // +1 为底部「添加」按钮
         itemBuilder: (context, i) {
+          // 底部「添加」按钮
+          if (i == accounts.length) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: GlassButton.outlined(
+                icon: Icons.add_rounded,
+                label: '添加云盘',
+                width: double.infinity,
+                height: 44,
+                foregroundColor: GlassTheme.accentPurple,
+                onTap: _showAddSheet,
+              ),
+            );
+          }
           final acc = accounts[i];
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),

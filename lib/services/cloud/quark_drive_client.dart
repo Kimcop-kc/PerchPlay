@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../models/cloud_drive_model.dart';
+import 'cloud_drive_service.dart';
 
 /// 夸克网盘客户端。
 ///
@@ -19,19 +20,30 @@ import '../../models/cloud_drive_model.dart';
 /// 夸克的下载链接需要 `User-Agent` 与取链接时一致，否则 403。
 /// 所以这里统一用一个固定 UA，播放/下载都带它。
 class QuarkDriveClient {
-  QuarkDriveClient(this.account);
-
   final CloudDriveAccount account;
 
   static const String _base = 'https://drive-pc.quark.cn/1/clouddrive';
 
-  /// 固定 UA：取直链和实际下载必须一致，否则夸克会拒绝
+  /// 固定 UA：取直链和实际下载必须一致，否则夸克会拒绝。
+  /// 桌面版 UA 与登录 WebView 保持一致，避免移动端限制。
   static const String userAgent =
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
+
+  /// 创建时从 CloudDriveService 读取代理设置。
+  /// 如需切换代理，需重新连接（断开再打开）以创建新 client。
+  QuarkDriveClient(this.account) {
+    _client.findProxy = _findProxyFn;
+  }
+
+  String Function(Uri) get _findProxyFn {
+    final p = CloudDriveService.instance.proxy;
+    if (p.isEmpty) return HttpClient.findProxyFromEnvironment;
+    return (Uri url) => 'PROXY $p';
+  }
 
   void dispose() => _client.close();
 

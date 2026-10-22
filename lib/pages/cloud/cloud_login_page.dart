@@ -32,9 +32,10 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
   bool _saving = false;
   Timer? _pollTimer;
 
+  // 桌面版 UA：夸克/115 检测到手机 UA 会强制跳转下载页，必须伪装成桌面浏览器
   static const String _ua =
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   @override
   void initState() {

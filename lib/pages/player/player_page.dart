@@ -1405,80 +1405,76 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               builder: (context, live) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 进度条 + 时间：用 ValueListenableBuilder 订阅 seek 预览，
-                  // 拖动时只局部重建这两块，不整页 setState（避免打断手势）
+                  // 进度条：ValueListenableBuilder 只在拖动时局部重建滑块，
+                  // 避免整页 setState 打断手势（这是之前"只能滑几下"的根因）
                   ValueListenableBuilder<double?>(
                     valueListenable: _seekPreviewMs,
                     builder: (context, seekPreview, _) {
                       final previewMs = seekPreview;
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 进度条（手势拖动时跟随预览位置）
-                          if (live.duration > Duration.zero)
-                            Padding(
-                              padding:
-                                  EdgeInsets.symmetric(horizontal: 16 * scale),
-                              child: GlassSlider(
-                                value: previewMs ??
-                                    live.position.inMilliseconds.toDouble(),
-                                min: 0,
-                                max: live.duration.inMilliseconds.toDouble(),
-                                activeColor: GlassTheme.accentPink,
-                                height: 2,
-                                showThumb: previewMs != null,
-                                // 直接拖进度条时也实时预览
-                                onChanged: (v) => _onSeekPreview(v.round()),
-                                onChangeEnd: (v) {
-                                  _onSeekCommit(v.round());
-                                },
-                                onDragStart: _onSliderDragStart,
-                                onDragEnd: _onSliderDragEnd,
-                              ),
-                            ),
-                          SizedBox(height: 4 * scale),
-                          // 时间
-                          if (live.duration > Duration.zero)
-                            Padding(
-                              padding:
-                                  EdgeInsets.symmetric(horizontal: 20 * scale),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    _fmtDuration(
-                                      Duration(
-                                        milliseconds: (previewMs ??
-                                                live.position.inMilliseconds
-                                                    .toDouble())
-                                            .round(),
-                                      ),
-                                    ),
-                                    style: TextStyle(
-                                      color: previewMs != null
-                                          ? GlassTheme.accentPink
-                                          : Colors.white70,
-                                      fontSize: 11 * scale,
-                                      fontWeight: previewMs != null
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                  Text(
-                                    _fmtDuration(live.duration),
-                                    style: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 11 * scale,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                      return Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 16 * scale),
+                        child: GlassSlider(
+                          value: previewMs ??
+                              live.position.inMilliseconds.toDouble(),
+                          min: 0,
+                          max: live.duration.inMilliseconds.toDouble(),
+                          activeColor: GlassTheme.accentPink,
+                          height: 3,
+                          showThumb: true,
+                          // 直接拖进度条时也实时预览
+                          onChanged: (v) => _onSeekPreview(v.round()),
+                          onChangeEnd: (v) {
+                            _onSeekCommit(v.round());
+                          },
+                          onDragStart: _onSliderDragStart,
+                          onDragEnd: _onSliderDragEnd,
+                        ),
                       );
                     },
                   ),
+                  SizedBox(height: 4 * scale),
+                  // 时间行：从 _LivePosition 实时取，不用 ValueListenableBuilder
+                  // 否则非拖动时位置文字冻结在最后一次 rebuild 的值上
+                  if (live.duration > Duration.zero)
+                    Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 20 * scale),
+                      child: Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          // 拖动中显示粉色预览时间，否则白色实时位置
+                          ValueListenableBuilder<double?>(
+                            valueListenable: _seekPreviewMs,
+                            builder: (_, pv, __) {
+                              final showMs = pv ?? live.position
+                                  .inMilliseconds.toDouble();
+                              return Text(
+                                _fmtDuration(Duration(
+                                    milliseconds: showMs.round())),
+                                style: TextStyle(
+                                  color: pv != null
+                                      ? GlassTheme.accentPink
+                                      : Colors.white70,
+                                  fontSize: 11 * scale,
+                                  fontWeight: pv != null
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              );
+                            },
+                          ),
+                          Text(
+                            _fmtDuration(live.duration),
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11 * scale,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   SizedBox(height: 6 * scale),
                   // 按钮行
                   Padding(

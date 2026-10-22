@@ -673,7 +673,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 本地片反而背磁盘缓存）。这里在 open 前先按本片来源应用一次。
     _applyOptionsForSource(video.path);
 
-    await state.player.open(Media(video.path));
+    try {
+      await state.player.open(Media(video.path));
+    } catch (e) {
+      debugPrint('[Player] 打开视频失败: $e');
+      // 文件可能已被删除/移动，或格式不支持；直接返回防止崩溃
+      return;
+    }
     if (token != _loadToken) return;
 
     state = state.copyWith(

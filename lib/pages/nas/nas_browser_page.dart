@@ -628,42 +628,51 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     // HTTPS 开关：默认根据端口猜测（443 开 HTTPS，其余开 HTTP）
     var useHttps = (presetPort ?? 5005) == 443;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: Colors.transparent,
+        builder: (ctx, setDialogState) => Container(
+          height: MediaQuery.of(context).size.height * 0.55,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.92),
+                Colors.white.withValues(alpha: 0.82),
+              ],
+            ),
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(GlassTheme.radiusXl)),
+          ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(GlassTheme.radiusXl)),
             child: SafeBackdropFilter(
-              blurSigma: 24,
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.8),
-                      Colors.white.withValues(alpha: 0.5),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
-                  border: Border.all(
-                      color: Colors.black.withValues(alpha: 0.08), width: 0.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 32,
-                      offset: const Offset(0, 16),
+              blurSigma: 18,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 4),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                       const Text('添加 NAS 连接',
                           style: TextStyle(
                               color: GlassTheme.textPrimary,
@@ -855,11 +864,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _dialogField(String label, TextEditingController ctrl,

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../models/cloud_drive_model.dart';
+import 'cloud_drive_service.dart';
 
 /// 阿里云盘客户端。
 ///
@@ -29,8 +30,6 @@ import '../../models/cloud_drive_model.dart';
 ///  - 资源库：drive_id != ''，共享 / 保险箱等
 /// 第一次连接时会探测 drive_id，之后缓存。
 class AliyunDriveClient {
-  AliyunDriveClient(this.account, {this.clientId, this.clientSecret});
-
   final CloudDriveAccount account;
 
   /// 开放平台应用凭据（用户在设置里填；留空则用内置的 NovaPlayer 同款 client_id）
@@ -47,11 +46,21 @@ class AliyunDriveClient {
   static const String _alistApi = 'https://api.alistgo.com';
 
   static const String userAgent =
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
+
+  AliyunDriveClient(this.account, {this.clientId, this.clientSecret}) {
+    _client.findProxy = _findProxyFn;
+  }
+
+  String Function(Uri) get _findProxyFn {
+    final p = CloudDriveService.instance.proxy;
+    if (p.isEmpty) return HttpClient.findProxyFromEnvironment;
+    return (Uri url) => 'PROXY $p';
+  }
 
   /// 本次运行内缓存的 access token。
   String _cachedToken = '';
