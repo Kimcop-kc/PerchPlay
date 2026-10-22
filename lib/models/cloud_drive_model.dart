@@ -41,7 +41,7 @@ extension CloudDriveTypeX on CloudDriveType {
         return 'https://pan.baidu.com/login';
       case CloudDriveType.aliyun:
         // 阿里云盘旧域名（桌面版 SPA，登录后存 refresh_token 到 localStorage）
-        return 'https://www.aliyundrive.com/';
+        return 'https://www.alipan.com/';
     }
   }
 
