@@ -569,14 +569,65 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       final url = await _svc.getDownloadUrl(acc.id, f.id);
       if (!mounted) return;
       if (url == null || url.isEmpty) {
-        _snack('取播放地址失败。链接可能已过期，刷新后再试。');
+        // 根据网盘类型给出更具体的错误提示
+        String errorMsg = '取播放地址失败。';
+        switch (acc.type) {
+          case CloudDriveType.quark:
+            errorMsg += '夸克网盘直链获取失败，可能是 Cookie 过期或文件已被删除。';
+            break;
+          case CloudDriveType.baidu:
+            errorMsg += '百度网盘直链获取失败，普通账号可能有限速限制。';
+            break;
+          case CloudDriveType.pan115:
+            errorMsg += '115 网盘直链获取失败，请检查登录状态。';
+            break;
+          case CloudDriveType.aliyun:
+            errorMsg += '阿里云盘直链获取失败，token 可能已过期，请重新登录。';
+            break;
+        }
+        _snack(errorMsg);
         return;
       }
       if (!mounted) return;
-      await context.pushNamed('player', extra: {
+      
+      // 构建播放参数，网盘需要额外的请求头才能正常播放
+      final playParams = <String, dynamic>{
         'videoPath': url,
         'videoTitle': f.name,
-      });
+      };
+      
+      // 夸克网盘：必须带 Cookie 和固定 UA，否则 403
+      if (acc.type == CloudDriveType.quark) {
+        playParams['headers'] = {
+          'Cookie': acc.cookie,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://pan.quark.cn/',
+        };
+      }
+      // 百度网盘：需要 Cookie
+      else if (acc.type == CloudDriveType.baidu) {
+        playParams['headers'] = {
+          'Cookie': acc.cookie,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://pan.baidu.com/',
+        };
+      }
+      // 115网盘：需要 Cookie
+      else if (acc.type == CloudDriveType.pan115) {
+        playParams['headers'] = {
+          'Cookie': acc.cookie,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://115.com/',
+        };
+      }
+      // 阿里云盘：直链一般不需要额外头，但加上 Referer 更稳定
+      else if (acc.type == CloudDriveType.aliyun) {
+        playParams['headers'] = {
+          'Referer': 'https://www.alipan.com/',
+        };
+      }
+      
+      await context.pushNamed('player', extra: playParams);
     } finally {
       if (mounted) setState(() => _opening = false);
     }
