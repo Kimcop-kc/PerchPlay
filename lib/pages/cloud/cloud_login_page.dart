@@ -189,7 +189,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       case CloudDriveType.quark:
         return ['pan.quark.cn'];
       case CloudDriveType.pan115:
-        return ['115.com', 'webapi.115.com', 'proapi.115.com'];
+        return ['115.com', 'm.115.com', 'webapi.115.com', 'proapi.115.com'];
       case CloudDriveType.baidu:
         return ['pan.baidu.com', 'baidu.com'];
       case CloudDriveType.aliyun:

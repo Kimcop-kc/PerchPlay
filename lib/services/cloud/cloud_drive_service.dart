@@ -89,8 +89,9 @@ class CloudDriveService {
   /// 同一个云盘**只保留一条**：id 是时间戳生成的，若只按 id 去重，
   /// 用户每次重新登录都会多出一条，列表越用越乱。这里按 [type] 覆盖。
   Future<void> addAccount(CloudDriveAccount acc) async {
+    // 仅按 id 去重；允许同类型多个账号（如两个夸克号）
     _accounts = [
-      ..._accounts.where((e) => e.id != acc.id && e.type != acc.type),
+      ..._accounts.where((e) => e.id != acc.id),
       acc,
     ];
     await _save();

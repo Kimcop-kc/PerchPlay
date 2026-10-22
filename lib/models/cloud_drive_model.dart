@@ -32,11 +32,11 @@ extension CloudDriveTypeX on CloudDriveType {
   String get loginUrl {
     switch (this) {
       case CloudDriveType.quark:
-        // 夸克网盘登录页（支持扫码/手机号登录）
-        return 'https://pan.quark.cn/signin';
+        // 夸克网盘手机版首页：未登录时展示登录入口，登录后是文件列表
+        return 'https://pan.quark.cn/';
       case CloudDriveType.pan115:
-        // 115 网盘登录页（扫码登录最稳，手机号登录也走这个入口）
-        return 'https://115.com/';
+        // 115 网盘手机版（m.115.com 才是真正的移动网页登录）
+        return 'https://m.115.com/';
       case CloudDriveType.baidu:
         // 百度网盘登录页
         return 'https://pan.baidu.com/login';

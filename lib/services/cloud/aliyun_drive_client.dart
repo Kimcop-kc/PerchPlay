@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -81,11 +82,59 @@ class AliyunDriveClient {
 
   /// 用 refresh_token 换 access_token。
   ///
-  /// NovaPlayer 用 `auth.alipan.com/v2/account/token` 且 POST body 带
-  /// `client_id` + `client_secret`（可选）来绑定应用。即使没有 secret 也能换。
+  /// 阿里云盘 WebView 登录拿到的 refresh_token 有两类：
+  ///  - OAuth 格式（长串 base64，走 auth.alipan.com）
+  ///  - Web 格式（短串，已经是 access_token，直接用）
+  ///
+  /// 这里先试 OAuth 端点（带 client_id），失败再试 Web 端点，
+  /// 再失败就把 token 本身当作 access_token 直接用。
   Future<String?> refreshAccessToken() async {
     final rt = account.refreshToken;
     if (rt.isEmpty) return null;
+
+    // 如果 refresh_token 很短（< 80 字符），很可能是 web 版 access_token，
+    // 直接试一下能不能用，再走 refresh 流程。
+    if (rt.length < 80) {
+      final ok = await _tryToken(rt);
+      if (ok) return rt;
+    }
+
+    // 方案 1: OAuth 端点（带 client_id）
+    final tok = await _refreshAtOAuth(rt);
+    if (tok != null) return tok;
+
+    // 方案 2: Web API 端点（无须 client_id）
+    final tok2 = await _refreshAtWeb(rt);
+    if (tok2 != null) return tok2;
+
+    // 方案 3: 直接用 refresh_token 当 access_token
+    final ok = await _tryToken(rt);
+    if (ok) return rt;
+
+    return null;
+  }
+
+  /// 测试 token 是否有效（列根目录一条）
+  Future<bool> _tryToken(String token) async {
+    try {
+      final req = await _client.postUrl(
+          Uri.parse('$_openApi/adrive/v1.0/openFile/list'));
+      _authHeaders(token).forEach(req.headers.set);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({
+        'drive_id': _driveId,
+        'parent_file_id': 'root',
+        'limit': 1,
+      }));
+      final resp = await req.close();
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// OAuth 端点：auth.alipan.com
+  Future<String?> _refreshAtOAuth(String rt) async {
     try {
       final uri = Uri.parse('$_authApi/v2/account/token');
       final req = await _client.postUrl(uri);
@@ -102,7 +151,7 @@ class AliyunDriveClient {
       req.write(jsonEncode(bodyMap));
       final resp = await req.close();
       if (resp.statusCode != 200) {
-        debugPrint('[Aliyun] 换 token HTTP ${resp.statusCode}');
+        debugPrint('[Aliyun] OAuth token HTTP ${resp.statusCode}');
         return null;
       }
       final body = await resp.transform(utf8.decoder).join();
@@ -110,11 +159,39 @@ class AliyunDriveClient {
       if (j is! Map) return null;
       final tok = j['access_token']?.toString();
       if (tok != null && tok.isNotEmpty) return tok;
-      // 开放平台格式：{ access_token, refresh_token, expires_in }
       final tok2 = j['accessToken']?.toString();
       if (tok2 != null && tok2.isNotEmpty) return tok2;
     } catch (e) {
-      debugPrint('[Aliyun] 换 token 失败: $e');
+      debugPrint('[Aliyun] OAuth token 失败: $e');
+    }
+    return null;
+  }
+
+  /// Web API 端点：api.alipan.com（不需要 client_id）
+  Future<String?> _refreshAtWeb(String rt) async {
+    try {
+      final uri = Uri.parse('$_webApi/v2/account/token');
+      final req = await _client.postUrl(uri);
+      req.headers.contentType = ContentType.json;
+      req.headers.set('User-Agent', userAgent);
+      req.write(jsonEncode({
+        'refresh_token': rt,
+        'grant_type': 'refresh_token',
+      }));
+      final resp = await req.close();
+      if (resp.statusCode != 200) {
+        debugPrint('[Aliyun] Web token HTTP ${resp.statusCode}');
+        return null;
+      }
+      final body = await resp.transform(utf8.decoder).join();
+      final j = jsonDecode(body);
+      if (j is! Map) return null;
+      final tok = j['access_token']?.toString();
+      if (tok != null && tok.isNotEmpty) return tok;
+      final tok2 = j['accessToken']?.toString();
+      if (tok2 != null && tok2.isNotEmpty) return tok2;
+    } catch (e) {
+      debugPrint('[Aliyun] Web token 失败: $e');
     }
     return null;
   }
@@ -138,10 +215,14 @@ class AliyunDriveClient {
 
       // 先探测 drive_id（备份盘 vs 资源库）
       _driveId = await _probeDriveId(token);
+      debugPrint('[Aliyun] connect driveId=$_driveId token=${token.substring(0, min(token.length, 20))}...');
 
       // 用「列根目录」验证连接
       final list = await listDirectory('root');
-      if (list == null) return null;
+      if (list == null) {
+        debugPrint('[Aliyun] 列根目录失败，连接失败');
+        return null;
+      }
 
       // 取昵称
       try {
