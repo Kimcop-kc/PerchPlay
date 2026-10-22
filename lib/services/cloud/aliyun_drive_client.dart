@@ -37,8 +37,7 @@ class AliyunDriveClient {
   final String? clientId;
   final String? clientSecret;
 
-  /// PerchPlay 代码里的阿里云盘 OAuth client_id。
-  /// 内置默认 client_id 常量。
+  /// PerchPlay 代码里的阿里云盘 OAuth client_id（内置默认常量）。
   static const String _builtinClientId = 'b8c990e60b18446eb07f5dca30398e8a';
 
   static const String _authApi = 'https://auth.alipan.com';
