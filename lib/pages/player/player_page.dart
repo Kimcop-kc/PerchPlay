@@ -2,6 +2,7 @@
 ///
 /// 手机 / 平板统一：全屏视频 + 玻璃控制栏（浮层自动隐藏）
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -140,6 +141,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     } catch (e) {
       debugPrint('[Player] dispose 保存进度失败: $e');
     }
+    // 刷新首页进度条 + 历史页
+    try {
+      ref.invalidate(videoListProvider);
+      ref.invalidate(playHistoryProvider);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -149,6 +155,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         state == AppLifecycleState.inactive) {
       try {
         ref.read(playerProvider.notifier).saveProgress();
+        ref.invalidate(videoListProvider);
+        ref.invalidate(playHistoryProvider);
       } catch (_) {}
     }
   }
@@ -176,6 +184,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _exitPlayer() async {
     try {
       await ref.read(playerProvider.notifier).saveProgress();
+    } catch (_) {}
+    // 刷新历史页
+    try {
+      ref.invalidate(videoListProvider);
+      ref.invalidate(playHistoryProvider);
     } catch (_) {}
     _restoreIdleOrientation();
     if (mounted) context.pop();
@@ -331,6 +344,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   Future<void> _loadVideo() async {
+    final path = widget.videoPath;
+    // 本地文件不存在 → 弹 toast 返回，不闪退
+    if (!path.startsWith('http') && !File(path).existsSync()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('视频文件已不存在，可能已被删除或移动')),
+        );
+        context.pop();
+      }
+      return;
+    }
+
     final model = VideoModel(
       id: widget.videoPath,
       path: widget.videoPath,

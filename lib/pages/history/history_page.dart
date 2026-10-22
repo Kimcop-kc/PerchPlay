@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,29 +16,22 @@ class HistoryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final library = ref.watch(libraryProvider);
+    /// 使用 [playHistoryProvider]（直接查 playback_history JOIN videos），
+    /// 而不是 [libraryProvider]。后者是 AsyncNotifier，只在 scan() 时从 DB
+    /// 读一次之后不进 refresh()——播放结束写库的进度/时间永远不会反应到 UI。
+    final history = ref.watch(playHistoryProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
         top: false,
-        // 与首页一致：内容铺到屏幕底，避免导航栏下方出现空白层
         bottom: false,
-        child: library.when(
+        child: history.when(
           data: (videos) {
-            final watched = videos.where((v) => v.lastPosition > 0).toList()
-              ..sort((a, b) {
-                final aTime = a.lastPlayed;
-                final bTime = b.lastPlayed;
-                if (aTime == null) return bTime == null ? 0 : 1;
-                if (bTime == null) return -1;
-                return bTime.compareTo(aTime);
-              });
-
-            if (watched.isEmpty) return _buildEmpty();
+            if (videos.isEmpty) return _buildEmpty();
             return CustomScrollView(
               slivers: [
-                _buildHeader(context, watched.length),
+                _buildHeader(context, videos.length),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
                       AppBreakpoints.horizontalPadding(context),
@@ -47,7 +41,7 @@ class HistoryPage extends ConsumerWidget {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        final video = watched[index];
+                        final video = videos[index];
                         final progress = video.durationMs > 0
                             ? video.lastPosition / video.durationMs
                             : 0.0;
@@ -60,11 +54,14 @@ class HistoryPage extends ConsumerWidget {
                                 radius: GlassTheme.radiusMd,
                                 tint: GlassTheme.tintPurple,
                                 padding: const EdgeInsets.all(12),
-                                onTap: () =>
+                                onTap: () async {
+                                    if (!await _checkFile(context, video.path)) return;
+                                    if (!context.mounted) return;
                                     context.pushNamed('player', extra: {
-                                  'videoPath': video.path,
-                                  'videoTitle': video.name,
-                                }),
+                                      'videoPath': video.path,
+                                      'videoTitle': video.name,
+                                    });
+                                  },
                                 child: Row(
                                   children: [
                                     // 缩略图：与首页一致用真实封面（没有则回退图标）
@@ -145,11 +142,14 @@ class HistoryPage extends ConsumerWidget {
                                       height: 32,
                                       radius: GlassTheme.radiusXs,
                                       foregroundColor: GlassTheme.accentPurple,
-                                      onTap: () =>
+                                      onTap: () async {
+                                          if (!await _checkFile(context, video.path)) return;
+                                          if (!context.mounted) return;
                                           context.pushNamed('player', extra: {
-                                        'videoPath': video.path,
-                                        'videoTitle': video.name,
-                                      }),
+                                            'videoPath': video.path,
+                                            'videoTitle': video.name,
+                                          });
+                                        },
                                     ),
                                   ],
                                 ),
@@ -158,7 +158,7 @@ class HistoryPage extends ConsumerWidget {
                           ),
                         );
                       },
-                      childCount: watched.length,
+                      childCount: videos.length,
                     ),
                   ),
                 ),
@@ -215,5 +215,18 @@ class HistoryPage extends ConsumerWidget {
     if (diff.inDays < 1) return '${diff.inHours} 小时前';
     if (diff.inDays < 7) return '${diff.inDays} 天前';
     return '${dt.month}/${dt.day}/${dt.year}';
+  }
+
+  /// 检查文件是否存在，不存在则弹 toast 提示并返回 false。
+  static Future<bool> _checkFile(BuildContext context, String path) async {
+    if (!path.startsWith('http') && !File(path).existsSync()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('文件已不存在，可能已被删除')),
+        );
+      }
+      return false;
+    }
+    return true;
   }
 }
