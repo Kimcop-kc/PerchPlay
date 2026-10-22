@@ -65,34 +65,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           slivers: [
             _buildHeader(),
             SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: isLarge ? 40 : 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionHeader('播放'),
-                    _buildPlaybackSettings(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('刮削 (TMDB)'),
-                    _buildScrapeSettings(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('界面'),
-                    _buildUISettings(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('影库'),
-                    _buildLibrarySettings(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('存储与缓存'),
-                    _buildStorageSettings(),
-                    const SizedBox(height: 24),
-                    if (device.brand.isChineseBrand)
-                      _buildChineseRomOptimization(context, device),
-                    if (device.isIPad) _buildIPadFeatures(context),
-                    const SizedBox(height: 24),
-                    _sectionHeader('关于'),
-                    _buildAbout(),
-                    const SizedBox(height: GlassTheme.navBarOverlay),
-                  ],
+              child: Center(
+                // 平板限宽：内容最大 720px，避免设置卡片铺满整个平板宽度
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Padding(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: isLarge ? 40 : 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionHeader('播放'),
+                        _buildPlaybackSettings(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('刮削 (TMDB)'),
+                        _buildScrapeSettings(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('界面'),
+                        _buildUISettings(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('影库'),
+                        _buildLibrarySettings(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('存储与缓存'),
+                        _buildStorageSettings(),
+                        const SizedBox(height: 24),
+                        if (device.brand.isChineseBrand)
+                          _buildChineseRomOptimization(context, device),
+                        if (device.isIPad) _buildIPadFeatures(context),
+                        const SizedBox(height: 24),
+                        _sectionHeader('关于'),
+                        _buildAbout(),
+                        const SizedBox(height: GlassTheme.navBarOverlay),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

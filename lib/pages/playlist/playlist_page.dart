@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../models/playlist_model.dart';
 import '../../models/video_model.dart';
@@ -45,8 +46,12 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
               slivers: [
                 _buildHeader(playlists.length),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                      12, 0, 12, GlassTheme.navBarOverlay),
+                  // 与 header 一致用自适应水平 padding，平板限宽居中
+                  padding: EdgeInsets.fromLTRB(
+                      AppBreakpoints.horizontalPadding(context),
+                      0,
+                      AppBreakpoints.horizontalPadding(context),
+                      GlassTheme.navBarOverlay),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -72,103 +77,108 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: GlassCard(
-                            radius: GlassTheme.radiusMd,
-                            tint: GlassTheme.tintTeal,
-                            padding: const EdgeInsets.all(14),
-                            // 点卡片进详情看清单（防止自动分类出错）
-                            onTap: () => context.pushNamed(
-                              'playlistDetail',
-                              pathParameters: {'id': playlist.id},
-                            ),
-                            child: Row(
-                              children: [
-                                // 封面：取该列表第一个视频的海报/缩略图；
-                                // 空列表保留原来的渐变图标占位
-                                if (firstVideo != null)
-                                  CoverThumb(
-                                    video: firstVideo,
-                                    width: 64,
-                                    height: 64,
-                                    radius: GlassTheme.radiusSm,
-                                    iconSize: 30,
-                                  )
-                                else
-                                  Container(
-                                    width: 64,
-                                    height: 64,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(
-                                          GlassTheme.radiusSm),
-                                      gradient: const LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Color(0x2245E0D0),
-                                          Color(0x089B7EF0),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 720),
+                              child: GlassCard(
+                                radius: GlassTheme.radiusMd,
+                                tint: GlassTheme.tintTeal,
+                                padding: const EdgeInsets.all(14),
+                                // 点卡片进详情看清单（防止自动分类出错）
+                                onTap: () => context.pushNamed(
+                                  'playlistDetail',
+                                  pathParameters: {'id': playlist.id},
+                                ),
+                                child: Row(
+                                  children: [
+                                    // 封面：取该列表第一个视频的海报/缩略图；
+                                    // 空列表保留原来的渐变图标占位
+                                    if (firstVideo != null)
+                                      CoverThumb(
+                                        video: firstVideo,
+                                        width: 64,
+                                        height: 64,
+                                        radius: GlassTheme.radiusSm,
+                                        iconSize: 30,
+                                      )
+                                    else
+                                      Container(
+                                        width: 64,
+                                        height: 64,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                              GlassTheme.radiusSm),
+                                          gradient: const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0x2245E0D0),
+                                              Color(0x089B7EF0),
+                                            ],
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                            Icons.playlist_play_rounded,
+                                            size: 30,
+                                            color: GlassTheme.accentTeal),
+                                      ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(playlist.name,
+                                                    style: const TextStyle(
+                                                        color: GlassTheme
+                                                            .textPrimary,
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w700),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis),
+                                              ),
+                                              if (playlist.isAuto) ...[
+                                                const SizedBox(width: 6),
+                                                _autoBadge(playlist),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
+                                            style: const TextStyle(
+                                                color: GlassTheme.textTertiary,
+                                                fontSize: 12),
+                                          ),
                                         ],
                                       ),
                                     ),
-                                    child: const Icon(
-                                        Icons.playlist_play_rounded,
-                                        size: 30,
-                                        color: GlassTheme.accentTeal),
-                                  ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(playlist.name,
-                                                style: const TextStyle(
-                                                    color:
-                                                        GlassTheme.textPrimary,
-                                                    fontSize: 16,
-                                                    fontWeight:
-                                                        FontWeight.w700),
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis),
-                                          ),
-                                          if (playlist.isAuto) ...[
-                                            const SizedBox(width: 6),
-                                            _autoBadge(playlist),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${videos.length} 个视频${firstVideo != null ? ' · ${_fmtDuration(firstVideo.durationMs)}' : ''}',
-                                        style: const TextStyle(
-                                            color: GlassTheme.textTertiary,
-                                            fontSize: 12),
-                                      ),
-                                    ],
-                                  ),
+                                    GlassButton.outlined(
+                                      label: '播放',
+                                      height: 34,
+                                      foregroundColor: GlassTheme.accentTeal,
+                                      onTap: () => playFrom(0),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    // 删除入口：以前这里没有删除按钮，
+                                    // 自动列表就算删了下次扫描也会重建
+                                    IconButton(
+                                      tooltip: '删除列表',
+                                      iconSize: 20,
+                                      visualDensity: VisualDensity.compact,
+                                      color: GlassTheme.textTertiary,
+                                      icon: const Icon(
+                                          Icons.delete_outline_rounded),
+                                      onPressed: () => _confirmDelete(playlist),
+                                    ),
+                                  ],
                                 ),
-                                GlassButton.outlined(
-                                  label: '播放',
-                                  height: 34,
-                                  foregroundColor: GlassTheme.accentTeal,
-                                  onTap: () => playFrom(0),
-                                ),
-                                const SizedBox(width: 4),
-                                // 删除入口：以前这里没有删除按钮，
-                                // 自动列表就算删了下次扫描也会重建
-                                IconButton(
-                                  tooltip: '删除列表',
-                                  iconSize: 20,
-                                  visualDensity: VisualDensity.compact,
-                                  color: GlassTheme.textTertiary,
-                                  icon:
-                                      const Icon(Icons.delete_outline_rounded),
-                                  onPressed: () => _confirmDelete(playlist),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         );

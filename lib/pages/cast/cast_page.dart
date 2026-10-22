@@ -147,7 +147,21 @@ class _CastPageState extends ConsumerState<CastPage>
   }
 
   Widget _buildTabletTitle() {
-    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳
+    // 平板侧栏 340px 用紧凑标题；手机全宽用 AppPageHeader 大标题
+    final isLarge = AppBreakpoints.isLargeScreen(context);
+    if (isLarge) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Text(
+          '投屏',
+          style: TextStyle(
+            color: GlassTheme.textPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
     return const AppPageHeader(
       title: '投屏',
       subtitle: '搜索并连接局域网设备',

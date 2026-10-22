@@ -106,100 +106,106 @@ class _GlassNavBarState extends ConsumerState<GlassNavBar>
     return Container(
       height: navH,
       padding: EdgeInsets.fromLTRB(12, 6, 12, bottomSafe > 0 ? bottomSafe : 6),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final trackW = box.maxWidth;
-          final trackH = box.maxHeight;
-          final slotW = trackW / widget.items.length;
-          // 气泡宽度 = slot 的 72%（留出 tab 间距），高度 = 宽 × 0.72
-          _bubbleW = (slotW * 0.72).clamp(40.0, 72.0);
-          _bubbleH = (_bubbleW * 0.72).clamp(32.0, 52.0);
-          final startCx = _slotCenterX(_prevIndex, slotW);
-          final endCx = _slotCenterX(_currentIndex, slotW);
+      // 平板限宽居中：底栏最大 560px，避免在宽屏上 5 个 tab 分散太开
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final trackW = box.maxWidth;
+              final trackH = box.maxHeight;
+              final slotW = trackW / widget.items.length;
+              // 气泡宽度 = slot 的 72%（留出 tab 间距），高度 = 宽 × 0.72
+              _bubbleW = (slotW * 0.72).clamp(40.0, 72.0);
+              _bubbleH = (_bubbleW * 0.72).clamp(32.0, 52.0);
+              final startCx = _slotCenterX(_prevIndex, slotW);
+              final endCx = _slotCenterX(_currentIndex, slotW);
 
-          // fit: expand 让轨道填满完整高度（否则 Stack 高度被 Row 的
-          // 32px 图标文字撑起，轨道会塌缩成一条细线）
-          return Stack(
-            clipBehavior: Clip.none,
-            fit: StackFit.expand,
-            children: [
-              // ── 轨道：毛玻璃底板 ──
-              // 注意：Positioned 必须是 Stack 的直接子级，不能再包一层
-              // 别的组件（包了定位会静默失效，轨道会变成全宽直角条）。
-              // RepaintBoundary 放在 Positioned 里面，效果一样：
-              // 气泡每帧移动不会强制重算背后的模糊。
-              Positioned.fill(
-                child: RepaintBoundary(child: _GlassTrack(blur: blur)),
-              ),
+              // fit: expand 让轨道填满完整高度（否则 Stack 高度被 Row 的
+              // 32px 图标文字撑起，轨道会塌缩成一条细线）
+              return Stack(
+                clipBehavior: Clip.none,
+                fit: StackFit.expand,
+                children: [
+                  // ── 轨道：毛玻璃底板 ──
+                  // 注意：Positioned 必须是 Stack 的直接子级，不能再包一层
+                  // 别的组件（包了定位会静默失效，轨道会变成全宽直角条）。
+                  // RepaintBoundary 放在 Positioned 里面，效果一样：
+                  // 气泡每帧移动不会强制重算背后的模糊。
+                  Positioned.fill(
+                    child: RepaintBoundary(child: _GlassTrack(blur: blur)),
+                  ),
 
-              // 气泡 + 图标文字统一由同一条动画驱动
-              AnimatedBuilder(
-                animation: _slideCtrl,
-                builder: (context, _) {
-                  final t = _navCurve.transform(_slideCtrl.value);
-                  final cx = startCx + (endCx - startCx) * t;
+                  // 气泡 + 图标文字统一由同一条动画驱动
+                  AnimatedBuilder(
+                    animation: _slideCtrl,
+                    builder: (context, _) {
+                      final t = _navCurve.transform(_slideCtrl.value);
+                      final cx = startCx + (endCx - startCx) * t;
 
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    fit: StackFit.expand,
-                    children: [
-                      // ── 浮起透镜气泡 ──
-                      Positioned(
-                        left: 0,
-                        top: (trackH - _bubbleH) / 2,
-                        child: IgnorePointer(
-                          child: RepaintBoundary(
-                            child: Transform.translate(
-                              offset: Offset(cx - _bubbleW / 2, 0),
-                              // 行进中轻微横向拉伸 + 纵向收缩，液态感；
-                              // t 与位移同相，不会出现呼吸和位移错拍
-                              child: Transform(
-                                alignment: Alignment.center,
-                                transform: Matrix4.identity()
-                                  // scale() 已弃用，改用 scaleByDouble(x, y, z, w)
-                                  ..scaleByDouble(
-                                    1.0 + 0.05 * math.sin(math.pi * t),
-                                    1.0 - 0.04 * math.sin(math.pi * t),
-                                    1.0,
-                                    1.0,
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        fit: StackFit.expand,
+                        children: [
+                          // ── 浮起透镜气泡 ──
+                          Positioned(
+                            left: 0,
+                            top: (trackH - _bubbleH) / 2,
+                            child: IgnorePointer(
+                              child: RepaintBoundary(
+                                child: Transform.translate(
+                                  offset: Offset(cx - _bubbleW / 2, 0),
+                                  // 行进中轻微横向拉伸 + 纵向收缩，液态感；
+                                  // t 与位移同相，不会出现呼吸和位移错拍
+                                  child: Transform(
+                                    alignment: Alignment.center,
+                                    transform: Matrix4.identity()
+                                      // scale() 已弃用，改用 scaleByDouble(x, y, z, w)
+                                      ..scaleByDouble(
+                                        1.0 + 0.05 * math.sin(math.pi * t),
+                                        1.0 - 0.04 * math.sin(math.pi * t),
+                                        1.0,
+                                        1.0,
+                                      ),
+                                    child: _LensBubble(
+                                      width: _bubbleW,
+                                      height: _bubbleH,
+                                    ),
                                   ),
-                                child: _LensBubble(
-                                  width: _bubbleW,
-                                  height: _bubbleH,
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
 
-                      // ── 图标文字层（进度来自同一条动画） ──
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: List.generate(widget.items.length, (i) {
-                          final progress = i == _currentIndex
-                              ? t
-                              : (i == _prevIndex ? 1 - t : 0.0);
-                          return Expanded(
-                            child: _NavLabel(
-                              item: widget.items[i],
-                              progress: progress.clamp(0.0, 1.0),
-                              onTap: () {
-                                if (i != _currentIndex) {
-                                  widget.items[i].onTap?.call();
-                                }
-                              },
-                            ),
-                          );
-                        }),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          );
-        },
+                          // ── 图标文字层（进度来自同一条动画） ──
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: List.generate(widget.items.length, (i) {
+                              final progress = i == _currentIndex
+                                  ? t
+                                  : (i == _prevIndex ? 1 - t : 0.0);
+                              return Expanded(
+                                child: _NavLabel(
+                                  item: widget.items[i],
+                                  progress: progress.clamp(0.0, 1.0),
+                                  onTap: () {
+                                    if (i != _currentIndex) {
+                                      widget.items[i].onTap?.call();
+                                    }
+                                  },
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }

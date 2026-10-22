@@ -285,14 +285,43 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
   }
 
   Widget _buildTabletTitle() {
-    // 与所有 tab 页统一：同一个留白/字号规格，切 tab 不跳。
-    // NAS/网盘切换按钮统一放最左侧（leading），标题与副标题靠右。
+    // 平板侧栏用紧凑标题（小字号），手机全宽用 AppPageHeader 大标题。
+    final isLarge = AppBreakpoints.isLargeScreen(context);
+    if (isLarge) {
+      // 侧栏 300px：标题在左，切换按钮在最右
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _showCloud ? '网盘' : 'NAS',
+                style: const TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            GlassButton.outlined(
+              icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
+              label: _showCloud ? 'NAS' : '网盘',
+              height: 32,
+              foregroundColor: GlassTheme.accentPurple,
+              onTap: () => setState(() => _showCloud = !_showCloud),
+            ),
+          ],
+        ),
+      );
+    }
+    // 手机：与所有 tab 页统一，切换按钮放最右侧（trailing）
     return AppPageHeader(
       title: '串流',
       subtitle: _showCloud ? '网盘 · 夸克 / 115 / 百度 / 阿里' : 'NAS · WebDAV / FTP',
       asSliver: false,
       childGap: 12,
-      leading: GlassButton.outlined(
+      trailing: GlassButton.outlined(
         icon: _showCloud ? Icons.dns_rounded : Icons.cloud_rounded,
         label: _showCloud ? 'NAS' : '网盘',
         height: 36,

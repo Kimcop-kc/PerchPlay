@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../providers/library_provider.dart';
 import '../../widgets/glass/glass_card.dart';
@@ -37,8 +38,11 @@ class HistoryPage extends ConsumerWidget {
               slivers: [
                 _buildHeader(context, watched.length),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                      12, 0, 12, GlassTheme.navBarOverlay),
+                  padding: EdgeInsets.fromLTRB(
+                      AppBreakpoints.horizontalPadding(context),
+                      0,
+                      AppBreakpoints.horizontalPadding(context),
+                      GlassTheme.navBarOverlay),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -48,101 +52,114 @@ class HistoryPage extends ConsumerWidget {
                             : 0.0;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: GlassCard(
-                            radius: GlassTheme.radiusMd,
-                            tint: GlassTheme.tintPurple,
-                            padding: const EdgeInsets.all(12),
-                            onTap: () => context.pushNamed('player', extra: {
-                              'videoPath': video.path,
-                              'videoTitle': video.name,
-                            }),
-                            child: Row(
-                              children: [
-                                // 缩略图
-                                Container(
-                                  width: 88,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(
-                                        GlassTheme.radiusXs),
-                                    color: Colors.black.withValues(alpha: 0.06),
-                                  ),
-                                  child: const Icon(Icons.play_circle_rounded,
-                                      size: 28, color: GlassTheme.textTertiary),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(video.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              color: GlassTheme.textPrimary,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600)),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.schedule_rounded,
-                                              size: 12,
-                                              color: GlassTheme.textTertiary),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            _formatDate(video.lastPlayed),
-                                            style: const TextStyle(
-                                                color: GlassTheme.textTertiary,
-                                                fontSize: 11),
-                                          ),
-                                        ],
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 720),
+                              child: GlassCard(
+                                radius: GlassTheme.radiusMd,
+                                tint: GlassTheme.tintPurple,
+                                padding: const EdgeInsets.all(12),
+                                onTap: () =>
+                                    context.pushNamed('player', extra: {
+                                  'videoPath': video.path,
+                                  'videoTitle': video.name,
+                                }),
+                                child: Row(
+                                  children: [
+                                    // 缩略图
+                                    Container(
+                                      width: 88,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(
+                                            GlassTheme.radiusXs),
+                                        color: Colors.black
+                                            .withValues(alpha: 0.06),
                                       ),
-                                      const SizedBox(height: 4),
-                                      // mini 进度条
-                                      if (progress > 0 && progress < 1)
-                                        Container(
-                                          height: 3,
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                            color: Colors.black
-                                                .withValues(alpha: 0.06),
+                                      child: const Icon(
+                                          Icons.play_circle_rounded,
+                                          size: 28,
+                                          color: GlassTheme.textTertiary),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(video.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                  color: GlassTheme.textPrimary,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600)),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.schedule_rounded,
+                                                  size: 12,
+                                                  color:
+                                                      GlassTheme.textTertiary),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                _formatDate(video.lastPlayed),
+                                                style: const TextStyle(
+                                                    color:
+                                                        GlassTheme.textTertiary,
+                                                    fontSize: 11),
+                                              ),
+                                            ],
                                           ),
-                                          child: FractionallySizedBox(
-                                            alignment: Alignment.centerLeft,
-                                            widthFactor: progress,
-                                            child: Container(
+                                          const SizedBox(height: 4),
+                                          // mini 进度条
+                                          if (progress > 0 && progress < 1)
+                                            Container(
+                                              height: 3,
+                                              width: double.infinity,
                                               decoration: BoxDecoration(
                                                 borderRadius:
                                                     BorderRadius.circular(2),
-                                                gradient: const LinearGradient(
-                                                  colors: [
-                                                    GlassTheme.accentPurple,
-                                                    GlassTheme.accentTeal,
-                                                  ],
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.06),
+                                              ),
+                                              child: FractionallySizedBox(
+                                                alignment: Alignment.centerLeft,
+                                                widthFactor: progress,
+                                                child: Container(
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            2),
+                                                    gradient:
+                                                        const LinearGradient(
+                                                      colors: [
+                                                        GlassTheme.accentPurple,
+                                                        GlassTheme.accentTeal,
+                                                      ],
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                                        ],
+                                      ),
+                                    ),
+                                    // 继续播放
+                                    GlassButton.outlined(
+                                      label: '继续',
+                                      height: 32,
+                                      radius: GlassTheme.radiusXs,
+                                      foregroundColor: GlassTheme.accentPurple,
+                                      onTap: () =>
+                                          context.pushNamed('player', extra: {
+                                        'videoPath': video.path,
+                                        'videoTitle': video.name,
+                                      }),
+                                    ),
+                                  ],
                                 ),
-                                // 继续播放
-                                GlassButton.outlined(
-                                  label: '继续',
-                                  height: 32,
-                                  radius: GlassTheme.radiusXs,
-                                  foregroundColor: GlassTheme.accentPurple,
-                                  onTap: () =>
-                                      context.pushNamed('player', extra: {
-                                    'videoPath': video.path,
-                                    'videoTitle': video.name,
-                                  }),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         );
