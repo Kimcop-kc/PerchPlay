@@ -161,13 +161,31 @@ class NasClientService {
   }
 
   // ──────────── WebDAV ────────────
+
+  /// 规范化远程路径：保证以 `/` 开头、不以 `/` 结尾（根除外）。
+  ///
+  /// 用户可能填 `dav`、`/dav/`、`dav/files/user` 等，
+  /// 直接拼 `$baseUrl$path` 会得到 `http://host:5005dav` 这种错误 URL。
+  static String normalizeRemotePath(String raw) {
+    var p = raw.trim();
+    if (p.isEmpty) return '/';
+    // 补前导斜杠
+    if (!p.startsWith('/')) p = '/$p';
+    // 去掉末尾多余斜杠（根目录保留单个 /）
+    while (p.length > 1 && p.endsWith('/')) {
+      p = p.substring(0, p.length - 1);
+    }
+    return p;
+  }
+
   Future<bool> _connectWebDav() async {
     final c = _connection!;
     final scheme = c.port == 443 ? 'https' : 'http';
     final baseUrl = '$scheme://${c.host}:${c.port}';
+    final path = normalizeRemotePath(c.remotePath);
 
     try {
-      final uri = Uri.parse('$baseUrl${c.remotePath}');
+      final uri = Uri.parse('$baseUrl$path');
       final req = await _httpClient!.openUrl('PROPFIND', uri);
       req.headers.set('Depth', '1');
       req.headers.set('User-Agent', 'PerchPlay/1.0 WebDAV');

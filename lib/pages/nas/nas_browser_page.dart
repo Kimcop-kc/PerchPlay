@@ -612,6 +612,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     final usernameCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
     final shareCtrl = TextEditingController();
+    // WebDAV / FTP 的远程路径：WebDAV 必须知道具体路径（如群晖
+    // /dav、Nextcloud /remote.php/dav/files/用户名），否则只能连到根目录，
+    // 很多服务在根目录会返回 404/405。留空时按 `/` 处理。
+    final pathCtrl = TextEditingController();
     var protocol = presetProtocol ?? NasProtocol.webdav;
 
     showDialog(
@@ -736,6 +740,26 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       ],
                       const SizedBox(height: 14),
                       _dialogField('端口', portCtrl, isNumber: true),
+                      // WebDAV / FTP 需要远程路径
+                      if (protocol == NasProtocol.webdav ||
+                          protocol == NasProtocol.ftp) ...[
+                        const SizedBox(height: 14),
+                        _dialogField('路径（留空为 /）', pathCtrl),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            protocol == NasProtocol.webdav
+                                ? 'WebDAV 必须填对路径：群晖填 /dav，'
+                                    'Nextcloud 填 /remote.php/dav/files/用户名，'
+                                    '坚果云填 /dav。填错会连不上或只看到根目录。'
+                                : 'FTP 的远程起始目录，留空表示登录后所在目录。',
+                            style: const TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 11,
+                                height: 1.4),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       _dialogField('用户名', usernameCtrl),
                       const SizedBox(height: 14),
@@ -771,6 +795,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                   password: passwordCtrl.text,
                                   // SMB 必需：先连到具体共享
                                   shareName: shareCtrl.text.trim(),
+                                  // WebDAV/FTP 的远程起始路径；留空按根目录
+                                  remotePath: pathCtrl.text.trim().isEmpty
+                                      ? '/'
+                                      : pathCtrl.text.trim(),
                                   savePassword: true,
                                 );
                                 ref
