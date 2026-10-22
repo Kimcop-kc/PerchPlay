@@ -609,7 +609,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await _playNext();
     }
   }
-  }
 
   /// 上次进度落盘时间（5s 节流）
   DateTime? _lastSaveAt;
