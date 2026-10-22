@@ -47,6 +47,18 @@ class AppSettingsService {
   static const _kSubtitleAlign = 'settings.subtitle.align';
   static const _kSubtitleUseAssPos = 'settings.subtitle.useAssPosition';
 
+  // 在线字幕聚合
+  static const _kSubtitleOnlineSearch = 'settings.subtitle.onlineSearch';
+  static const _kSubtitleDefaultLang = 'settings.subtitle.defaultLang';
+  static const _kSubtitleSecondaryLang = 'settings.subtitle.secondaryLang';
+  static const _kSubtitleAutoDownload = 'settings.subtitle.autoDownload';
+  static const _kSubtitleAutoApply = 'settings.subtitle.autoApply';
+  static const _kSubtitleOpenSubtitlesKey =
+      'settings.subtitle.opensubtitlesKey';
+  static const _kSubtitlePrimaryOffset = 'settings.subtitle.primaryOffsetMs';
+  static const _kSubtitleSecondaryOffset =
+      'settings.subtitle.secondaryOffsetMs';
+
   double _defaultSpeed = 1.0;
 
   /// 长按视频画面时的临时倍速（松手恢复原速），默认 2.0x
@@ -168,6 +180,40 @@ class AppSettingsService {
   /// 是否应用 ASS 定位/对齐（垂直位置 + numpad 对齐）。默认 true。
   bool _subtitleUseAssPosition = true;
   bool get subtitleUseAssPosition => _subtitleUseAssPosition;
+
+  // ─────────── 在线字幕聚合 ───────────
+
+  /// 是否启用在线字幕搜索（默认关闭，避免未经许可消耗 API 配额）。
+  bool _subtitleOnlineSearch = false;
+  bool get subtitleOnlineSearch => _subtitleOnlineSearch;
+
+  /// 默认字幕语言（ISO 639-1，如 zh/en）。默认中文。
+  String _subtitleDefaultLang = 'zh';
+  String get subtitleDefaultLang => _subtitleDefaultLang;
+
+  /// 第二字幕语言（双语用）。默认英文。
+  String _subtitleSecondaryLang = 'en';
+  String get subtitleSecondaryLang => _subtitleSecondaryLang;
+
+  /// 是否自动下载高置信度字幕。默认关闭（避免未经许可大量下载）。
+  bool _subtitleAutoDownload = false;
+  bool get subtitleAutoDownload => _subtitleAutoDownload;
+
+  /// 是否自动应用高置信度字幕。默认关闭（低置信度一律询问）。
+  bool _subtitleAutoApply = false;
+  bool get subtitleAutoApply => _subtitleAutoApply;
+
+  /// OpenSubtitles API Key（用户自备，免费注册）。默认空。
+  String _subtitleOpenSubtitlesKey = '';
+  String get subtitleOpenSubtitlesKey => _subtitleOpenSubtitlesKey;
+
+  /// 主字幕时间偏移（毫秒，正=延后，负=提前）。
+  int _subtitlePrimaryOffsetMs = 0;
+  int get subtitlePrimaryOffsetMs => _subtitlePrimaryOffsetMs;
+
+  /// 第二字幕时间偏移（毫秒）。
+  int _subtitleSecondaryOffsetMs = 0;
+  int get subtitleSecondaryOffsetMs => _subtitleSecondaryOffsetMs;
 
   /// 【已废弃】字幕统一由 Flutter 渲染，mpv/libass 原生渲染已移除。
   ///
@@ -301,6 +347,16 @@ class AppSettingsService {
       _subtitleShowBg = prefs.getBool(_kSubtitleShowBg) ?? true;
       _subtitleAlign = prefs.getString(_kSubtitleAlign) ?? 'center';
       _subtitleUseAssPosition = prefs.getBool(_kSubtitleUseAssPos) ?? true;
+      // 在线字幕聚合
+      _subtitleOnlineSearch = prefs.getBool(_kSubtitleOnlineSearch) ?? false;
+      _subtitleDefaultLang = prefs.getString(_kSubtitleDefaultLang) ?? 'zh';
+      _subtitleSecondaryLang = prefs.getString(_kSubtitleSecondaryLang) ?? 'en';
+      _subtitleAutoDownload = prefs.getBool(_kSubtitleAutoDownload) ?? false;
+      _subtitleAutoApply = prefs.getBool(_kSubtitleAutoApply) ?? false;
+      _subtitleOpenSubtitlesKey =
+          prefs.getString(_kSubtitleOpenSubtitlesKey) ?? '';
+      _subtitlePrimaryOffsetMs = prefs.getInt(_kSubtitlePrimaryOffset) ?? 0;
+      _subtitleSecondaryOffsetMs = prefs.getInt(_kSubtitleSecondaryOffset) ?? 0;
       _hiddenAutoPlaylists =
           (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])
               .toSet();
@@ -773,6 +829,72 @@ class AppSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSubtitleUseAssPos, v);
+    } catch (_) {}
+  }
+
+  // ─────────── 在线字幕聚合 setter ───────────
+
+  Future<void> setSubtitleOnlineSearch(bool v) async {
+    _subtitleOnlineSearch = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleOnlineSearch, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleDefaultLang(String v) async {
+    _subtitleDefaultLang = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSubtitleDefaultLang, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleSecondaryLang(String v) async {
+    _subtitleSecondaryLang = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSubtitleSecondaryLang, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleAutoDownload(bool v) async {
+    _subtitleAutoDownload = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleAutoDownload, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleAutoApply(bool v) async {
+    _subtitleAutoApply = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSubtitleAutoApply, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleOpenSubtitlesKey(String v) async {
+    _subtitleOpenSubtitlesKey = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSubtitleOpenSubtitlesKey, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitlePrimaryOffsetMs(int v) async {
+    _subtitlePrimaryOffsetMs = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSubtitlePrimaryOffset, v);
+    } catch (_) {}
+  }
+
+  Future<void> setSubtitleSecondaryOffsetMs(int v) async {
+    _subtitleSecondaryOffsetMs = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kSubtitleSecondaryOffset, v);
     } catch (_) {}
   }
 
