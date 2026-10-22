@@ -151,7 +151,7 @@ class _NasConnection {
       final dataSocket =
           await Socket.connect(pasv['host']!, int.parse(pasv['port']!),
               timeout: const Duration(seconds: 10));
-      final listResp = await ftp.readResponse();
+      await ftp.readResponse(); // 消费 LIST 响应，保持协议时序
       final data = await dataSocket
           .cast<List<int>>()
           .transform(utf8.decoder)
