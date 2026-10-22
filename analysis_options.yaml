@@ -3,8 +3,8 @@ analyzer:
     - build/**
     - android/**
     - ios/**
+    - local_packages/**
 include: package:flutter_lints/flutter.yaml
-
 linter:
   rules:
     prefer_const_constructors: true
