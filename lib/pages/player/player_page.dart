@@ -212,6 +212,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   void _toggleControls() {
+    // 动画正在跑（控件正在淡出/淡入）：说明用户在这个 350ms 窗口里
+    // 又点了一次屏幕。直接 forward 回到可见态，不做状态机判断。
+    // 否则 `_showControls` 还没变（要等 .then 才改），
+    // _hideControls() 会再调一次 reverse() → 控件继续隐藏。
+    if (_controlsAnim.isAnimating) {
+      _controlsAnim.forward();
+      _startAutoHideTimer();
+      return;
+    }
     if (_showControls) {
       _hideControls();
     } else {

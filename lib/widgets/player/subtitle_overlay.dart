@@ -147,9 +147,12 @@ class SubtitleOverlay extends StatelessWidget {
     final primaryStyle = _buildStyle(baseFontSize, isSecondary: false);
     final secondaryStyle = _buildStyle(baseFontSize, isSecondary: bilingual);
 
-    // ASS 对齐：主字幕定位用 primaryAssEntry（外挂 ASS 解析结果），
-    // 否则回退到第二字幕 entries 的命中条目。
-    final SubtitleEntry? assSource = primaryAssEntry ?? _primaryEntry();
+    // ASS 对齐：**只**用 primaryAssEntry。它来自主字幕的外挂 ASS
+    // （player_page.dart:264-270 从 state.subtitleEntries 按主字幕下标取），
+    // 主字幕为内嵌轨时为 null。绝不能 fallback 到 _primaryEntry() ——
+    // 该方法的 entries/activeIndex 传的都是第二字幕数据，用了会把
+    // 第二字幕的 \an 对齐错误地套到主字幕上。
+    final SubtitleEntry? assSource = primaryAssEntry;
     final int? assAlign = useAssPosition ? assSource?.alignment : null;
 
     // 水平对齐：优先 ASS 对齐（numpad 1-9 映射到左右中），否则用设置
@@ -224,12 +227,6 @@ class SubtitleOverlay extends StatelessWidget {
     final size = style.fontSize ?? 16.0;
     // 用一行文字的高度占位（不可见）
     return SizedBox(height: size * (style.height ?? 1.35));
-  }
-
-  /// 命中主字幕条目的 ASS 定位（主字幕 entries 才有位置信息）。
-  SubtitleEntry? _primaryEntry() {
-    if (activeIndex < 0 || activeIndex >= entries.length) return null;
-    return entries[activeIndex];
   }
 
   /// 主字幕文本：合并 [lines] 的非空行，内部换行折叠为空格。
