@@ -146,7 +146,7 @@ class AliyunDriveClient {
       _authHeaders(token).forEach(req.headers.set);
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode({
-        'drive_id': _driveId,
+        if (_driveId.isNotEmpty) 'drive_id': _driveId,
         'parent_file_id': 'root',
         'limit': 1,
         'image_thumbnail_process': 'image/resize,w_160/format,jpeg',
@@ -164,7 +164,7 @@ class AliyunDriveClient {
       _authHeaders(token).forEach(req.headers.set);
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode({
-        'drive_id': _driveId,
+        if (_driveId.isNotEmpty) 'drive_id': _driveId,
         'parent_file_id': 'root',
         'limit': 1,
       }));
@@ -417,7 +417,7 @@ class AliyunDriveClient {
         _authHeaders(token).forEach(req.headers.set);
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode({
-          'drive_id': _driveId,
+          if (_driveId.isNotEmpty) 'drive_id': _driveId,
           'parent_file_id': parentId,
           'limit': limit,
           'marker': marker,
@@ -480,7 +480,7 @@ class AliyunDriveClient {
         _authHeaders(token).forEach(req.headers.set);
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode({
-          'drive_id': _driveId,
+          if (_driveId.isNotEmpty) 'drive_id': _driveId,
           'parent_file_id': parentId,
           'limit': limit,
           'marker': marker,
