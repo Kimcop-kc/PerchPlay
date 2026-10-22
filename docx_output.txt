@@ -1,0 +1,216 @@
+[P1|Normal] PerchPlay 播放器综合 Bug 修复任务书
+[P3|Normal] 项目：https://github.com/Kimcop-kc/PerchPlay
+[P5|Normal] 一、任务目标
+[P7|Normal] 对现有 Flutter Android视频播放器开展专项代码审计与修复。
+[P9|Normal] 重点解决：
+[P11|Normal] 1. 视频进度条偶尔无法拖动、拖动后卡住。
+[P12|Normal] 2. 单语字幕、双语字幕出现多行或重复显示。
+[P13|Normal] 3. 内嵌字幕、外挂字幕、AI 字幕没有统一使用自绘渲染器。
+[P14|Normal] 4. AI 离线翻译模型不可用或意外请求网络。
+[P15|Normal] 5. 拖动进度后字幕错位、残留或不再更新。
+[P16|Normal] 6. 播放进度保存与恢复异常。
+[P17|Normal] 7. 播放器快速切换视频、后台恢复、NAS 播放时的状态与资源问题。
+[P19|Normal] 必须基于当前仓库实际代码实施，不得仅修改界面、添加静态假数据或用模拟结果代替真实功能。
+[P21|Normal] 二、P0：修复进度条拖动故障
+[P23|Normal] 重点文件：
+[P25|Normal] - "lib/widgets/player/player_gesture_layer.dart"
+[P26|Normal] - "lib/widgets/glass/glass_slider.dart"
+[P27|Normal] - "lib/pages/player/player_page.dart"
+[P28|Normal] - "lib/providers/player_provider.dart"
+[P30|Normal] 2.1 解决手势识别冲突
+[P32|Normal] 当前全屏手势层使用 "GestureDetector" 的 "onScaleStart"、"onScaleUpdate"、"onScaleEnd"，进度条则使用 "onPanDown"、"onPanUpdate"、"onPanEnd"。
+[P34|Normal] 请检查两套手势识别器在 Flutter Gesture Arena 中的竞争关系。
+[P36|Normal] 要求：
+[P38|Normal] - 进度条区域优先处理自己的拖动手势。
+[P39|Normal] - 不得让全屏手势层吞掉进度条的拖动事件。
+[P40|Normal] - 保留全屏横向滑动调进度、纵向调节亮度和音量、双击播放暂停、长按倍速等功能。
+[P41|Normal] - 不得通过简单删除全屏手势层来规避冲突。
+[P42|Normal] - 如有必要，使用明确的手势区域划分、原始指针事件协调或其他可验证的方案。
+[P43|Normal] - 双指操作不能意外触发进度跳转。
+[P45|Normal] 2.2 修复拖动取消后的状态残留
+[P47|Normal] 检查 "GlassSlider.onPanCancel" 和播放器 "_seekPreviewMs"。
+[P49|Normal] 当前组件取消拖动时只清除内部 "_dragValue"，没有通知父组件清除预览位置。
+[P51|Normal] 要求：
+[P53|Normal] - 正常拖动、正常松手、手势取消、页面销毁均能清理临时状态。
+[P54|Normal] - 取消时恢复真实播放位置，不得残留旧的预览时间。
+[P55|Normal] - 拖动期间以用户选择的位置为准，不得被播放器位置流反复覆盖。
+[P56|Normal] - 拖动结束后恢复订阅的真实播放进度。
+[P57|Normal] - 时长为零、时长动态变化和播放源切换时不得出现除零、越界或异常。
+[P58|Normal] - 确保 "_valueAt" 使用正确的滑块实际布局宽度，并正确处理点击跳转和边界位置。
+[P60|Normal] 2.3 修复真正的 seek 执行链路
+[P62|Normal] 检查 "seekTo"、"seekRelative"、播放器时长和位置事件流。
+[P64|Normal] 要求：
+[P66|Normal] - 跳转目标限制在有效区间 "[0, duration]"。
+[P67|Normal] - 处理连续快速拖动，避免旧的异步跳转覆盖新的目标。
+[P68|Normal] - 对 seek 失败、播放器未就绪和不支持精确跳转的媒体提供明确的异常处理。
+[P69|Normal] - 处理 seek 执行期间的位置事件与预览状态竞争。
+[P70|Normal] - 成功跳转后刷新实际位置、时间文字和字幕状态。
+[P71|Normal] - 不能只移动进度条 UI，却没有真正调用播放内核跳转。
+[P73|Normal] 2.4 进度条验收标准
+[P75|Normal] 必须测试：
+[P77|Normal] 1. 连续拖动至少 20 次，每次都能正常跳转。
+[P78|Normal] 2. 拖动到 0%、25%、50%、75%、100%。
+[P79|Normal] 3. 拖动中途取消、松手后立即再次拖动。
+[P80|Normal] 4. 拖动时快速暂停和恢复播放。
+[P81|Normal] 5. 拖动时显示字幕、控制栏和弹出菜单。
+[P82|Normal] 6. 播放过程中快速切换视频，再拖动进度。
+[P83|Normal] 7. 对支持跳转的本地 MP4、MKV 和网络/NAS 媒体分别测试。
+[P84|Normal] 8. 验证手势调亮度、音量、双击暂停和长按倍速仍然有效。
+[P86|Normal] 三、P0：统一所有字幕渲染路径
+[P88|Normal] 重点文件：
+[P90|Normal] - "lib/widgets/player/subtitle_overlay.dart"
+[P91|Normal] - "lib/pages/player/player_page.dart"
+[P92|Normal] - "lib/providers/player_provider.dart"
+[P93|Normal] - 字幕模型、字幕解析器、AI 实时字幕相关文件。
+[P95|Normal] 3.1 统一渲染入口
+[P97|Normal] 所有字幕必须遵循统一的数据流：
+[P99|Normal] 字幕源 → 标准化字幕数据 → 当前播放时间匹配 → "SubtitleOverlay"。
+[P101|Normal] 覆盖范围：
+[P103|Normal] - 视频内嵌字幕。
+[P104|Normal] - 外挂 SRT、VTT、ASS 等字幕。
+[P105|Normal] - AI 实时识别字幕。
+[P106|Normal] - AI 全片生成字幕。
+[P107|Normal] - 双语原文和译文。
+[P109|Normal] 不得同时让 mpv 原生字幕和 Flutter 自绘层绘制同一字幕。
+[P111|Normal] 内嵌字幕仍可以由播放内核解析，但必须找到可靠的文本提取与时间同步方案。不能为了隐藏原生字幕而让内嵌字幕彻底无法显示。
+[P113|Normal] 如果现有 media_kit 接口无法满足要求，先核实公开 API、事件流和必要的原生扩展能力，再选择兼容方案。
+[P115|Normal] 3.2 修复单语字幕多行问题
+[P117|Normal] 检查 "subtitle_overlay.dart" 中的 "_smartWrap()" 和 "maxCharsPerLine" 逻辑。
+[P119|Normal] 要求：
+[P121|Normal] - 默认单语字幕最多显示一行。
+[P122|Normal] - 不得按照固定 22/34 字符强制断句。
+[P123|Normal] - 优先利用可用视频宽度，必要时自适应字号。
+[P124|Normal] - 特别长的句子不得无限缩小字号；应提供明确的长字幕处理策略。
+[P125|Normal] - 保留字幕本身的语义和时间信息。
+[P126|Normal] - 不得通过简单把 "maxCharsPerLine" 设置为 0 就认为修复完成。
+[P128|Normal] 3.3 修复双语字幕多行问题
+[P130|Normal] 要求：
+[P132|Normal] - 双语模式默认固定两行：第一行原文、第二行译文。
+[P133|Normal] - 单语模式只显示选中的一种语言。
+[P134|Normal] - 不能把 SRT 文本内部换行误判为另一种语言。
+[P135|Normal] - 不能把自动换行、字幕条目分段和双语分隔符混为一谈。
+[P136|Normal] - 字幕过长时优先采用自适应布局，不能任意拆成四五行。
+[P137|Normal] - 同一时间段原文和译文必须关联到同一字幕数据项，或通过可靠的时间戳关联。
+[P138|Normal] - 防止主字幕、第二字幕和 AI 字幕同时叠加。
+[P140|Normal] 3.4 统一样式
+[P142|Normal] 所有字幕共享：
+[P144|Normal] - 字体与字号规则。
+[P145|Normal] - 文字颜色和描边。
+[P146|Normal] - 黑底透明度与圆角。
+[P147|Normal] - 字幕位置和安全边距。
+[P148|Normal] - 行间距与双语次行样式。
+[P149|Normal] - 字幕显示开关。
+[P151|Normal] 调整样式时，内嵌字幕、外挂字幕和 AI 字幕都必须遵循统一规则。
+[P153|Normal] ASS 特效如果无法由自绘层完整复现，应明确支持范围，不能暗中退回原生渲染。
+[P155|Normal] 四、P0：修复 AI 离线双语字幕
+[P157|Normal] 重点文件：
+[P159|Normal] - "lib/services/ai/translate_service.dart"
+[P160|Normal] - "lib/services/ai/local_translate_backend.dart"
+[P161|Normal] - "lib/services/ai/ai_model_catalog.dart"
+[P162|Normal] - "lib/services/ai/model_downloader.dart"
+[P163|Normal] - "lib/providers/live_subtitle_provider.dart"
+[P164|Normal] - "lib/services/ai/batch_subtitle_service.dart"
+[P166|Normal] 4.1 严格区分在线和离线
+[P168|Normal] - 离线模式禁止调用 Google 翻译、在线 LLM 和其他网络翻译服务。
+[P169|Normal] - 本地模型缺失、加载失败或推理失败时，明确报告错误。
+[P170|Normal] - 在线和离线模式不能静默互相回退。
+[P171|Normal] - 不得将未实现的模型标记为已可用。
+[P173|Normal] 4.2 修复模型目录
+[P175|Normal] - 检查 ".invalid" 占位地址并替换为已核实的真实模型来源，或明确标记为不可下载。
+[P176|Normal] - 检查所有必需文件、模型格式、tokenizer 和输入输出定义。
+[P177|Normal] - 不得伪造模型 SHA-256。
+[P178|Normal] - 区分模型已下载、文件校验通过、模型加载成功、实际推理成功。
+[P179|Normal] - 模型下载失败后可以重试，不能留下一个被误判为可用的残缺模型。
+[P181|Normal] 4.3 修复翻译方向
+[P183|Normal] - 支持英语语音识别后生成中文译文。
+[P184|Normal] - 支持中文语音识别后生成英文译文。
+[P185|Normal] - 根据实际识别语言和目标语言决定翻译方向。
+[P186|Normal] - 保留原文，不得用翻译结果覆盖原文。
+[P187|Normal] - 双语模式应能正确设置原文与译文的顺序。
+[P189|Normal] 4.4 修复实时字幕的异步任务
+[P191|Normal] - 检查音频分段、时间戳和字幕更新顺序。
+[P192|Normal] - 避免识别任务积压后持续显示过期内容。
+[P193|Normal] - 暂停时控制后台任务，恢复时继续工作。
+[P194|Normal] - 拖动进度后取消或使旧任务结果失效，并从新位置重新同步。
+[P195|Normal] - 切换视频时不得把旧视频的字幕写入新视频状态。
+[P196|Normal] - 释放临时音频文件、模型会话和不再需要的资源。
+[P198|Normal] 4.5 修复全片字幕
+[P200|Normal] - 确保全片字幕是真实识别生成，而非模拟进度。
+[P201|Normal] - 支持有效 SRT 导出和时间戳。
+[P202|Normal] - 支持取消、失败重试与进度恢复。
+[P203|Normal] - 生成后可以重新加载，不必每次重复识别。
+[P204|Normal] - 缓存应绑定到对应视频，避免错误复用。
+[P205|Normal] - 离线翻译生成全片双语字幕时，禁止访问网络翻译服务。
+[P207|Normal] 五、P1：修复播放进度保存与恢复
+[P209|Normal] 检查 "player_provider.dart" 中的：
+[P211|Normal] - "_pendingResume"
+[P212|Normal] - "loadVideo"
+[P213|Normal] - "seekTo"
+[P214|Normal] - "seekRelative"
+[P215|Normal] - "state.player.stream.position"
+[P216|Normal] - "state.player.stream.duration"
+[P217|Normal] - "_persistProgress"
+[P218|Normal] - "saveProgress"
+[P220|Normal] 要求：
+[P222|Normal] 1. 视频时长尚未就绪时，不应丢失需要执行的跳转。
+[P223|Normal] 2. 恢复进度时应校验有效时长，防止跳到视频末尾之外。
+[P224|Normal] 3. 快速切换视频时，旧视频的异步恢复操作不得影响新视频。
+[P225|Normal] 4. 退出播放页、应用进入后台和正常切换视频时正确保存进度。
+[P226|Normal] 5. 处理接近结尾、短视频、时长未知及媒体损坏等情况。
+[P227|Normal] 6. 明确本地文件和 NAS/网络源的进度保存策略。
+[P228|Normal] 7. 不能为了修复恢复进度而破坏现有播放历史和自动播放逻辑。
+[P230|Normal] 六、P1：播放器生命周期与性能
+[P232|Normal] 审计以下情况：
+[P234|Normal] - 快速打开、退出、再次进入播放器。
+[P235|Normal] - 连续切换剧集。
+[P236|Normal] - 播放器后台恢复。
+[P237|Normal] - 画中画与全屏切换。
+[P238|Normal] - 播放器停止后重新加载。
+[P239|Normal] - AI 模型加载中退出页面。
+[P240|Normal] - 下载模型时离开模型管理页面。
+[P241|Normal] - 播放过程中切换字幕轨道。
+[P243|Normal] 要求：
+[P245|Normal] - 避免重复监听、旧任务更新新状态、资源泄漏和已释放对象被调用。
+[P246|Normal] - 正确取消 Timer、StreamSubscription 和不再需要的异步任务。
+[P247|Normal] - 不得因高频播放位置更新而重建整页。
+[P248|Normal] - 不能通过吞掉所有异常的方式掩盖真实故障。
+[P249|Normal] - 不得删除现有播放列表、NAS、投屏、历史记录或其他已有功能。
+[P251|Normal] 七、P1：NAS 与网络媒体兼容性
+[P253|Normal] 检查网络源播放时：
+[P255|Normal] - 进度条拖动和播放内核 seek 的实际支持情况。
+[P256|Normal] - 缓冲、加载失败、网络断开和恢复。
+[P257|Normal] - 字幕文件定位与缓存策略。
+[P258|Normal] - 网络源无法跳转时的错误提示。
+[P259|Normal] - 本地和网络源的状态重置与切换逻辑。
+[P261|Normal] 不支持某种网络流跳转时，必须明确显示限制，不能让进度条看似跳转成功、实际播放位置却没有改变。
+[P263|Normal] 八、P2：设置和交互一致性
+[P265|Normal] 逐一验证：
+[P267|Normal] - 字幕显示与隐藏。
+[P268|Normal] - 内嵌、外挂、AI 字幕切换。
+[P269|Normal] - 双语模式和语言顺序。
+[P270|Normal] - ASS 原生渲染开关。
+[P271|Normal] - 字幕字号、位置、透明度和描边。
+[P272|Normal] - 在线/离线翻译模式。
+[P273|Normal] - 播放速度、长按倍速和默认速度。
+[P274|Normal] - 自动播放下一集。
+[P275|Normal] - 播放进度恢复。
+[P276|Normal] - 背景播放、全屏和画中画。
+[P278|Normal] 每项设置都必须真正影响业务逻辑，不能只更新界面。
+[P280|Normal] 九、测试、构建和交付
+[P282|Normal] 必须执行
+[P284|Normal] 1. 检查现有测试、依赖版本、Android 权限和构建配置。
+[P285|Normal] 2. 为手势冲突、拖动取消、seek 状态和字幕分行编写回归测试。
+[P286|Normal] 3. 运行 "dart format"。
+[P287|Normal] 4. 运行 "flutter analyze"。
+[P288|Normal] 5. 运行 "flutter test"。
+[P289|Normal] 6. 构建 Android APK，并记录实际构建结果。
+[P290|Normal] 7. 检查是否存在未处理异常、重复渲染、资源泄漏和功能退化。
+[P291|Normal] 8. 有条件时在真实 Android 设备上测试；没有真机时必须明确标记未完成的验证。
+[P293|Normal] 最终交付
+[P295|Normal] - 已确认的 Bug 清单及原因。
+[P296|Normal] - 修改文件和关键改动说明。
+[P297|Normal] - 每项修复对应的测试结果。
+[P298|Normal] - 静态分析、测试和 APK 构建结果。
+[P299|Normal] - 尚未解决的问题及其限制。
+[P300|Normal] - 真机验收步骤。
+[P302|Normal] 禁止虚报测试通过，禁止只写修复计划而不执行代码修改。先完成代码审计，再按 P0、P1、P2 顺序修复，并在每个阶段验证后继续。保留现有数据库、用户数据和业务功能，不进行无关重构。

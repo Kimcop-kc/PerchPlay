@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.93+93
+version: 1.0.94+94
 homepage: https://github.com/Kimcop-kc/PerchPlay
 repository: https://github.com/Kimcop-kc/PerchPlay
 
@@ -73,6 +73,9 @@ dev_dependencies:
 dependency_overrides:
   flutter_inappwebview_android:
     path: local_packages/flutter_inappwebview_android
+  # shared_preferences_android 2.4+ 用 Pigeon coroutine API，部分 Android 设备
+  # 运行时 NoSuchMethodError: SharedPreferencesApiRegistrar.getAll(Continuation)
+  shared_preferences_android: 2.3.2
 
 # dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库。
 # 国内网络 / CI 环境可能拉不动，所以把 arm64 的 .so 放进仓库，
