@@ -18,32 +18,14 @@ import 'quark_drive_client.dart';
 /// v1.0.96 之前每种类型只有一个 client 槽（如 `_quark`），第二个同类型登录会
 /// 把第一个 dispose 掉，导致两个夸克不能同时用。现在改用 `Map<accountId, client>`
 /// 连接池，每个账号独立一个 client，切换不互相影响。
-///
-/// ## 代理
-/// 通过 [setProxy] / [proxy] 支持 HTTP 代理（如 `127.0.0.1:7897`），
-/// 解决某些网络环境下直接连接云盘失败的问题。所有 drive client 创建
-/// HttpClient 时会读取 [proxy] 并设置 findProxy。
 class CloudDriveService {
   CloudDriveService._();
   static final instance = CloudDriveService._();
 
   static const _kAccounts = 'cloud.accounts';
-  static const _kProxy = 'cloud.proxy';
 
   List<CloudDriveAccount> _accounts = [];
   List<CloudDriveAccount> get accounts => List.unmodifiable(_accounts);
-
-  /// HTTP 代理地址，形如 `127.0.0.1:7897`，空字符串表示不走代理。
-  String _proxy = '';
-  String get proxy => _proxy;
-
-  Future<void> setProxy(String value) async {
-    _proxy = value.trim();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kProxy, _proxy);
-    } catch (_) {}
-  }
 
   bool _loaded = false;
 
@@ -85,7 +67,6 @@ class CloudDriveService {
       }
       _aliyunClientId = prefs.getString('cloud.aliyunClientId') ?? '';
       _aliyunClientSecret = prefs.getString('cloud.aliyunClientSecret') ?? '';
-      _proxy = prefs.getString(_kProxy) ?? '';
     } catch (e) {
       debugPrint('[Cloud] 加载失败: $e');
     }

@@ -20,7 +20,6 @@ import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/common/app_page_header.dart';
-import '../../services/cloud/cloud_drive_service.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -112,9 +111,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         const SizedBox(height: 24),
                         _sectionHeader('存储与缓存'),
                         _buildStorageSettings(),
-                        const SizedBox(height: 24),
-                        _sectionHeader('网络'),
-                        _buildNetworkSettings(),
                         const SizedBox(height: 24),
                         if (device.brand.isChineseBrand)
                           _buildChineseRomOptimization(context, device),
@@ -759,150 +755,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
       );
     }
-  }
-
-  // ──────────── 网络 ────────────
-
-  Widget _buildNetworkSettings() {
-    final proxy = CloudDriveService.instance.proxy;
-    return GlassCard(
-      radius: GlassTheme.radiusMd,
-      tint: GlassTheme.tintWhite,
-      padding: EdgeInsets.zero,
-      child: _settingRow(
-        Icons.wifi_rounded,
-        'HTTP 代理',
-        trailing: Text(
-          proxy.isEmpty ? '未设置' : proxy,
-          style: const TextStyle(
-              color: GlassTheme.textTertiary, fontSize: 13),
-        ),
-        onTap: () => _showProxySheet(),
-      ),
-    );
-  }
-
-  void _showProxySheet() {
-    final controller = TextEditingController(
-        text: CloudDriveService.instance.proxy);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Container(
-          height: MediaQuery.of(context).size.height * 0.38,
-          decoration: const BoxDecoration(
-            color: GlassTheme.bg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 6),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: GlassTheme.textTertiary,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 6, 24, 4),
-                  child: Text('HTTP 代理地址',
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
-                  child: Text(
-                    '部分网络环境需代理才能连接云盘。\n修改后需重新打开云盘连接才会生效。',
-                    style: TextStyle(
-                        color: GlassTheme.textTertiary,
-                        fontSize: 12,
-                        height: 1.5),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    style: const TextStyle(
-                        fontSize: 15, color: GlassTheme.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: '例如 127.0.0.1:7897，留空则不使用代理',
-                      hintStyle: const TextStyle(
-                          fontSize: 13, color: GlassTheme.textTertiary),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(GlassTheme.radiusSm),
-                        borderSide: BorderSide(
-                            color: Colors.black.withValues(alpha: 0.1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(GlassTheme.radiusSm),
-                        borderSide: BorderSide(
-                            color: Colors.black.withValues(alpha: 0.1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(GlassTheme.radiusSm),
-                        borderSide: const BorderSide(
-                            color: GlassTheme.accentTeal),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.5),
-                    ),
-                    onChanged: (_) => setSheetState(() {}),
-                  ),
-                ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: GlassButton.outlined(
-                          label: '取消',
-                          height: 44,
-                          foregroundColor: GlassTheme.textSecondary,
-                          onTap: () => Navigator.pop(ctx),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: GlassButton.filled(
-                          label: '保存',
-                          height: 44,
-                          foregroundColor: GlassTheme.accentTeal,
-                          onTap: () async {
-                            await CloudDriveService.instance
-                                .setProxy(controller.text.trim());
-                            if (mounted) setState(() {});
-                            Navigator.pop(ctx);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// 「字幕样式」面板：字号 / 位置 / 背景 / 颜色 / 字体 / 对齐 / 双语样式。

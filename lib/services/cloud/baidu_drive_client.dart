@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../models/cloud_drive_model.dart';
-import 'cloud_drive_service.dart';
 
 /// 百度网盘客户端。
 ///
@@ -19,6 +18,8 @@ import 'cloud_drive_service.dart';
 /// 百度网盘的直链需要 VIP 才能高速下载，普通账号会被限速到几十 KB/s。
 /// 这里只负责「能列出、能取到链接」，速度取决于用户账号。
 class BaiduDriveClient {
+  BaiduDriveClient(this.account);
+
   final CloudDriveAccount account;
 
   static const String _api = 'https://pan.baidu.com/api';
@@ -30,16 +31,6 @@ class BaiduDriveClient {
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
-
-  BaiduDriveClient(this.account) {
-    _client.findProxy = _findProxyFn;
-  }
-
-  String Function(Uri) get _findProxyFn {
-    final p = CloudDriveService.instance.proxy;
-    if (p.isEmpty) return HttpClient.findProxyFromEnvironment;
-    return (Uri url) => 'PROXY $p';
-  }
 
   void dispose() => _client.close();
 
