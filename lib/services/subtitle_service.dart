@@ -272,27 +272,52 @@ class SubtitleService {
     final lines = content.split('\n');
     int index = 0;
     Duration? start;
+    Duration? end;
     String text = '';
 
     for (final line in lines) {
       if (line.contains('-->')) {
+        // 前一条闭合并入列
+        if (start != null) {
+          index++;
+          entries.add(SubtitleEntry(
+            index: index,
+            start: start,
+            end: end ?? const Duration(days: 1), // 上一行没 end，占位撑到片尾
+            text: text.trim(),
+          ));
+        }
         final parts = line.split('-->');
         if (parts.length < 2) continue;
         start = _parseVttTime(parts[0].trim());
+        end = _parseVttTime(parts[1].trim());
         text = '';
       } else if (line.trim().isEmpty && start != null) {
+        // 空行 = 本条结束
         index++;
         entries.add(SubtitleEntry(
           index: index,
           start: start,
-          end: Duration(seconds: 0), // simplified
+          end: end ?? const Duration(days: 1),
           text: text.trim(),
         ));
         start = null;
+        end = null;
         text = '';
       } else if (start != null) {
         text += '$line ';
       }
+    }
+
+    // 文件末尾没有空行时，最后一条也入列
+    if (start != null && text.trim().isNotEmpty) {
+      index++;
+      entries.add(SubtitleEntry(
+        index: index,
+        start: start,
+        end: end ?? const Duration(days: 1),
+        text: text.trim(),
+      ));
     }
 
     return entries;

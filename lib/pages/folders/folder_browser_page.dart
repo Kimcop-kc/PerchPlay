@@ -255,9 +255,9 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             ),
           ),
           const SizedBox(height: 18),
-          // 第一行：切换器 +（返回）+ 视图切换 —— 右端固定 排序/筛选/刷新。
-          // 排序/筛选/刷新必须是最右三个，与「全部视频」页完全对齐；
-          // 视图切换（宫格/列表）放到左侧，否则会把三个控件挤离右端。
+          // 第一行：左侧 切换器 +（返回），右侧固定 排序/筛选/刷新/视图切换。
+          // 右侧四个控件全部靠最右排列（Spacer 撑开），与「全部视频」页的
+          // 排序/筛选/刷新位置保持一致，切换视图时不会左右跳动。
           Row(
             children: [
               _buildViewSwitcher(),
@@ -271,19 +271,8 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                   onTap: _navigateUp,
                 ),
               ],
-              const SizedBox(width: 8),
-              // 宫格/列表切换：属于"展示方式"，放在左侧工具区
-              GlassButton(
-                icon: _gridView
-                    ? Icons.view_list_rounded
-                    : Icons.grid_view_rounded,
-                compact: true,
-                ghost: true,
-                foregroundColor: GlassTheme.textSecondary,
-                onTap: () => setState(() => _gridView = !_gridView),
-              ),
               const Spacer(),
-              // 右端三个控件：与「全部视频」页顺序、间距完全一致
+              // 右端四个控件：排序 / 筛选 / 刷新 / 视图切换
               _buildSortMenu(),
               _buildFilterMenu(),
               IconButton(
@@ -292,6 +281,15 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 tooltip: '刷新',
                 onPressed: () => _navigate(
                     _currentPath.isNotEmpty ? _currentPath : _rootPath),
+              ),
+              GlassButton(
+                icon: _gridView
+                    ? Icons.view_list_rounded
+                    : Icons.grid_view_rounded,
+                compact: true,
+                ghost: true,
+                foregroundColor: GlassTheme.textSecondary,
+                onTap: () => setState(() => _gridView = !_gridView),
               ),
             ],
           ),

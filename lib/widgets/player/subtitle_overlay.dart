@@ -397,7 +397,9 @@ class SubtitleOverlay extends StatelessWidget {
         maxLines: 1,
         textDirection: TextDirection.ltr,
       )..layout();
-      return painter.width <= maxWidth;
+      final w = painter.width;
+      painter.dispose();
+      return w <= maxWidth;
     }
 
     if (fits(base)) return base;

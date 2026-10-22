@@ -103,6 +103,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadVideo();
+      // 捕获系统真实亮度作为起点，避免"硬编码 0.5 → 真实值 0.9"的跳变
+      ref.read(playerProvider.notifier).captureSystemBrightness();
       _startAutoHideTimer();
       _checkPipSupport();
     });
@@ -485,35 +487,39 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   bottom: _subtitleBottom(isLarge),
                   left: isLarge ? 40 : 20,
                   right: isLarge ? 40 : 20,
-                  child: SubtitleOverlay(
-                    lines: hasPrimary ? live.currentSubtitleLines : const [],
-                    secondaryLines: embeddedSecondary
-                        ? live.secondarySubtitleLines
-                        : const [],
-                    entries:
-                        externalSecondary ? live.secondaryEntries! : const [],
-                    activeIndex:
-                        externalSecondary ? live.secondarySubtitleIndex : -1,
-                    fontSize: _subtitleFontSize(isLarge),
-                    fontFamily: _settings.subtitleFontFamily,
-                    fontWeightIndex: _settings.subtitleFontWeight,
-                    lineHeight: _settings.subtitleLineHeight,
-                    lineSpacing: _settings.subtitleLineSpacing,
-                    bgOpacity: _settings.subtitleBgOpacity,
-                    bgColor: Color(_settings.subtitleBgColorValue),
-                    showBg: _settings.subtitleShowBg,
-                    bgRadius: _settings.subtitleBgRadius,
-                    textColor: Color(_settings.subtitleTextColorValue),
-                    stroke: _settings.subtitleStroke,
-                    secondaryScale: _settings.subtitleSecondaryScale,
-                    secondaryDim: _settings.subtitleSecondaryDim,
-                    align: _subtitleAlign(_settings.subtitleAlign),
-                    primaryAssEntry: _primaryAssEntry(live),
-                    useAssPosition: _settings.subtitleUseAssPosition,
-                    // 已选第二字幕轨道 → 双字幕模式：主/副各占固定槽位，
-                    // 避免某一路短暂为空时另一路"降下来"单行显示。
-                    dualMode: live.secondaryTrackId != null ||
-                        live.secondarySubtitle != null,
+                  // IgnorePointer：字幕文字不能吞掉手势（单击唤控件、双击暂停、
+                  // 长按加速），否则点在字幕上时下层 PlayerGestureLayer 收不到事件。
+                  child: IgnorePointer(
+                    child: SubtitleOverlay(
+                      lines: hasPrimary ? live.currentSubtitleLines : const [],
+                      secondaryLines: embeddedSecondary
+                          ? live.secondarySubtitleLines
+                          : const [],
+                      entries:
+                          externalSecondary ? live.secondaryEntries! : const [],
+                      activeIndex:
+                          externalSecondary ? live.secondarySubtitleIndex : -1,
+                      fontSize: _subtitleFontSize(isLarge),
+                      fontFamily: _settings.subtitleFontFamily,
+                      fontWeightIndex: _settings.subtitleFontWeight,
+                      lineHeight: _settings.subtitleLineHeight,
+                      lineSpacing: _settings.subtitleLineSpacing,
+                      bgOpacity: _settings.subtitleBgOpacity,
+                      bgColor: Color(_settings.subtitleBgColorValue),
+                      showBg: _settings.subtitleShowBg,
+                      bgRadius: _settings.subtitleBgRadius,
+                      textColor: Color(_settings.subtitleTextColorValue),
+                      stroke: _settings.subtitleStroke,
+                      secondaryScale: _settings.subtitleSecondaryScale,
+                      secondaryDim: _settings.subtitleSecondaryDim,
+                      align: _subtitleAlign(_settings.subtitleAlign),
+                      primaryAssEntry: _primaryAssEntry(live),
+                      useAssPosition: _settings.subtitleUseAssPosition,
+                      // 已选第二字幕轨道 → 双字幕模式：主/副各占固定槽位，
+                      // 避免某一路短暂为空时另一路"降下来"单行显示。
+                      dualMode: live.secondaryTrackId != null ||
+                          live.secondarySubtitle != null,
+                    ),
                   ),
                 );
               },

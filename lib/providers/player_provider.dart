@@ -315,6 +315,37 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 播放引擎关键参数健壮性兜底：容器/音视频轨道异常时自动跳过坏流，
   /// 同时配置 HDR 色调映射，让 HDR10/HLG 视频在 SDR 屏幕上正确显示。
+  /// 按视频来源设置「每文件」mpv 选项（缓存 / demuxer / 网络超时）。
+  ///
+  /// 为什么必须单独抽出来：`cache`、`cache-on-disk`、`demuxer-max-bytes`、
+  /// `demuxer-max-back-bytes`、`network-timeout` 都是 mpv 的**每文件选项**，
+  /// 在 `open()` 时读取。原来它们只在 open 之后设置，等于永远慢一部——
+  /// 本地片切网盘/NAS 时仍用着 `cache=no` + 5s 超时（卡顿、频繁重连），
+  /// 网络片切本地时反而背着磁盘缓存。
+  ///
+  /// 这里在 open 前同步设置一次（不 await，mpv 属性设置是排队生效的），
+  /// open 之后 applyRobustPlayback 会再设一遍兜底。
+  void _applyOptionsForSource(String path) {
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+    final remote = LibraryPruneService.isRemotePath(path);
+    // 逐条 fire-and-forget：open 前不能 await（会把打开推迟到设置完成之后）
+    platform.setProperty('cache', remote ? 'yes' : 'no').catchError((_) {});
+    platform
+        .setProperty('cache-on-disk', remote ? 'yes' : 'no')
+        .catchError((_) {});
+    platform
+        .setProperty('demuxer-max-bytes', remote ? '134217728' : '33554432')
+        .catchError((_) {});
+    platform
+        .setProperty(
+            'demuxer-max-back-bytes', remote ? '134217728' : '33554432')
+        .catchError((_) {});
+    platform
+        .setProperty('network-timeout', remote ? '15' : '5')
+        .catchError((_) {});
+  }
+
   Future<void> applyRobustPlayback() async {
     try {
       final platform = state.player.platform;
@@ -397,6 +428,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   DateTime? _lastPosEmitAt;
 
   /// 后台播放前台服务是否已启动（避免重复调用）
+  ///
+  /// 注意：此处仅反映「主动要求服务保持运行」的意愿；
+  /// 停止播放时用 [_forceShutdownBackgroundService] 无条件消亡，
+  /// 避免暂停→关小窗的路径让 flag 被置为 false 导致通知永远不消失。
   bool _bgServiceOn = false;
 
   /// 根据「后台播放」设置与播放状态启停前台服务
@@ -415,12 +450,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 停止播放时关掉前台服务（在 stop()/dispose 路径调用）
-  void _shutdownBackgroundService() {
-    if (!Platform.isAndroid || !_bgServiceOn) return;
+  /// 无条件停止前台播放通知，不检查 [_bgServiceOn] flag。
+  ///
+  /// stop()/dispose() 走过暂停→关小窗路径时，flag 可能已经被
+  /// _syncBackgroundService(false) 置为 false（:434-438 为了保护暂停不杀服务），
+  /// 导致旧的 _shutdownBackgroundService() 因为 flag==false 直接 return。
+  /// 这里幂等调用 stopBackgroundService() 确保通知清掉。
+  void _forceShutdownBackgroundService() {
+    if (!Platform.isAndroid) return;
     _bgServiceOn = false;
     NativeBridgeService.instance.stopBackgroundService();
   }
+
+  /// 停止播放时关掉前台服务（在 stop()/dispose 路径调用）
+  ///
+  /// 已废弃：改用 [_forceShutdownBackgroundService] 无条件停止。
+  /// 保留此注释防止有人重新引入 flag 检查版本。
 
   void _setupListeners() {
     state.player.stream.position.listen((pos) {
@@ -605,6 +650,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     int? startIndex,
   }) async {
     final token = ++_loadToken;
+    // 作废在途 seek：换片瞬间上一次 seek 可能还在 await 里，
+    // 它回来时会拿新片的位置去写 state（把上一部的时间写进新片）。
+    ++_seekToken;
     // 丢弃上一部的 pending resume（可能来自旧 duration 事件尾抛）
     _pendingResume = null;
     _pendingResumeLoadId = 0;
@@ -615,14 +663,28 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final stored = await _db.getVideoByPath(video.path);
       if (stored != null) effective = stored;
     } catch (_) {}
+    // await 之后必须先确认这次 load 还是最新的：
+    // 连点「下一集」时，第一次 load 的 Future 可能晚于第二次完成，
+    // 若继续往下走会把旧片写进 state（进度写错行、标题/队列全错）。
+    if (token != _loadToken) return;
+
+    // 关键：缓存/解码类 mpv 选项是「每文件」的，必须在 open() 之前设置，
+    // 否则本次 open 读到的仍是上一部留下的配置（网络源拿不到 cache、
+    // 本地片反而背磁盘缓存）。这里在 open 前先按本片来源应用一次。
+    _applyOptionsForSource(video.path);
 
     await state.player.open(Media(video.path));
+    if (token != _loadToken) return;
+
     state = state.copyWith(
       currentVideo: effective,
       queue: queue ?? [effective],
       currentIndex: startIndex ?? 0,
       isCompleted: false,
       position: Duration.zero,
+      // 必须清零时长：否则新 duration 事件到达前，旧片时长会参与
+      // seek 钳位 / nearEnd 判断 / durationMs 落库（把旧时长永久写进新片）。
+      duration: Duration.zero,
       speed: AppSettingsService.instance.defaultSpeed,
       // 换片时清掉上一部的字幕状态（内嵌轨道会由 tracks 流重新推送）
       clearActiveSubtitle: true,
@@ -648,6 +710,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
     await applyDecodingMode();
     await applyRobustPlayback();
+    if (token != _loadToken) return;
 
     // 应用默认播放速度
     await state.player.setRate(AppSettingsService.instance.defaultSpeed);
@@ -766,11 +829,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     switch (pick.kind) {
       case SubtitlePickKind.rememberedEmbedded:
-        await _restoreEmbeddedTrack(pick.trackId);
+        await _restoreEmbeddedTrack(pick.trackId, token);
       case SubtitlePickKind.embeddedPreferred:
         // 片源自带内嵌字幕：不自动挂外挂（外挂仍在字幕列表里，想用可以手动选）
         return;
       case SubtitlePickKind.rememberedOff:
+        // 用户上次主动关掉了字幕：必须显式设 no track，否则 mpv 换文件会按
+        // default/forced flag 自动选内嵌轨 → 画面有字幕、面板却勾着「关闭」。
+        await _disableAllSubtitleTracks();
+        return;
       case SubtitlePickKind.none:
         return;
       case SubtitlePickKind.rememberedFile:
@@ -782,12 +849,29 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           path,
           language: candidate?.language,
           title: candidate?.title,
+          token: token,
         );
     }
   }
 
+  /// 显式关闭所有字幕轨道，阻止 mpv 换文件后按 default/forced flag 自动启用。
+  Future<void> _disableAllSubtitleTracks() async {
+    try {
+      await state.player.setSubtitleTrack(SubtitleTrack.no());
+      await _disableMpvSubtitleRendering();
+    } catch (e) {
+      debugPrint('[Subtitle] 关闭所有字幕失败: $e');
+    }
+    state = state.copyWith(
+      clearActiveSubtitle: true,
+      clearTrackId: true,
+      subtitleEntries: null,
+      activeSubtitleIndex: 0,
+    );
+  }
+
   /// 按记忆选中内嵌字幕轨（不写记忆：这是恢复，不是用户的新选择）
-  Future<void> _restoreEmbeddedTrack(String? trackId) async {
+  Future<void> _restoreEmbeddedTrack(String? trackId, int token) async {
     if (trackId == null) return;
     SubtitleTrack? track;
     for (final t in _currentEmbeddedTracks()) {
@@ -798,6 +882,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
     // 期间轨道变了（重新探测/换片）：不猜，宁可什么都不挂
     if (track == null) return;
+    if (token != _loadToken) return;
     await _applyEmbeddedSubtitle(track);
   }
 
@@ -805,11 +890,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> stop() async {
     // 先落盘进度，再停止
     await _persistProgress();
+    // 恢复系统亮度：播放页左半屏下滑把亮度调暗后，必须恢复
+    await _restoreBrightness();
     try {
       await state.player.stop();
     } catch (_) {}
-    // 停止播放后不再需要前台服务（否则通知会一直挂着耗电）
-    _shutdownBackgroundService();
+    // 停止播放后不再需要前台服务（无条件关，就算状态不对也关到位）
+    _forceShutdownBackgroundService();
     // 恢复后台任务（缩略图/刮削）
     PlaybackBusy.playing = false;
     state = state.copyWith(
@@ -889,6 +976,37 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (e) {
       // ignore: avoid_print
       print('[Brightness] 设置系统亮度失败: $e');
+    }
+  }
+
+  /// 进播放页时存系统真实亮度（0-1），退出时用它恢复。
+  ///
+  /// 之前 `brightness` 默认值硬编码为 0.5，进播放页第一次下滑亮度
+  /// 会从真实值（如 90%）瞬间跳到 50%，视觉上是一闪。
+  /// 这里读取一次系统真实值作为起点。
+  /// 失败（权限/无传感器）用 0.5 作为兜底。
+  double? _savedSystemBrightness;
+  Future<void> captureSystemBrightness() async {
+    try {
+      _savedSystemBrightness = await ScreenBrightness().application;
+    } catch (_) {
+      _savedSystemBrightness = null;
+    }
+    if (_savedSystemBrightness != null &&
+        state.currentVideo != null &&
+        state.brightness == 0.5) {
+      // 用真实值替换硬编码默认值；若用户设过且不等于 0.5 则不动
+      state = state.copyWith(brightness: _savedSystemBrightness!);
+    }
+  }
+
+  /// 退出播放/关闭小窗时恢复系统亮度（由 stop()/dispose() 调用）。
+  Future<void> _restoreBrightness() async {
+    try {
+      await ScreenBrightness().resetApplicationScreenBrightness();
+      debugPrint('[Brightness] 系统亮度已恢复');
+    } catch (e) {
+      debugPrint('[Brightness] 恢复系统亮度失败: $e');
     }
   }
 
@@ -1002,7 +1120,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     String? title,
     String? language,
   }) async {
-    await _applyExternalSubtitle(path, title: title, language: language);
+    await _applyExternalSubtitle(path,
+        title: title, language: language, token: _loadToken);
     // 只有手动选择才写记忆：自动挂载如果也写，等于把自动挑的结果
     // 伪装成用户意愿，下次"恢复"的其实是自己猜的东西
     await _rememberSubtitleChoice(path);
@@ -1013,7 +1132,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     String path, {
     String? title,
     String? language,
+    required int token,
   }) async {
+    if (token != _loadToken) return;
     try {
       await state.player.setSubtitleTrack(
         SubtitleTrack.uri(path, title: title, language: language),
@@ -1022,12 +1143,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (e) {
       debugPrint('[Subtitle] 载入外挂字幕失败: $e');
     }
+    if (token != _loadToken) return;
     final model = SubtitleModel(
       path: path,
       language: language ?? '外挂字幕',
       title: title ?? path.split('/').last,
     );
     final entries = await _parseSubtitle(model);
+    if (token != _loadToken) return;
     state = state.copyWith(
       activeSubtitle: model,
       clearTrackId: true,
@@ -1229,8 +1352,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   @override
   void dispose() {
-    // 释放播放器时也要收掉前台服务，否则退出后通知残留
-    _shutdownBackgroundService();
+    // 恢复系统亮度 + 收掉前台通知
+    _restoreBrightness();
+    _forceShutdownBackgroundService();
     state.player.dispose();
     super.dispose();
   }
