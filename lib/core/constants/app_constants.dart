@@ -3,8 +3,9 @@ class AppConstants {
 
   static const String appName = 'PerchPlay';
 
-  /// 显示版本号：与 pubspec 的 version 保持一致，方便真机确认装的是哪一版
-  static const String appVersion = '1.0.83';
+  /// 版本号不再硬编码：应用内更新/关于页从系统读真实版本号，
+  /// 见 services/app_version.dart（package_info_plus）。
+  /// 这里保留注释说明，避免后人又加回一个会脱节的常量。
 
   // 支持的视频格式
   static const List<String> supportedVideoFormats = [

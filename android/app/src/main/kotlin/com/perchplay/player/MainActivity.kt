@@ -381,6 +381,12 @@ class MainActivity : FlutterActivity() {
                         result.success(notifyMediaDeleted(path))
                     }
 
+                    // ── 应用内更新：安装已下载的 APK ──
+                    "installApk" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        result.success(installApk(path))
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -627,6 +633,42 @@ class MainActivity : FlutterActivity() {
             true
         } catch (e: Exception) {
             Log.w("PerchPlay", "notify media deleted failed", e)
+            false
+        }
+    }
+
+    // ──────────────────────────────
+    // 应用内更新：安装 APK
+    // ──────────────────────────────
+
+    /**
+     * 用系统安装器安装已下载到缓存目录的 APK。
+     *
+     * APK 由 Dart 侧（UpdateService）下载到 `cacheDir/updates` 目录下的 .apk，
+     * 通过 FileProvider 转成 content:// URI 交给系统 PackageInstaller。
+     *
+     * Android 7.0+ 必须走 FileProvider（直接 file:// 会触发
+     * FileUriExposedException）。
+     */
+    private fun installApk(path: String): Boolean {
+        if (path.isEmpty()) return false
+        return try {
+            val file = java.io.File(path)
+            if (!file.exists()) return false
+            val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "install apk failed", e)
             false
         }
     }

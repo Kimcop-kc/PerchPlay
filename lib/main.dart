@@ -12,6 +12,7 @@ import 'core/theme/glass_theme.dart';
 import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
 import 'services/native_bridge_service.dart';
+import 'services/app_version.dart';
 
 /// 应用根组件是否已成功挂载。
 /// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
@@ -58,6 +59,13 @@ void main() async {
     await AppSettingsService.instance.ensureLoaded();
   } catch (e) {
     debugPrint('[PerchPlay] Settings load failed: $e');
+  }
+
+  // 读取真实版本号（应用内更新/关于页展示用）
+  try {
+    await AppVersion.ensureLoaded();
+  } catch (e) {
+    debugPrint('[PerchPlay] Version load failed: $e');
   }
 
   // 方向策略：手机锁竖屏，平板跟随物理方向。

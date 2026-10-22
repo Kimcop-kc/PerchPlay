@@ -204,6 +204,21 @@ class NativeBridgeService {
     }
   }
 
+  // ──────────── 应用内更新 ────────────
+
+  /// 用系统安装器安装已下载的 APK（路径在应用缓存目录内）。
+  Future<bool> installApk(String path) async {
+    if (kIsWeb || !Platform.isAndroid) return false;
+    try {
+      final ok = await _channel.invokeMethod<bool>('installApk', {
+        'path': path,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ──────────── 设备信息 ────────────
 
   Future<String> getDeviceModel() async {

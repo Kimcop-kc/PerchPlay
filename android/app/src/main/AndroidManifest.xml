@@ -29,6 +29,9 @@
     <!-- 电池优化豁免 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- 应用内更新：安装 APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:requestLegacyExternalStorage="true"
         android:label="PerchPlay"
@@ -85,6 +88,17 @@
             android:name=".BackgroundAudioService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 应用内更新：FileProvider 提供下载的 APK 给系统安装器 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.perchplay.player.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <meta-data
             android:name="flutterEmbedding"

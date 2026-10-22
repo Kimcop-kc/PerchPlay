@@ -2,13 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/storage_manager.dart';
+import '../../services/update_service.dart';
+import '../../services/app_version.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/ui_settings_provider.dart';
@@ -1427,12 +1428,111 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   fontSize: 20,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('v${AppConstants.appVersion}',
+          Text('v${AppVersion.display}',
               style: const TextStyle(
                   color: GlassTheme.textTertiary, fontSize: 12)),
+          const SizedBox(height: 16),
+          // 检查更新
+          GlassButton.outlined(
+            icon: Icons.system_update_rounded,
+            label: '检查更新',
+            width: double.infinity,
+            height: 40,
+            foregroundColor: GlassTheme.accentPurple,
+            onTap: _checkForUpdate,
+          ),
         ],
       ),
     );
+  }
+
+  /// 检查更新：查询 GitHub 最新 release，有新版则引导下载安装。
+  Future<void> _checkForUpdate() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final svc = UpdateService.instance;
+
+    // 先提示检查中
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在检查更新…'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    final info = await svc.checkForUpdate();
+    if (!mounted) return;
+
+    if (!info.hasUpdate) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('已是最新版本'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // 有新版本：弹确认框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GlassTheme.bg,
+        title: const Text('发现新版本',
+            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
+        content: Text(
+          '当前 v${AppVersion.display}\n最新 v${info.latestVersion}\n\n是否立即下载并安装？',
+          style: const TextStyle(
+              color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: GlassTheme.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('下载',
+                style: TextStyle(color: GlassTheme.accentPurple)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // 下载（带进度提示）
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('正在下载更新包…'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    final path = await svc.downloadApk(info.downloadUrl);
+    if (!mounted) return;
+
+    if (path == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('下载失败，请检查网络后重试'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // 触发系统安装器
+    final ok = await svc.installApk(path);
+    if (!mounted) return;
+
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('无法调起安装器，请手动安装'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   // ─── Setting Row Helpers ───

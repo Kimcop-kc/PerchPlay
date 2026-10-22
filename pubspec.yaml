@@ -1,7 +1,7 @@
 name: perchplay
 description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
-version: 1.0.90+90
+version: 1.0.91+91
 homepage: https://github.com/Kimcop-kc/PerchPlay
 repository: https://github.com/Kimcop-kc/PerchPlay
 
@@ -35,6 +35,8 @@ dependencies:
   sqflite: ^2.4.0
   shared_preferences: ^2.5.0
   path_provider: ^2.1.5
+  # 应用内更新：从系统读真实版本号/版本代码（避免手动同步硬编码常量）
+  package_info_plus: ^8.0.0
   # 升级 Flutter 3.47 后 flutter_test 要求 path ^1.9.1（原 1.9.0 版本解析冲突）
   path: ^1.9.1
 
