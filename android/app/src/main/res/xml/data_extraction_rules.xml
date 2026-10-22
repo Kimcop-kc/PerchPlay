@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ 的备份/恢复规则（dataExtractionRules）。
+
+  为什么需要：应用用 SharedPreferences 存全部设置（播放/字幕/界面/刮削）。
+  之前只有 android:allowBackup="true" 而没有 dataExtractionRules，
+  Android 12+ 会用系统默认规则；部分 ROM 在云备份恢复、应用迁移、
+  「清理缓存」等场景下会连带清掉 SharedPreferences，
+  表现为「关闭应用再打开，所有设置都重置」。
+
+  合法 domain 只有：file / database / sharedpref / external / root
+  （cache 目录系统本来就不备份，无需显式排除）
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- 设置（SharedPreferences）必须备份 -->
+        <include domain="sharedpref" path="." />
+        <!-- 影库、播放列表、播放进度、刮削缓存 -->
+        <include domain="database" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="." />
+        <include domain="database" path="." />
+    </device-transfer>
+</data-extraction-rules>

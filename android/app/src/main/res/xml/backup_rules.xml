@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 及以下的备份规则（fullBackupContent）。
+  与 data_extraction_rules.xml 配合：Android 12+ 用后者，
+  Android 11 及以下用这个，保证设置在各版本都能被正确备份/恢复。
+
+  合法 domain 只有：file / database / sharedpref / external / root
+  （cache 目录系统本来就不备份，无需显式排除）
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+    <include domain="database" path="." />
+</full-backup-content>
