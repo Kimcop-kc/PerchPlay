@@ -116,15 +116,14 @@ class CloudDriveService {
 
   /// 建立某账号的连接（返回昵称，null = 失败）。
   ///
-  /// 同一个 accountId 重复调用会复用已有连接；切换其他账号不会
-  /// dispose 当前连接，可以同时浏览两个盘。
+  /// 每次都会重建 client：Cookie / token 可能在外部（WebView 重新登录）更新，
+  /// 复用旧 client 会一直拿着过期的凭证。重建成本只是 new 一个对象 +
+  /// 一次网络请求，可以接受。
+  ///
+  /// 注：这里原来有个 `if (existing != null) return _connectClient(acc);`
+  /// 的分支，但它和 else 走的是同一句，等于「看起来在复用、其实每次重建」。
+  /// 已删掉那个误导性的判断。
   Future<String?> connect(CloudDriveAccount acc) async {
-    // 已有连接且账号没变则复用
-    final existing = _clients[acc.id];
-    if (existing != null) {
-      // 快速检查连接是否还活着
-      return _connectClient(acc);
-    }
     return _connectClient(acc);
   }
 
@@ -136,7 +135,9 @@ class CloudDriveService {
 
   Future<String?> _connectClient(CloudDriveAccount acc) async {
     // 先 dispose 旧的同 id client
-    try { (_clients[acc.id] as dynamic).dispose(); } catch (_) {}
+    try {
+      (_clients[acc.id] as dynamic).dispose();
+    } catch (_) {}
     _clients.remove(acc.id);
 
     dynamic client;
@@ -159,8 +160,15 @@ class CloudDriveService {
         break;
     }
 
-    final nick = await client.connect();
+    // ⚠ 先注册再 connect，而不是等 connect 成功后才注册。
+    //
+    // 原因：`connect()` 失败时（典型是 Cookie 过期 → errno=-6），
+    // 我们需要通过 [lastErrorHint] 把失败的 client 上记录的 errno 读出来。
+    // 原来存的是「connect 成功才放进 _clients」，失败路径下 client 根本没
+    // 入表，lastErrorHint 永远返回空串，UI 只能退化成笼统提示 ——
+    // 那条按 errno 区分原因的修复等于白做。
     _clients[acc.id] = client;
+    final nick = await client.connect();
     return nick;
   }
 
@@ -207,8 +215,20 @@ class CloudDriveService {
           return '请求参数错误，请重新添加云盘。';
         default:
           if (errno != null) {
-            return '百度返回错误码 $errno${c.lastErrmsg.isEmpty ? '' : '：${c.lastErrmsg}'}';
+            return '百度返回错误码 $errno'
+                '${c.lastErrmsg.isEmpty ? '' : '：${c.lastErrmsg}'}';
           }
+      }
+    }
+    if (c is QuarkDriveClient) {
+      final errno = c.lastErrno;
+      if (errno != null) {
+        // 夸克常见的认证失效码
+        if (errno == 31001 || errno == 401 || errno == 403) {
+          return '夸克账号登录已过期。请删除该云盘后重新添加并完成登录。';
+        }
+        return '夸克返回错误码 $errno'
+            '${c.lastErrmsg.isEmpty ? '' : '：${c.lastErrmsg}'}';
       }
     }
     return '';

@@ -492,6 +492,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 缓冲看门狗定时器（见 [_startBufferWatchdog]）
   Timer? _bufferWatchdog;
 
+  /// 看门狗代次：每次重新起计时递增。
+  ///
+  /// 用来丢弃「过期」的回调。典型场景：上一部片在缓冲、看门狗已起计时，
+  /// 此时用户切到下一部 —— 旧定时器如果不作废，8 秒后会在**新视频**上
+  /// 误弹「网盘限速」提示。
+  int _bufferWatchdogId = 0;
+
   /// 根据「后台播放」设置与播放状态启停前台服务
   void _syncBackgroundService(bool playing) {
     if (!Platform.isAndroid) return;
@@ -530,7 +537,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 超过 8 秒还没出画基本都是源端吞吐不够。
   void _startBufferWatchdog() {
     _bufferWatchdog?.cancel();
+    final id = ++_bufferWatchdogId;
     _bufferWatchdog = Timer(const Duration(seconds: 8), () {
+      // 代次不匹配说明这期间已经换片/重新起计时了，丢弃这次回调
+      if (id != _bufferWatchdogId) return;
       if (!state.isBuffering) return;
       final path = state.currentVideo?.path ?? '';
       final isCloud = path.contains('quark.cn') ||
@@ -792,6 +802,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 否则本次 open 读到的仍是上一部留下的配置（网络源拿不到 cache、
     // 本地片反而背磁盘缓存）。这里在 open 前先按本片来源应用一次。
     _applyOptionsForSource(video.path);
+
+    // 换片：作废上一部遗留的缓冲看门狗与慢源提示，
+    // 否则旧定时器可能在新视频上误报「网盘限速」。
+    _bufferWatchdog?.cancel();
+    _bufferWatchdog = null;
+    ++_bufferWatchdogId;
+    if (state.isSlowSource) {
+      state = state.copyWith(isSlowSource: false, slowSourceHint: '');
+    }
 
     try {
       // 网盘播放需要自定义请求头（Cookie / User-Agent / Referer / Authorization）。

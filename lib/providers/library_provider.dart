@@ -59,7 +59,19 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       _thumbPending.clear();
       _thumbInFlight.clear();
     });
-    // 先返回数据库中的缓存
+
+    // 播放进度落库后递增版本号 → 这里从 DB 重新读一遍。
+    //
+    // 为什么必须这么做：首页卡片的进度条读的是「本 provider 缓存里的
+    // VideoModel.lastPosition」。播放页退出时只递增版本号（不 invalidate
+    // provider，避免 widget 树销毁期重建崩溃），如果这里不监听版本号，
+    // 首页进度条会一直停在旧值 —— 也就是用户反馈的
+    // 「从首页进去没有历史进度」。
+    //
+    // 注意只重读 DB，不重新扫描文件系统：重扫是重活，而进度变化不涉及
+    // 文件增删，读库就够。
+    ref.watch(playbackVersionProvider);
+
     final cached = await _db.getAllVideos();
     if (cached.isNotEmpty) return cached;
     return [];

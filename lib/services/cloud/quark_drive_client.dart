@@ -148,11 +148,17 @@ class QuarkDriveClient {
     }
   }
 
-/// 取直链。
+  /// 最近一次失败的说明（供 UI 展示真实原因）。
+  String lastErrmsg = '';
+  int? lastErrno;
+
+  /// 取直链。
   ///
   /// 夸克的直链有时效（约几小时），播放前现取即可。
   /// 增加重试机制，网络抖动时提高成功率。
   Future<String?> getDownloadUrl(String fid) async {
+    lastErrno = null;
+    lastErrmsg = '';
     int retryCount = 0;
     const maxRetries = 2;
     
@@ -171,6 +177,23 @@ class QuarkDriveClient {
           final body = await resp.transform(utf8.decoder).join();
           final j = jsonDecode(body);
           if (j is Map) {
+            // ⚠ 必须先看业务错误码 code（0 = 成功）。
+            // 原来只在「拿到 data 里的 download_url」时返回，失败时静默落进
+            // 重试循环，最后统一返回 null —— 用户只看到「直链获取失败」，
+            // 完全不知道是 Cookie 过期、文件不存在还是被限速。
+            final code = j['code'];
+            final codeInt = (code is num) ? code.toInt() : null;
+            if (codeInt != null && codeInt != 0) {
+              lastErrno = codeInt;
+              lastErrmsg =
+                  j['message']?.toString() ?? j['msg']?.toString() ?? '';
+              debugPrint('[Quark] 取直链业务错误 code=$codeInt msg=$lastErrmsg');
+              // 认证/权限类错误重试无意义，直接失败
+              if (codeInt == 31001 || codeInt == 401 || codeInt == 403) {
+                return null;
+              }
+              // 其它错误（如瞬时限流）仍走下面的重试
+            }
             final data = j['data'];
             if (data is List && data.isNotEmpty) {
               final first = data.first;
@@ -183,6 +206,8 @@ class QuarkDriveClient {
         } else if (resp.statusCode == 403 || resp.statusCode == 401) {
           // 认证失败，不重试
           debugPrint('[Quark] 取直链认证失败 HTTP ${resp.statusCode}');
+          lastErrno = resp.statusCode;
+          lastErrmsg = 'HTTP ${resp.statusCode}';
           return null;
         }
         

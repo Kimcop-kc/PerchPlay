@@ -575,6 +575,13 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       final url = await _svc.getDownloadUrl(acc.id, f.id);
       if (!mounted) return;
       if (url == null || url.isEmpty) {
+        // 优先用后端记录的精确原因（如「夸克返回错误码 31001：登录已过期」），
+        // 拿不到再退回按网盘类型的经验性提示。
+        final precise = _svc.lastErrorHint(acc.id);
+        if (precise.isNotEmpty) {
+          _snack(precise);
+          return;
+        }
         // 根据网盘类型给出更具体的错误提示
         String errorMsg = '取播放地址失败。';
         switch (acc.type) {

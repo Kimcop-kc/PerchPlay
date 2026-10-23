@@ -89,9 +89,14 @@ class AliyunDriveClient {
       return _cachedToken;
     }
 
-    // 4) 最后兜底：如果本地有 access_token，即使验证失败也交给上层再试一次
-    //    （有些接口路径对 token 的校验不同，比如列目录失败但下载可用）
-    if (_cachedToken.isNotEmpty) return _cachedToken;
+    // 到这里说明：本地 access_token 验证失败，且 refresh_token 也换不到新的。
+    //
+    // 这里**不能**再把那个已失效的 token 交给上层。原来有个
+    // `if (_cachedToken.isNotEmpty) return _cachedToken;` 的兜底，
+    // 结果是上层拿一个必然失败的 token 去发请求，最终只看到
+    // 「列目录失败」这种含糊错误，真正原因（token 失效）被掩盖了。
+    // 直接返回 null，让调用方明确知道「没有可用凭证」。
+    debugPrint('[Aliyun] 无可用 token（本地已失效且刷新失败）');
     return null;
   }
 
