@@ -102,7 +102,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     OrientationPolicy.applyPlayer(
       orientation: AppSettingsService.instance.playerOrientation,
     );
-    // 沉浸式状态栏：黑色背景 + 透明状态栏 + 白色图标（否则深色图标在黑底看不清）
+    // 播放页默认就是「沉浸式」：状态栏/导航栏都收起来。
+    //
+    // 这里必须**同时**做两件事，缺一不可：
+    //  1) applyImmersive()：调 setEnabledSystemUIMode(immersiveSticky)，
+    //     真正把状态栏/导航栏从屏幕上隐藏掉；
+    //  2) _applyPlayerFullscreenUi()：设样式（透明底 + 白色图标）。
+    //
+    // 之前只做了第 2 步，结果是 `statusBarColor: transparent` 让状态栏底
+    // 变透明，但**状态栏本身还在**——在 edgeToEdge 模式下它仍然占据屏幕
+    // 顶部空间并显示时间/电量图标，所以用户看到「播放界面状态栏还是显示」。
+    SystemUiPolicy.applyImmersive();
     _applyPlayerFullscreenUi();
     // 延迟到 widget tree 构建完成后加载视频
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -196,13 +206,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   /// 切换全屏（横屏沉浸）
+  ///
+  /// 注意：这里「退出全屏」指的是回到播放页的**常规竖屏/自适应方向**，
+  /// 不是退出播放页。所以两种状态下都保持沉浸式（状态栏隐藏），
+  /// 只有真正离开播放页（[_restoreIdleOrientation]）才恢复系统栏。
   Future<void> _toggleFullscreen() async {
     if (_isFullscreen) {
       _isFullscreen = false;
       await OrientationPolicy.applyIdle();
-      await SystemUiPolicy.applyPlayerExit();
-      // 退出全屏后设 UI 样式
-      _applyPlayerFullscreenUi();
+      // 仍在播放页 → 继续沉浸，不能调 applyPlayerExit（那会让状态栏回来）
+      await SystemUiPolicy.applyImmersive();
     } else {
       _isFullscreen = true;
       await OrientationPolicy.applyFullscreen();

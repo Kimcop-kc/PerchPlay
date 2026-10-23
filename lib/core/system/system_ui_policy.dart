@@ -77,7 +77,19 @@ class SystemUiPolicy {
   }
 
   /// 播放页进入沉浸式（全屏播放）。
+  ///
+  /// 只负责「隐藏系统栏」，**不要**在这里设 overlay style ——
+  /// `setSystemUIOverlayStyle` 在部分 Android 版本（尤其 MIUI / EMUI）
+  /// 会重新把状态栏拉出来，表现为「设了沉浸但状态栏还在」。样式由调用方
+  /// 单独处理，且要在 immersive 之前设好。
   static Future<void> applyImmersive() async {
+    // 先确保两栏都不显示，再切模式。
+    // 某些 ROM 上单独调 setEnabledSystemUIMode 会被前一次 manual 状态干扰，
+    // 先用 manual + 空 overlays 清一次是更稳的写法。
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: const [],
+    );
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
