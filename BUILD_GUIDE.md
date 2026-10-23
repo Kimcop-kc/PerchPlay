@@ -94,7 +94,11 @@ open ios/Runner.xcworkspace
 - **media_kit iOS** 的 podspec 内含 `system("make")`，首次 `pod install` 会从
   GitHub（media-kit/libmpv-darwin-build）下载预编译的 libmpv xcframework（v0.6.0），需要能访问
   GitHub Release。
-- 各 iOS 插件最低部署版本均 ≤ 项目的 iOS 12.0（permission_handler_apple 12.0，
+- **最低 iOS 版本为 15.0**：Flutter 3.47+ 的 `Flutter.podspec` 与官方 Podfile 模板要求
+  `platform :ios, '15.0'`。`Podfile`、`Runner.xcodeproj` 的 `IPHONEOS_DEPLOYMENT_TARGET`、
+  `ios/Flutter/AppFrameworkInfo.plist` 的 `MinimumOSVersion` 已统一为 15.0。若降回 12.0，
+  `pod install` 会报 `pod "Flutter" ... required a higher minimum deployment target`。
+- 各 iOS 插件最低部署版本均 ≤ 项目的 iOS 15.0（permission_handler_apple 12.0、
   media_kit_libs_ios_video 9.0），`Info.plist` 与 `Podfile` 已配置完整权限。
 - iOS Bundle ID 现为 `com.vidflow.vidflow`（沿自旧名 VidFlow），与 Android 包名
   `com.perchplay.player` 不一致；上架前建议在 `Runner.xcodeproj` 里统一。

@@ -1,14 +1,16 @@
 # PerchPlay iOS Podfile
 #
-# Based on the Flutter 3.22 template, with three deliberate changes:
-#   1. Minimum iOS 12.0 (matches the Xcode project's
-#      IPHONEOS_DEPLOYMENT_TARGET). The previous 18.0 excluded iOS 14-17.
+# Based on the Flutter template, with deliberate changes:
+#   1. Minimum iOS 15.0 — required by Flutter 3.47+ (its Flutter.podspec and
+#      official Podfile template set platform :ios, '15.0'). Lower values
+#      (e.g. 12.0) make `pod install` fail with
+#      "pod Flutter ... required a higher minimum deployment target".
 #   2. post_install declares the permission_handler_apple macros; only
 #      photos / media library are enabled.
 #   3. use_modular_headers! is omitted: combined with use_frameworks! it
 #      makes media_kit's xcframework fail with module redefinition errors.
 
-platform :ios, '12.0'
+platform :ios, '15.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -49,7 +51,7 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         'PERMISSION_CAMERA=0',
