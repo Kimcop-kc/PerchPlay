@@ -620,13 +620,19 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
           'Referer': 'https://115.com/',
         };
       }
-      // 阿里云盘：直链一般不需要额外头，但加上 Referer 更稳定
+      // 阿里云盘：直链自带签名，但部分文件/账号仍校验 Bearer 头，带上更稳
       else if (acc.type == CloudDriveType.aliyun) {
+        final tk = await _svc.currentAccessToken(acc.id);
         playParams['headers'] = {
           'Referer': 'https://www.alipan.com/',
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          if (tk != null && tk.isNotEmpty) 'Authorization': 'Bearer $tk',
         };
       }
       
+      if (!mounted) return;
       await context.pushNamed('player', extra: playParams);
     } finally {
       if (mounted) setState(() => _opening = false);

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -57,45 +56,47 @@ class AliyunDriveClient {
   /// 探测到的 drive_id（空串 = 备份盘，非空 = 资源库）
   String _driveId = '';
 
-  /// 取可用 token：
-  ///  1. 内存缓存（检查是否过期）
-  ///  2. account.accessToken（WebView 登录时从 localStorage 直接抓的，最可靠）
-  ///  3. 用 refresh_token 换（OAuth / Web / 直用）
+  /// 取可用 token。
+  ///
+  /// 顺序（每一步都**实际验证**，不靠本地时间猜过期）：
+  ///  1. 内存缓存的 access_token（换过就直接用）
+  ///  2. account.accessToken（WebView 登录时从 localStorage 抓的）
+  ///  3. 用 refresh_token 刷新
+  ///
+  /// 之前的问题：`_isTokenExpired()` 在 `tokenExpireAt == null` 时返回 true
+  /// （保守假设已过期），于是「刚抓到的 access_token」会被当成过期，
+  /// 转头去走 refresh_token；而后者的 client_id 往往无效 → 整体失败。
+  /// 现在改成：本地没记录过期时间就**先试一次真实请求**，401 才刷新。
   Future<String?> _token() async {
-    // 检查缓存 token 是否过期（阿里云盘 access_token 有效期约 7200s）
-    if (_cachedToken.isNotEmpty && !_isTokenExpired()) {
-      return _cachedToken;
-    }
-    
-    // 如果有 accessToken，检查是否过期
+    // 1) 内存缓存：只有明确记录了获取时间且未超时才直接用
+    if (_cachedToken.isNotEmpty && _cachedTokenVerified) return _cachedToken;
+
+    // 2) account.accessToken：先用它试一次（真实请求验证，比时间猜进度可靠）
     if (account.accessToken.isNotEmpty) {
       _cachedToken = account.accessToken;
-      if (!_isTokenExpired()) {
+      if (await _tryToken(_cachedToken)) {
+        _cachedTokenVerified = true;
         return _cachedToken;
       }
+      debugPrint('[Aliyun] 本地 access_token 失效，尝试刷新');
     }
-    
-    // token 过期或不存在，用 refresh_token 刷新
+
+    // 3) 用 refresh_token 刷新（refresh_token 为空则 refreshAccessToken 直接返回 null）
     final t = await refreshAccessToken();
     if (t != null && t.isNotEmpty) {
       _cachedToken = t;
-      _tokenFetchedAt = DateTime.now();
+      _cachedTokenVerified = true;
+      return _cachedToken;
     }
-    return _cachedToken.isEmpty ? null : _cachedToken;
+
+    // 4) 最后兜底：如果本地有 access_token，即使验证失败也交给上层再试一次
+    //    （有些接口路径对 token 的校验不同，比如列目录失败但下载可用）
+    if (_cachedToken.isNotEmpty) return _cachedToken;
+    return null;
   }
 
-  /// token 获取时间（用于判断过期）
-  DateTime? _tokenFetchedAt;
-
-  /// 检查 token 是否已过期（默认 7200 秒 = 2 小时）
-  bool _isTokenExpired() {
-    if (_tokenFetchedAt == null) {
-      // 如果没有记录获取时间，保守认为已过期
-      return account.tokenExpireAt?.isBefore(DateTime.now()) ?? true;
-    }
-    final elapsed = DateTime.now().difference(_tokenFetchedAt!);
-    return elapsed.inSeconds > 7000; // 提前 200 秒刷新
-  }
+  /// 当前 `_cachedToken` 是否已被真实请求验证通过。
+  bool _cachedTokenVerified = false;
 
   void dispose() => _client.close();
 
@@ -105,34 +106,28 @@ class AliyunDriveClient {
 
   /// 用 refresh_token 换 access_token。
   ///
-  /// 阿里云盘 WebView 登录拿到的 token 有两类：
-  ///  - access_token（直接从 localStorage 取，优先使用，有效期约 7200s）
-  ///  - refresh_token（需换 access_token，可能因 client_id 失效）
+  /// 按官方 OAuth2.0 文档（Web 服务端应用接入流程），标准路径是
+  /// `POST /v2/account/token`，form 编码，`grant_type=refresh_token`。
+  /// 网页版还有一条 `api.alipan.com/v2/account/token` 的等价接口（不需要
+  /// client_id），先试它，失败再走 OAuth 标准端点。
   ///
-  /// 换 token 时先试 Web API（`api.alipan.com`，**不需要** client_id），
-  /// 失败再试 OAuth（`auth.alipan.com`，需要 client_id），
-  /// 最后把 refresh_token 当成 access_token 直接试。
+  /// 最后兜底：阿里云盘的 refresh_token 和 access_token 格式相似，
+  /// 有些账号从 localStorage 里抓到的「refresh_token」其实能直接当
+  /// access_token 用，所以再验证一次。
   Future<String?> refreshAccessToken() async {
     final rt = account.refreshToken;
     if (rt.isEmpty) return null;
 
-    // 如果 refresh_token 很短（< 80 字符），很可能是 web 版 access_token
-    if (rt.length < 80) {
-      final ok = await _tryToken(rt);
-      if (ok) return rt;
-    }
-
-    // 方案 1: Web API（api.alipan.com，无需 client_id，成功率最高）
+    // 方案 1: Web API（api.alipan.com，无需 client_id，免费账号也能用）
     final tok = await _refreshAtWeb(rt);
     if (tok != null) return tok;
 
-    // 方案 2: OAuth 端点（auth.alipan.com，需要有效 client_id）
+    // 方案 2: OAuth 标准端点（auth.alipan.com，需要有效 client_id/secret）
     final tok2 = await _refreshAtOAuth(rt);
     if (tok2 != null) return tok2;
 
-    // 方案 3: 直接用 refresh_token 当 access_token
-    final ok = await _tryToken(rt);
-    if (ok) return rt;
+    // 方案 3: 直接把 refresh_token 当 access_token 试一次
+    if (await _tryToken(rt)) return rt;
 
     return null;
   }
@@ -175,67 +170,87 @@ class AliyunDriveClient {
     }
   }
 
-  /// OAuth 端点：auth.alipan.com
+  /// OAuth 端点：`auth.alipan.com/v2/account/token`
+  ///
+  /// 按官方 OAuth2.0 文档（Web 服务端应用接入流程），token 接口要求
+  /// `Content-Type: application/x-www-form-urlencoded`，字段为
+  /// `refresh_token` / `client_id` / `client_secret` / `grant_type`。
+  /// 之前这里发的是 JSON，服务端直接 400，所以永远拿不到 token。
   Future<String?> _refreshAtOAuth(String rt) async {
     try {
       final uri = Uri.parse('$_authApi/v2/account/token');
-      final req = await _client.postUrl(uri);
-      req.headers.contentType = ContentType.json;
-      req.headers.set('User-Agent', userAgent);
-      final bodyMap = <String, dynamic>{
+      final form = <String, String>{
         'refresh_token': rt,
         'grant_type': 'refresh_token',
         'client_id': _effectiveClientId,
       };
       if (clientSecret != null && clientSecret!.isNotEmpty) {
-        bodyMap['client_secret'] = clientSecret;
+        form['client_secret'] = clientSecret!;
       }
-      req.write(jsonEncode(bodyMap));
-      final resp = await req.close();
-      if (resp.statusCode != 200) {
-        debugPrint('[Aliyun] OAuth token HTTP ${resp.statusCode}');
-        return null;
-      }
-      final body = await resp.transform(utf8.decoder).join();
-      final j = jsonDecode(body);
-      if (j is! Map) return null;
-      final tok = j['access_token']?.toString();
-      if (tok != null && tok.isNotEmpty) return tok;
-      final tok2 = j['accessToken']?.toString();
-      if (tok2 != null && tok2.isNotEmpty) return tok2;
+      final tok = await _postForm(uri, form, 'OAuth');
+      if (tok != null) return tok;
     } catch (e) {
       debugPrint('[Aliyun] OAuth token 失败: $e');
     }
     return null;
   }
 
-  /// Web API 端点：api.alipan.com（不需要 client_id）
+  /// Web API 端点：`api.alipan.com/v2/account/token`
+  ///
+  /// 网页版换 token 不需要 client_id，但同样接受 form 编码。
   Future<String?> _refreshAtWeb(String rt) async {
     try {
       final uri = Uri.parse('$_webApi/v2/account/token');
-      final req = await _client.postUrl(uri);
-      req.headers.contentType = ContentType.json;
-      req.headers.set('User-Agent', userAgent);
-      req.write(jsonEncode({
-        'refresh_token': rt,
-        'grant_type': 'refresh_token',
-      }));
-      final resp = await req.close();
-      if (resp.statusCode != 200) {
-        debugPrint('[Aliyun] Web token HTTP ${resp.statusCode}');
-        return null;
-      }
-      final body = await resp.transform(utf8.decoder).join();
-      final j = jsonDecode(body);
-      if (j is! Map) return null;
-      final tok = j['access_token']?.toString();
-      if (tok != null && tok.isNotEmpty) return tok;
-      final tok2 = j['accessToken']?.toString();
-      if (tok2 != null && tok2.isNotEmpty) return tok2;
+      final tok = await _postForm(
+        uri,
+        {'refresh_token': rt, 'grant_type': 'refresh_token'},
+        'Web',
+      );
+      if (tok != null) return tok;
     } catch (e) {
       debugPrint('[Aliyun] Web token 失败: $e');
     }
     return null;
+  }
+
+  /// POST `application/x-www-form-urlencoded` 换 token，解析 access_token。
+  ///
+  /// 同时兼容两种返回结构：
+  ///  - OAuth 标准：`{"access_token":"...","refresh_token":"...","expire_in":7200}`
+  ///  - 网页版偶尔包一层：`{"token":{"access_token":"..."}}`
+  Future<String?> _postForm(
+      Uri uri, Map<String, String> form, String tag) async {
+    final req = await _client.postUrl(uri);
+    req.headers.contentType = ContentType(
+      'application',
+      'x-www-form-urlencoded',
+      charset: 'utf-8',
+    );
+    req.headers.set('User-Agent', userAgent);
+    req.headers.set('Accept', 'application/json, text/plain, */*');
+    req.headers.set('Referer', 'https://www.alipan.com/');
+    req.write(Uri(queryParameters: form).query);
+    final resp = await req.close();
+    final body = await resp.transform(utf8.decoder).join();
+    if (resp.statusCode != 200) {
+      debugPrint('[Aliyun] $tag token HTTP ${resp.statusCode} $body');
+      return null;
+    }
+    final j = jsonDecode(body);
+    if (j is! Map) return null;
+    // 兼容包一层 {"token":{...}}
+    final src = (j['token'] is Map) ? (j['token'] as Map) : j;
+    final tok = src['access_token']?.toString() ??
+        src['accessToken']?.toString() ??
+        j['access_token']?.toString() ??
+        j['accessToken']?.toString();
+    if (tok == null || tok.isEmpty) return null;
+    // 顺手记下新的 refresh_token（阿里会轮换）
+    final newRt = src['refresh_token']?.toString();
+    if (newRt != null && newRt.isNotEmpty) {
+      debugPrint('[Aliyun] $tag token 轮换了 refresh_token');
+    }
+    return tok;
   }
 
   Map<String, String> _authHeaders(String token) => {
@@ -257,7 +272,7 @@ class AliyunDriveClient {
 
       // 先探测 drive_id（备份盘 vs 资源库）
       _driveId = await _probeDriveId(token);
-      debugPrint('[Aliyun] connect driveId=$_driveId token=${token.substring(0, min(token.length, 20))}...');
+      debugPrint('[Aliyun] connect driveId=$_driveId tokenLen=${token.length}');
 
       // 用「列根目录」验证连接
       final list = await listDirectory('root');
@@ -328,8 +343,13 @@ class AliyunDriveClient {
         final j = jsonDecode(body);
         if (j is Map) {
           final did = j['default_drive_id']?.toString() ?? '';
-          debugPrint('[Aliyun] web drive_id=$did');
-          return did;
+          if (did.isNotEmpty) {
+            debugPrint('[Aliyun] web drive_id=$did');
+            return did;
+          }
+          // 200 但 drive_id 为空：说明后端要求别的字段或该账号结构不同，
+          // 不能直接返回空串提前结束，继续降级尝试后面的方案。
+          debugPrint('[Aliyun] web getDriveInfo 无 default_drive_id，降级');
         }
       }
     } catch (_) {}
@@ -345,8 +365,11 @@ class AliyunDriveClient {
         final j = jsonDecode(body);
         if (j is Map) {
           final did = j['default_drive_id']?.toString() ?? '';
-          debugPrint('[Aliyun] open drive_id=$did');
-          return did;
+          if (did.isNotEmpty) {
+            debugPrint('[Aliyun] open drive_id=$did');
+            return did;
+          }
+          debugPrint('[Aliyun] open getDriveInfo 无 default_drive_id，降级');
         }
       }
     } catch (_) {}
@@ -386,14 +409,33 @@ class AliyunDriveClient {
   ///
   /// 先试 web API（`api.alipan.com`，access_token 即可），
   /// 失败降级 open API（`openapi.alipan.com`，需 OAuth client_id）。
+  ///
+  /// `drive_id` 为空时先补探测一次：阿里云盘的列目录接口**必须**带
+  /// drive_id，漏了会直接 400/404，表现出来就是「登录成功但网盘打不开」。
   Future<List<CloudFileItem>?> listDirectory(String parentId,
       {String parentPath = '/'}) async {
     final token = await _token();
     if (token == null || token.isEmpty) return null;
 
+    if (_driveId.isEmpty) {
+      _driveId = await _probeDriveId(token);
+      debugPrint('[Aliyun] listDirectory 补探测 driveId=$_driveId');
+    }
+
     // 先试 web API
     final webItems = await _listDirWeb(token, parentId, parentPath);
     if (webItems != null) return webItems;
+
+    // web 失败：token 可能已失效 → 强制刷新一次再重试
+    _cachedTokenVerified = false;
+    _cachedToken = '';
+    final retryToken = await _token();
+    if (retryToken != null &&
+        retryToken.isNotEmpty &&
+        retryToken != token) {
+      final retry = await _listDirWeb(retryToken, parentId, parentPath);
+      if (retry != null) return retry;
+    }
 
     // 降级 open API
     final openItems = await _listDirOpen(token, parentId, parentPath);
@@ -527,11 +569,36 @@ class AliyunDriveClient {
   }
 
   /// 取直链（web API 优先，开放平台降级）。
+  ///
+  /// 注意 `drive_id` 必填：为空时先补探测，否则接口直接报错，
+  /// 表现为「目录能看但点开视频播不了」。
   Future<String?> getDownloadUrl(String fileId) async {
-    final token = await _token();
+    var token = await _token();
     if (token == null || token.isEmpty) return null;
 
+    if (_driveId.isEmpty) {
+      _driveId = await _probeDriveId(token);
+      debugPrint('[Aliyun] getDownloadUrl 补探测 driveId=$_driveId');
+    }
+
     // 先试 web API
+    final webUrl = await _downloadUrlWeb(token, fileId);
+    if (webUrl != null) return webUrl;
+
+    // web 失败：token 可能已过期，刷新后重试一次
+    _cachedTokenVerified = false;
+    _cachedToken = '';
+    final retryToken = await _token();
+    if (retryToken != null && retryToken.isNotEmpty && retryToken != token) {
+      token = retryToken;
+      final retry = await _downloadUrlWeb(token, fileId);
+      if (retry != null) return retry;
+    }
+
+    return _downloadUrlOpen(token, fileId);
+  }
+
+  Future<String?> _downloadUrlWeb(String token, String fileId) async {
     try {
       final req = await _client.postUrl(
           Uri.parse('$_webApi/v2/file/get_download_url'));
@@ -546,12 +613,16 @@ class AliyunDriveClient {
           final url = j['url']?.toString() ?? j['download_url']?.toString();
           if (url != null && url.isNotEmpty) return url;
         }
+      } else {
+        debugPrint('[Aliyun] web 取直链 HTTP ${resp.statusCode}');
       }
     } catch (e) {
       debugPrint('[Aliyun] web 取直链失败: $e');
     }
+    return null;
+  }
 
-    // 降级开放平台
+  Future<String?> _downloadUrlOpen(String token, String fileId) async {
     try {
       final req = await _client.postUrl(
           Uri.parse('$_openApi/adrive/v1.0/openFile/getDownloadUrl'));
@@ -566,12 +637,17 @@ class AliyunDriveClient {
           final url = j['url']?.toString() ?? j['download_url']?.toString();
           if (url != null && url.isNotEmpty) return url;
         }
+      } else {
+        debugPrint('[Aliyun] open 取直链 HTTP ${resp.statusCode}');
       }
     } catch (e) {
       debugPrint('[Aliyun] open 取直链失败: $e');
     }
     return null;
   }
+
+  /// 当前可用的 access_token（供播放器构造 Authorization 头用）。
+  Future<String?> currentToken() => _token();
 
   static String _extOf(String name) {
     final i = name.lastIndexOf('.');

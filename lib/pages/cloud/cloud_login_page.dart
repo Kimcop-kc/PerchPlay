@@ -172,7 +172,7 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
         } catch (_) {}
       }
 
-      // 阿里云盘：从 localStorage 取 refresh_token / access_token（不依赖 cookie）
+      // 阿里云盘：从 localStorage 取 access_token / refresh_token（不依赖 cookie）
       if (widget.type.usesToken) {
         final raw = await _extractAliyunRefreshToken(controller);
         if (raw != null && raw.isNotEmpty) {
@@ -182,9 +182,13 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
             final at = j['at']?.toString() ?? '';
             final rt = j['rt']?.toString() ?? '';
             if (at.isNotEmpty || rt.isNotEmpty) {
+              // access_token 能直接调 API（有效期 2h）；refresh_token 用来续期。
+              // 两个都存下来：短期靠 at，长期靠 rt 自动刷新。
               await _save(cookie: '', refreshToken: rt, accessToken: at);
             }
-          } catch (_) {}
+          } catch (e) {
+            debugPrint('[CloudLogin] 解析 token 失败: $e');
+          }
         }
         return;
       }

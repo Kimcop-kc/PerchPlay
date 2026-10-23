@@ -199,6 +199,20 @@ class CloudDriveService {
     }
   }
 
+  /// 取阿里云盘当前 access_token（播放时作为 Authorization 头）。
+  ///
+  /// 阿里直链虽然自带签名，但部分账号/文件仍要求带 Bearer 头，
+  /// 不带就会 403。其它云盘返回 null（它们靠 Cookie）。
+  Future<String?> currentAccessToken(String accountId) async {
+    final c = _clients[accountId];
+    if (c is AliyunDriveClient) {
+      try {
+        return await c.currentToken();
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// 释放所有底层连接（App 退出时调用）。
   void dispose() {
     for (final c in _clients.values) {

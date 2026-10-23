@@ -106,8 +106,15 @@ class CloudDriveAccount {
     this.lastConnected,
   });
 
-  bool get hasCredential =>
-      type.usesToken ? refreshToken.isNotEmpty : cookie.isNotEmpty;
+  /// 是否已持有可用凭证。
+  ///
+  /// 阿里云盘是 access_token / refresh_token 二选一即可：
+  /// WebView 登录时我们优先抓 access_token（可直接调 API，不需要 client_id），
+  /// refresh_token 只是兜底。之前只判 refreshToken，导致「抓到了 access_token
+  /// 但撑不住 refresh_token」的账号被误判为未登录。
+  bool get hasCredential => type.usesToken
+      ? (accessToken.isNotEmpty || refreshToken.isNotEmpty)
+      : cookie.isNotEmpty;
 
   CloudDriveAccount copyWith({
     String? id,
