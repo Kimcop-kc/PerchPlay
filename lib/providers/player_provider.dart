@@ -321,9 +321,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // 软解线程数：硬解时解码负载在 GPU，软解靠 CPU；核心越多线程越多。
       // 不要超过 8，否则线程切换开销反而拖慢。
+      //
+      // 硬解时给 4 线程：虽然主体解码在 GPU，但 ffmpeg 仍需线程做
+      // 码流解析/送帧，2 线程在高码率下容易成为瓶颈导致掉帧。
       final cores = DeviceInfoService.instance.capabilities.cpuCores;
-      final threads = on ? 2 : (cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
+      final threads = on ? 4 : (cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
       await platform.setProperty('vd-lavc-threads', '$threads');
+
+      // 硬解失败时的兜底行为：允许 mpv 在硬解出错时自动切回软解，
+      // 而不是直接黑屏/卡住（auto-safe 已含此语义，这里显式声明）。
+      await platform.setProperty('hwdec-extra-frames', on ? '6' : '0');
     } catch (e) {
       debugPrint('[Player] 应用解码参数失败: $e');
     }
@@ -421,8 +428,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (platform is! NativePlayer) return;
       // 允许过期/不兼容的字幕编码自动替换字符，避免 ASS 特效子幕导致崩溃
       await platform.setProperty('sub-ass-override', 'yes');
-      // 音视频不同步时，宁可丢帧也要保持音画同步，避免越播越偏移
-      await platform.setProperty('framedrop', 'vo');
+
+      // ── 音视频同步与掉帧策略（播放流畅度的核心）──
+      //
+      // 默认 `video-sync=audio` 以音频为主时钟，视频跟不上就丢帧；
+      // 但 mpv 默认 `framedrop=no`（不丢帧）——解码/渲染跟不上时会越积越多，
+      // 表现为「越播越卡、音画逐渐错位」。这里显式设置：
+      //   * framedrop=decoder+vo：解码或渲染任一侧跟不上都允许丢帧，
+      //     保证音画同步优先、画面持续流畅（比只 `vo` 更平滑）
+      //   * video-sync=audio：以音频为基准，避免视频拖慢整体节奏
+      //   * interpolation=no：关闭运动插值（高开销，手机上只会拖慢）
+      await platform.setProperty('framedrop', 'decoder+vo');
+      await platform.setProperty('video-sync', 'audio');
+      await platform.setProperty('interpolation', 'no');
+
+      // 渲染侧「低延迟」取舍：允许 mpv 为流畅度牺牲少量精确性。
+      // 对本地高码率/4K 片源，能明显减少因渲染管线排队导致的卡顿。
+      await platform.setProperty('video-latency-hacks', 'yes');
 
       // ── 内核缓冲优化（本地文件）──
       //
@@ -470,17 +492,30 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('sub-visibility', 'no');
       await platform.setProperty('secondary-sub-visibility', 'no');
 
-      // ── HDR 色调映射（对 SDR 视频无副作用）──
-      // mobius（最接近片源色彩意图） / bt.2390（业界标准 EETF）
-      await platform.setProperty('tone-mapping', 'bt.2390');
-      // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
-      await platform.setProperty('target-peak', '250');
-      // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
-      await platform.setProperty('hdr-compute-peak', 'yes');
-      // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
-      await platform.setProperty('hdr10plus', 'auto');
-      // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
-      await platform.setProperty('dolbyvision', 'yes');
+      // ── HDR 色调映射 ──
+      //
+      // 关键性能点：色调映射（尤其 hdr-compute-peak=yes 的逐帧直方图计算）
+      // 对 **SDR 片源是纯浪费**，会稳定占用 CPU/GPU，高码率播放时直接
+      // 表现为掉帧。所以先判断当前片源是否真的是 HDR，只有 HDR 才开这套。
+      final isHdr = state.hdrType != null && state.hdrType != 'SDR';
+      if (isHdr) {
+        // bt.2390（业界标准 EETF），最接近片源色彩意图
+        await platform.setProperty('tone-mapping', 'bt.2390');
+        // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
+        await platform.setProperty('target-peak', '250');
+        // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
+        await platform.setProperty('hdr-compute-peak', 'yes');
+        // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
+        await platform.setProperty('hdr10plus', 'auto');
+        // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
+        await platform.setProperty('dolbyvision', 'yes');
+      } else {
+        // SDR：关掉全部色调映射开销，让渲染管线走最轻路径
+        await platform.setProperty('tone-mapping', 'clip');
+        await platform.setProperty('hdr-compute-peak', 'no');
+        await platform.setProperty('hdr10plus', 'no');
+        await platform.setProperty('dolbyvision', 'no');
+      }
     } catch (e) {
       debugPrint('[Player] 应用健壮性参数失败: $e');
     }
