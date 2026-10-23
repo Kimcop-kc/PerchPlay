@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
@@ -1524,6 +1526,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+
+    // ── iOS：应用无法自安装 IPA ──
+    //
+    // iOS 沙盒限制决定了 App 不能像 Android 那样下载安装包后调系统安装器。
+    // 这里把 Release 链接复制到剪贴板并提示，用户可在 Safari 打开下载 IPA
+    // 后用 AltStore / SideStore 等工具安装。
+    // （不引入 url_launcher 新依赖，避免多一个 iOS pod 和潜在兼容问题。）
+    if (!kIsWeb && Platform.isIOS) {
+      const releaseUrl = 'https://github.com/Kimcop-kc/PerchPlay/releases/latest';
+      try {
+        await Clipboard.setData(const ClipboardData(text: releaseUrl));
+      } catch (e) {
+        debugPrint('[Update] 复制下载链接失败: $e');
+      }
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('下载链接已复制，请在 Safari 打开下载 IPA，'
+              '再用 AltStore 等工具安装'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
 
     // 下载（带进度提示）
     messenger.showSnackBar(

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:path_provider/path_provider.dart';
 
 import 'app_version.dart';
@@ -72,27 +72,37 @@ class UpdateService {
         final tag = (json['tag_name'] as String?) ?? '';
         final latestVersion = _stripV(tag);
 
-        // 找 arm64-v8a 的 APK 资产（本应用只打包 64 位）
+        // 找可下载的资产：
+        //  - Android：arm64-v8a 的 APK（本应用只打包 64 位）
+        //  - iOS：IPA（iOS 不允许应用自安装，只用于「去下载」引导）
         final assets = (json['assets'] as List<dynamic>?) ?? const [];
         String? apkUrl;
+        String? ipaUrl;
         for (final a in assets) {
           final name = (a as Map)['name'] as String? ?? '';
           final url = a['browser_download_url'] as String? ?? '';
-          if (name.toLowerCase().endsWith('.apk')) {
-            apkUrl = url;
+          final lower = name.toLowerCase();
+          if (lower.endsWith('.apk')) {
             // 优先带 arm64 标识的；否则就用第一个 apk
-            if (name.toLowerCase().contains('arm64')) break;
+            if (apkUrl == null || lower.contains('arm64')) apkUrl = url;
+            if (lower.contains('arm64')) break;
+          } else if (lower.endsWith('.ipa') && ipaUrl == null) {
+            ipaUrl = url;
           }
         }
 
+        // iOS 上没有 apk 也要能报出新版本（否则「检查更新」永远说已是最新）
+        final downloadUrl = !kIsWeb && Platform.isIOS
+            ? (ipaUrl ?? '')
+            : (apkUrl ?? '');
         final hasUpdate = latestVersion.isNotEmpty &&
-            apkUrl != null &&
-            _compareVersions(latestVersion, AppVersion.version) > 0;
+            _compareVersions(latestVersion, AppVersion.version) > 0 &&
+            (kIsWeb || Platform.isIOS || apkUrl != null);
 
         return UpdateInfo(
           hasUpdate: hasUpdate,
           latestVersion: latestVersion,
-          downloadUrl: apkUrl ?? '',
+          downloadUrl: downloadUrl,
           releaseNotes: json['body'] as String?,
         );
       } finally {
