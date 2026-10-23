@@ -281,8 +281,25 @@ class LocalMediaImportService {
           final fileName = await _uniqueFileName(destDir, '$safeBase.$ext');
           final destPath = p.join(destDir.path, fileName);
 
+          // iCloud 未下载到本地的资产：asset.file 会返回 null 或抛异常。
+          // 这种情况不该静默跳过（用户会以为「扫不出来」），先判断可用性，
+          // 尝试让 photo_manager 触发下载后再取文件。
+          try {
+            final available = await asset.isLocallyAvailable();
+            if (!available) {
+              debugPrint('[LocalImport] 资产在 iCloud 未下载，尝试获取: $base');
+            }
+          } catch (_) {}
+
           final file = await asset.file; // iOS: 导出到应用缓存
-          if (file == null || !await file.exists()) continue;
+          if (file == null) {
+            debugPrint('[LocalImport] 取不到文件（可能 iCloud 未下载）: $base');
+            continue;
+          }
+          if (!await file.exists()) {
+            debugPrint('[LocalImport] 导出文件不存在: $base');
+            continue;
+          }
           await file.copy(destPath);
           out.add(destPath);
           index[assetId] = fileName;

@@ -88,10 +88,19 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       if (viaMediaStore != null) {
         videos = viaMediaStore;
       } else if (Platform.isIOS) {
-        // iOS 性能关键：先把「Documents 扫描」这条快路径跑完并立刻出列表，
-        // 照片库导出（要枚举 PHAsset 并逐个 copy，很慢）放到后台异步补，
-        // 否则用户每次刷新都要等整个相册导完才看到内容。
-        videos = await _scanner.scanCommonDirectories();
+        // iOS：先扫 Documents（快），再把照片库导出**同步等完**。
+        //
+        // 这里刻意不再把照片库完全后台化：1.1.2 曾改成「Documents 先出、
+        // 照片库后台补」，结果 Documents 为空时列表立刻显示「未扫描到视频」，
+        // 照片库在后台悄悄导（几十秒、无任何进度），用户以为扫描失败。
+        // 而且后台任务一旦返回空就直接 return，连状态都不刷新 —— 表现为
+        // 「1.1.1 能扫出相册视频，1.1.2 扫不出来」。
+        //
+        // 现在改为：先把 Documents 结果暂存，照片库导出期间保持 loading
+        // （首页会显示转圈而不是「没有视频」），导完再一起出列表。
+        final docsVideos = await _scanner.scanCommonDirectories();
+        final photoVideos = await _scanPhotoLibraryNow();
+        videos = [...docsVideos, ...photoVideos];
       } else {
         videos = await _scanner.scanCommonDirectories();
       }
@@ -99,15 +108,7 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       // ── 列表先出 ──
       // 扫描器内部已经把结果写库（并保留了进度/收藏/缩略图），这里读回来
       // **立刻**交给 UI。
-      // 以前是在这里对每个视频顺序 await 生成缩略图，N 个视频就串行等 N 次
-      // 原生解码，进首页要等十几秒；现在缩略图交给 backfillThumbnails
-      // 在后台补，卡片先显示「灰底 + 影片图标」占位（见 CoverThumb/_localThumb）。
       state = AsyncData(await _db.getAllVideos());
-
-      // iOS：照片库导出放后台，不阻塞列表展示
-      if (Platform.isIOS) {
-        unawaited(_scanPhotoLibraryInBackground());
-      }
 
       // 缩略图后台补：不 await，别挡住下面的分组与刮削
       unawaited(backfillThumbnails());
@@ -129,34 +130,34 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     }
   }
 
-  /// iOS：后台导出照片库视频并增量刷新影库。
+  /// iOS：同步导出照片库视频并返回扫描到的视频列表。
   ///
-  /// 为什么要拆出来：照片库导出要枚举全部 PHAsset 并逐个 copy 成真实文件，
-  /// 几百个视频时可能要几十秒。放在 [scan] 里同步等，用户每次刷新都要等
-  /// 整个相册导完才看到列表 —— 体验极差。
+  /// 为什么是同步（而不是后台）：1.1.2 曾把这段放后台，Documents 为空时
+  /// 列表立刻显示「未扫描到视频」，照片库在后台无提示地导，用户以为扫描
+  /// 失败。现在由 [scan] 同步等待，期间首页保持 loading 转圈。
   ///
-  /// 这里做成「不阻塞列表、导完再刷一次」，并且导出服务内部用
-  /// 资产 ID 索引去重，已导过的资产不会重复 copy，第二次以后几乎瞬时。
-  Future<void> _scanPhotoLibraryInBackground() async {
-    if (_disposed) return;
+  /// 导出服务内部用「资产 ID → 文件名」索引去重，已导过的资产不重复 copy，
+  /// 第二次以后几乎瞬时，所以同步等待的代价只在首次。
+  Future<List<VideoModel>> _scanPhotoLibraryNow() async {
     try {
+      final hasPerm =
+          await LocalMediaImportService.instance.hasPhotoLibraryPermission();
+      debugPrint('[Library] 照片库权限: $hasPerm');
+      if (!hasPerm) return const [];
+
       final exported =
           await LocalMediaImportService.instance.exportPhotoLibraryVideos();
-      if (_disposed || exported.isEmpty) return;
+      debugPrint('[Library] 照片库导出 ${exported.length} 个文件');
+      if (exported.isEmpty) return const [];
 
       // 导出完成：把新文件并入影库（按所在目录扫描）
       final dirs = exported.map((e) => p.dirname(e)).toSet().toList();
       final more = await _scanner.scanDirectories(dirs, removeMissing: false);
-      if (_disposed || more.isEmpty) return;
-
-      // 刷新列表（只重读 DB，不重扫文件系统）
-      state = AsyncData(await _db.getAllVideos());
-      unawaited(backfillThumbnails());
-      try {
-        await ref.read(playlistListProvider.notifier).syncAutoPlaylists(more);
-      } catch (_) {}
-    } catch (e) {
-      debugPrint('[Library] 后台照片库扫描失败: $e');
+      debugPrint('[Library] 照片库扫描入库 ${more.length} 个视频');
+      return more;
+    } catch (e, st) {
+      debugPrint('[Library] 照片库扫描失败: $e\n$st');
+      return const [];
     }
   }
 
