@@ -492,12 +492,27 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('sub-visibility', 'no');
       await platform.setProperty('secondary-sub-visibility', 'no');
 
-      // ── HDR 色调映射 ──
-      //
-      // 关键性能点：色调映射（尤其 hdr-compute-peak=yes 的逐帧直方图计算）
-      // 对 **SDR 片源是纯浪费**，会稳定占用 CPU/GPU，高码率播放时直接
-      // 表现为掉帧。所以先判断当前片源是否真的是 HDR，只有 HDR 才开这套。
-      final isHdr = state.hdrType != null && state.hdrType != 'SDR';
+      // HDR 色调映射交给 applyHdrToneMapping（它在色彩参数流到达后按需调用）
+      await applyHdrToneMapping();
+    } catch (e) {
+      debugPrint('[Player] 应用健壮性参数失败: $e');
+    }
+  }
+
+  /// 按当前片源是否为 HDR 启用/关闭色调映射。
+  ///
+  /// 性能要点：色调映射（尤其 `hdr-compute-peak=yes` 的逐帧直方图计算）
+  /// 对 **SDR 片源是纯浪费**，会稳定占用 CPU/GPU，高码率播放时直接表现为
+  /// 掉帧。所以只有真实 HDR 片源才开这套，SDR 走最轻的 `tone-mapping=clip`。
+  ///
+  /// 调用时机很关键：`stream.videoParams` 是 open 之后的异步事件，
+  /// `applyRobustPlayback` 里同步调用时元数据还没到（会被误判成 SDR），
+  /// 所以这里被 videoParams 监听器再调一次，确保判断基于真实参数。
+  Future<void> applyHdrToneMapping() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+      final isHdr = state.hdrType != null;
       if (isHdr) {
         // bt.2390（业界标准 EETF），最接近片源色彩意图
         await platform.setProperty('tone-mapping', 'bt.2390');
@@ -517,7 +532,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await platform.setProperty('dolbyvision', 'no');
       }
     } catch (e) {
-      debugPrint('[Player] 应用健壮性参数失败: $e');
+      debugPrint('[Player] 应用 HDR 色调映射失败: $e');
     }
   }
 
@@ -725,6 +740,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         transferFunction: params.gamma,
         sigPeak: params.sigPeak,
       );
+      // 元数据到位后按需启用/关闭色调映射（见 applyHdrToneMapping 的说明：
+      // open 后立刻调 applyRobustPlayback 时这些参数还没到，必须在这里补一次）
+      applyHdrToneMapping();
     });
 
     // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
