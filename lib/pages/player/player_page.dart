@@ -394,7 +394,35 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       if (queue.isEmpty) queue = null;
     }
 
-    await ref.read(playerProvider.notifier).loadVideo(
+    // ── 复播黑屏修复（关键）──
+    //
+    // 每次进入播放页都无条件 loadVideo 会出问题：
+    //  * 从 mini player / 后台回到播放页时，同一个视频**正在播放**，
+    //    再 open 一次会先把渲染管线拆掉重建 —— 表现为黑屏 + 卡顿重载；
+    //  * 连播队列里上一集的播放也会被无谓打断。
+    // 所以先判断：当前播放器里已经是这个视频，且队列一致，就直接复用，
+    // 只补一次播放（若被暂停过）和进度恢复，不再重新 open。
+    final notifier = ref.read(playerProvider.notifier);
+    final playerState = ref.read(playerProvider);
+    final current = playerState.currentVideo;
+    final sameVideo = current != null && current.path == widget.videoPath;
+    if (sameVideo && !playerState.isCompleted) {
+      // 队列变了（例如从剧集列表换了入口）才需要重载，否则复用
+      final sameQueue =
+          queue == null || queue.length == playerState.queue.length;
+      if (sameQueue) {
+        debugPrint('[Player] 复用已加载的视频，跳过重新 open: ${widget.videoPath}');
+        // 页面回来时如果处于暂停（如小窗被暂停），恢复播放
+        if (!playerState.isPlaying) {
+          try {
+            await notifier.togglePlayPause();
+          } catch (_) {}
+        }
+        return;
+      }
+    }
+
+    await notifier.loadVideo(
           model,
           queue: queue,
           startIndex:

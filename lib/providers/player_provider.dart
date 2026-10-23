@@ -896,6 +896,27 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       state = state.copyWith(isSlowSource: false, slowSourceHint: '');
     }
 
+    // ── 复播黑屏修复：open 前先 stop 上一个文件 ──
+    //
+    // mpv 在「已有文件正在播放」的状态下直接 open 新文件，旧的视频输出
+    // 上下文（vo 纹理 / 渲染尺寸 / 解码器实例）不会立刻释放，新文件的首帧
+    // 常常渲染到旧纹理上 —— 表现就是「退出播放再回来，先黑屏一段、卡一下
+    // 才开始出画面」。先 stop() 把上一个文件彻底卸载，再 open 新文件，
+    // 渲染管线从干净状态重建，首帧更稳。
+    try {
+      await state.player.stop();
+    } catch (e) {
+      debugPrint('[Player] stop 上一个文件失败（忽略）: $e');
+    }
+    if (token != _loadToken) return;
+
+    // 解码设置必须在 open **之前**应用：hwdec / vd-lavc-threads 是
+    // 「每文件」选项，open 之后再设对当前文件不生效（只影响下一部）。
+    // 原来放在 open 之后，导致每次首播实际走 mpv 默认解码配置，
+    // 高码率片源因此掉帧。
+    await applyDecodingMode();
+    if (token != _loadToken) return;
+
     try {
       // 网盘播放需要自定义请求头（Cookie / User-Agent / Referer / Authorization）。
       //
@@ -930,7 +951,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 必须清零时长：否则新 duration 事件到达前，旧片时长会参与
       // seek 钳位 / nearEnd 判断 / durationMs 落库（把旧时长永久写进新片）。
       duration: Duration.zero,
-      speed: AppSettingsService.instance.defaultSpeed,
+      // 换片保留用户当前倍速（原来这里写死 defaultSpeed，导致用户手动切到
+      // 1.5x/2x 后一换片就被打回默认值，看起来像「倍速点了没用」）。
+      // 只有全新打开播放页（state.speed 尚未被用户改过）才用默认速度。
+      speed: state.speed > 0 ? state.speed : AppSettingsService.instance.defaultSpeed,
       // 换片时清掉上一部的字幕状态（内嵌轨道会由 tracks 流重新推送）
       clearActiveSubtitle: true,
       clearTrackId: true,
@@ -957,8 +981,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await applyRobustPlayback();
     if (token != _loadToken) return;
 
-    // 应用默认播放速度
-    await state.player.setRate(AppSettingsService.instance.defaultSpeed);
+    // 应用播放速度：走 setSpeed 而不是裸 setRate，这样会一并配置
+    // 音频变速（scaletempo2 + pitch correction），高倍速才真正生效。
+    await setSpeed(state.speed > 0
+        ? state.speed
+        : AppSettingsService.instance.defaultSpeed);
 
     // 恢复上次播放位置（<1s 视为从头开始）
     final resumeMs = effective.lastPosition;
@@ -1262,9 +1289,37 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   /// 设置倍速
+  ///
+  /// 高倍速（>2x）能生效的前提是 mpv 侧配置了音频变速：
+  ///  - `audio-pitch-correction=yes`：变速不变调（否则高倍速声音尖锐）
+  ///  - `audio-stream-silence`：变速期间保持音频时钟稳定
+  ///  - 变速滤镜 `scaletempo2`：mpv 默认的 scaletempo 在高倍速下
+  ///    容易丢音/断流，scaletempo2 是专门为大范围变速做的实现
+  ///
+  /// 之前只调 `setRate` 没配这些，mpv 在 >2x 时会因音频跟不上而把
+  /// rate 钳回 2.0（表现就是「点 2.5x/3x/4x 没反应」）。
   Future<void> setSpeed(double speed) async {
-    state = state.copyWith(speed: speed);
-    await state.player.setRate(speed);
+    // 钳到合理范围：mpv 官方支持 0.01~100，但 >4x 音画同步体验很差
+    final clamped = speed.clamp(0.25, 4.0).toDouble();
+    state = state.copyWith(speed: clamped);
+    try {
+      final platform = state.player.platform;
+      if (platform is NativePlayer) {
+        // 变速相关参数：只在**非 1x** 时挂 scaletempo2 滤镜。
+        // 1x 下挂滤镜是纯浪费（每帧都要做重采样/时间伸缩），会拖低播放
+        // 流畅度；正常速度必须走直通路径。
+        await platform.setProperty('audio-pitch-correction', 'yes');
+        if ((clamped - 1.0).abs() > 0.01) {
+          await platform.setProperty('audio-stream-silence', 'yes');
+          await platform.setProperty('af', 'scaletempo2');
+        } else {
+          await platform.setProperty('af', '');
+        }
+      }
+      await state.player.setRate(clamped);
+    } catch (e) {
+      debugPrint('[Player] 设置倍速失败 ($clamped): $e');
+    }
   }
 
   /// 播放下一个

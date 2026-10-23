@@ -42,6 +42,9 @@ class AppConstants {
   ];
 
   // 倍速选项
+  //
+  // 上限放到 3.0x：mpv 配好 scaletempo2 + audio-pitch-correction 后
+  // 3x 仍能保持音画同步；4x 以上语音基本不可辨，留给「长按倍速」用。
   static const List<double> playbackSpeeds = [
     0.25,
     0.5,
@@ -51,6 +54,8 @@ class AppConstants {
     1.5,
     1.75,
     2.0,
+    2.5,
+    3.0,
   ];
 
   // 手势灵敏度
