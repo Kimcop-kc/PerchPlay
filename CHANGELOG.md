@@ -1,5 +1,33 @@
 # 变更日志
 
+## [1.1.2] — 2026-10-23
+
+### iOS 包名统一（重要）
+
+- Bundle ID `com.vidflow.vidflow` → `com.perchplay.player`，与 Android 一致
+- RunnerTests: `com.perchplay.player.RunnerTests`
+- 注意：`com.vidflow/native`、`com.vidflow/pip` 是 MethodChannel 名，保持不变
+- 上架前需重新创建对应 Bundle ID 的 App ID / Provisioning Profile
+
+### iOS 从「文件」App 打开视频（修复）
+
+- 实现 `application(_:open:options:)`，外部文件复制进 `Documents/Incoming` 后播放
+- 补齐 `getLaunchVideoUri` / `readyForLaunchUri` / `resolveVideoUri` 通道
+
+### iOS 投屏搜不到设备（修复）
+
+- 进入投屏页主动触发「本地网络」权限弹窗
+
+### iOS 照片库权限拒绝后不可用（修复）
+
+- iOS 上 `hasVideoPermission` 恒为 true（Documents 不需要权限）
+- 照片库权限只影响是否导出相册视频
+
+### iOS 应用内更新失效（修复）
+
+- `UpdateService` 同时识别 `.ipa`，iOS 上按版本号判断更新
+- iOS 上不再下载安装 APK，改为复制 Release 链接引导
+
 ## [1.1.1] — 2026-10-23
 
 ### iOS 本地文件扫描（新功能）
