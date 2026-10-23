@@ -246,6 +246,21 @@ class CloudDriveService {
     }
   }
 
+  /// 取某个账号「当前生效」的 Cookie。
+  ///
+  /// 夸克会在响应里轮换 `__pus`/`__puus`，播放时必须用轮换后的最新值，
+  /// 而不是登录时抓到的旧值，否则 CDN 会 403。
+  /// 其他网盘直接返回账号里存的 cookie。
+  String currentCookie(String accountId) {
+    final c = _clients[accountId];
+    if (c is QuarkDriveClient) {
+      try {
+        return c.cookie;
+      } catch (_) {}
+    }
+    return '';
+  }
+
   /// 取阿里云盘当前 access_token（播放时作为 Authorization 头）。
   ///
   /// 阿里直链虽然自带签名，但部分账号/文件仍要求带 Bearer 头，

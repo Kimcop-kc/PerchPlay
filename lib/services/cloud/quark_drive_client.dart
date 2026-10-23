@@ -19,28 +19,94 @@ import '../../models/cloud_drive_model.dart';
 /// 夸克的下载链接需要 `User-Agent` 与取链接时一致，否则 403。
 /// 所以这里统一用一个固定 UA，播放/下载都带它。
 class QuarkDriveClient {
-  QuarkDriveClient(this.account);
-
   final CloudDriveAccount account;
 
-  static const String _base = 'https://drive-pc.quark.cn/1/clouddrive';
+  /// API 基址。
+  ///
+  /// 用 `drive.quark.cn` 而不是 `drive-pc.quark.cn`：
+  /// 前者是**夸克官方客户端**走的域名（参考 openlist-quark-lite 的实现），
+  /// 后者是网页版。两者接口一致，但客户端域名在限速策略上更宽松。
+  static const String _base = 'https://drive.quark.cn/1/clouddrive';
 
-  /// 固定 UA：取直链和实际下载必须一致，否则夸克会拒绝
+  /// 夸克官方客户端 UA。
+  ///
+  /// 三个关键点，缺一不可：
+  ///  1. `quark-cloud-drive/2.5.20`：客户端标识
+  ///  2. `Electron/18.3.5.4`：它其实是 Electron 应用
+  ///  3. **`Channel/pckk_other_ch`**：渠道标识
+  ///
+  /// 第 3 点是最重要的。夸克会对不同渠道下发不同的限速策略，
+  /// 用普通浏览器 UA 会被当作「第三方应用」限速；带渠道标识的 UA
+  /// 才能走客户端同等待遇。这也是「夸克一直缓冲」的关键原因之一。
+  ///
+  /// 注意：取直链和实际播放**必须使用同一个 UA**，否则 CDN 会 403。
   static const String userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      '(KHTML, like Gecko) quark-cloud-drive/2.5.20 '
+      'Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 '
+      'Safari/537.36 Channel/pckk_other_ch';
 
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
 
   void dispose() => _client.close();
 
+  /// 运行期可变的 Cookie（服务端会轮换 `__pus` / `__puus`）。
+  ///
+  /// 初始值来自 [account] 的 cookie，之后每次响应都检查 `Set-Cookie`，
+  /// 拿到新值就替换。**这是必须的**：夸克会在任意响应里下发新的
+  /// `__pus`/`__puus`，如果我们一直用登录时抓到的旧值，
+  /// 服务端轮换后所有请求都会 401 —— 表现为「登录成功但过一会儿就失效」。
+  String _cookie;
+
+  QuarkDriveClient(this.account) : _cookie = account.cookie;
+
+  /// 当前生效的 Cookie（含服务端轮换后的新值）。
+  String get cookie => _cookie;
+
   Map<String, String> get _headers => {
-        'Cookie': account.cookie,
+        'Cookie': _cookie,
         'User-Agent': userAgent,
         'Referer': 'https://pan.quark.cn/',
         'Accept': 'application/json, text/plain, */*',
       };
+
+  /// 从响应里拾取服务端轮换下发的 `__pus` / `__puus` 并更新 [_cookie]。
+  ///
+  /// 夸克用这两个字段做会话票，会在登录后定期轮换。不跟随就会掉线。
+  /// 只处理这两个字段，其余 cookie 保持原样，避免误覆盖。
+  void _absorbCookies(HttpClientResponse resp) {
+    List<Cookie> fresh;
+    try {
+      fresh = resp.cookies;
+    } catch (_) {
+      return;
+    }
+    if (fresh.isEmpty) return;
+
+    var changed = false;
+    final parts = _cookie.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    for (final c in fresh) {
+      if (c.name != '__pus' && c.name != '__puus') continue;
+      if (c.value.isEmpty) continue;
+      final idx = parts.indexWhere(
+          (p) => p.split('=').first.trim() == c.name);
+      final kv = '${c.name}=${c.value}';
+      if (idx >= 0) {
+        if (parts[idx] != kv) {
+          parts[idx] = kv;
+          changed = true;
+        }
+      } else {
+        parts.add(kv);
+        changed = true;
+      }
+    }
+    if (changed) {
+      _cookie = parts.join('; ');
+      debugPrint('[Quark] Cookie 已轮换更新（${fresh.length} 个下发）');
+    }
+  }
 
   /// 连接测试 + 取账号信息。
   ///
@@ -69,6 +135,7 @@ class QuarkDriveClient {
       final req = await _client.getUrl(uri);
       _headers.forEach(req.headers.set);
       final resp = await req.close();
+      _absorbCookies(resp);
       if (resp.statusCode != 200) return null;
       final body = await resp.transform(utf8.decoder).join();
       final j = jsonDecode(body);
@@ -98,6 +165,7 @@ class QuarkDriveClient {
         final req = await _client.getUrl(uri);
         _headers.forEach(req.headers.set);
         final resp = await req.close();
+        _absorbCookies(resp);
 
         if (resp.statusCode != 200) {
           debugPrint('[Quark] 列表 HTTP ${resp.statusCode}');
@@ -173,6 +241,7 @@ class QuarkDriveClient {
           'fids': [fid],
         }));
         final resp = await req.close();
+        _absorbCookies(resp);
         if (resp.statusCode == 200) {
           final body = await resp.transform(utf8.decoder).join();
           final j = jsonDecode(body);

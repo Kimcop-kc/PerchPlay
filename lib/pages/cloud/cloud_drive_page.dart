@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../models/cloud_drive_model.dart';
 import '../../services/cloud/cloud_drive_service.dart';
+import '../../services/cloud/quark_drive_client.dart';
 import '../../widgets/common/app_page_header.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
@@ -614,11 +615,15 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
         'videoTitle': f.name,
       };
       
-      // 夸克网盘：必须带 Cookie 和固定 UA，否则 403
+      // 夸克网盘：三样东西必须和「取直链」时完全一致，否则 CDN 403：
+      //  1) Cookie —— 用**轮换后的最新值**（服务端会更新 __pus/__puus）
+      //  2) User-Agent —— 必须与取直链时同一个，包括渠道标识
+      //  3) Referer
       if (acc.type == CloudDriveType.quark) {
+        final liveCookie = _svc.currentCookie(acc.id);
         playParams['headers'] = {
-          'Cookie': acc.cookie,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Cookie': liveCookie.isEmpty ? acc.cookie : liveCookie,
+          'User-Agent': QuarkDriveClient.userAgent,
           'Referer': 'https://pan.quark.cn/',
         };
       }
