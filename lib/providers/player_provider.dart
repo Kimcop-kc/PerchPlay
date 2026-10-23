@@ -331,9 +331,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final remote = LibraryPruneService.isRemotePath(path);
     // 逐条 fire-and-forget：open 前不能 await（会把打开推迟到设置完成之后）
     platform.setProperty('cache', remote ? 'yes' : 'no').catchError((_) {});
-    platform
-        .setProperty('cache-on-disk', remote ? 'yes' : 'no')
-        .catchError((_) {});
+    // ⚠ 网络源**不要**开磁盘缓存。
+    // `cache-on-disk=yes` 会把网络流先写进手机存储再读出来，等于多一次
+    // 闪存写 + 读；手机 UFS 的随机写带宽远低于网盘下载速度，高码率片源
+    // 会被这个落盘环节拖住，观感就是「缓冲很久、开播要等十几秒」。
+    // 内存缓存（cache=yes + demuxer-max-bytes）已经够用。
+    platform.setProperty('cache-on-disk', 'no').catchError((_) {});
+    // 网络源：128MB 前向缓冲，容纳码率抖动
     platform
         .setProperty('demuxer-max-bytes', remote ? '134217728' : '33554432')
         .catchError((_) {});
@@ -344,6 +348,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     platform
         .setProperty('network-timeout', remote ? '15' : '5')
         .catchError((_) {});
+    if (remote) {
+      // 预读时长：默认 10s 意味着「先攒够 10 秒数据才开播」，
+      // 网盘首包本来就慢，叠加起来就是长时间黑屏/转圈。
+      // 3s 足够吸收抖动，又能明显加快起播。
+      platform.setProperty('cache-secs', '3').catchError((_) {});
+      platform.setProperty('demuxer-readahead-secs', '3').catchError((_) {});
+      // 允许更大的单次读取块，减少 HTTP 往返次数
+      platform.setProperty('demuxer-max-packets', '512').catchError((_) {});
+      // YouTube-DL 之类的探测会额外发请求拖慢起播，网盘直链不需要
+      platform.setProperty('ytdl', 'no').catchError((_) {});
+    }
   }
 
   Future<void> applyRobustPlayback() async {
@@ -366,7 +381,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final path = state.currentVideo?.path ?? '';
       final remote = LibraryPruneService.isRemotePath(path);
       await platform.setProperty('cache', remote ? 'yes' : 'no');
-      await platform.setProperty('cache-on-disk', remote ? 'yes' : 'no');
+      // 与 _applyOptionsForSource 保持一致：网络源不落盘
+      await platform.setProperty('cache-on-disk', 'no');
       // 网络源把 demuxer 缓存调到 128MB，本地文件保持默认 32MB 足够
       await platform.setProperty(
           'demuxer-max-bytes', remote ? '134217728' : '33554432');
@@ -374,6 +390,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           'demuxer-max-back-bytes', remote ? '134217728' : '33554432');
       // 网络超时：5 秒太短，网盘/NAS 偶尔慢响应会频繁超时重连，调到 15 秒
       await platform.setProperty('network-timeout', remote ? '15' : '5');
+      if (remote) {
+        // 起播预读：3s（默认 10s，叠加网盘首包延迟会让起播非常慢）
+        await platform.setProperty('cache-secs', '3');
+        await platform.setProperty('demuxer-readahead-secs', '3');
+        await platform.setProperty('demuxer-max-packets', '512');
+        await platform.setProperty('ytdl', 'no');
+      }
 
       // ── 字幕渲染：统一由 Flutter 自绘 ──
       //
@@ -699,20 +722,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _applyOptionsForSource(video.path);
 
     try {
-      // 如果有自定义请求头，先设置到 mpv（网盘播放需要 Cookie/UA）
+      // 网盘播放需要自定义请求头（Cookie / User-Agent / Referer / Authorization）。
+      //
+      // **必须走 Media.httpHeaders**：mpv 的 `http-header-fields` 是每文件选项，
+      // 用 setProperty 在 open 之前设不保证生效；而且手工拼
+      // `'Key:value','Key2:value2'` 时，值里含逗号会被 mpv 截断
+      // （夸克/百度的 Cookie 里就有逗号），导致鉴权失败、服务端限速甚至
+      // 反复 403 重连 —— 表现出来就是「登录成功但视频缓冲很久」。
+      // media_kit 的 Media 原生支持 httpHeaders，由它统一转义和下发。
+      await state.player.open(
+        Media(
+          video.path,
+          httpHeaders: (headers != null && headers.isNotEmpty) ? headers : null,
+        ),
+      );
       if (headers != null && headers.isNotEmpty) {
-        final platform = state.player.platform;
-        if (platform is NativePlayer) {
-          // mpv 的 http-header-fields 格式：'Cookie:value','User-Agent:value'
-          final headerStr = headers.entries
-              .map((e) => "'${e.key}:${e.value}'")
-              .join(',');
-          await platform.setProperty('http-header-fields', headerStr);
-          debugPrint('[Player] 设置 HTTP 请求头: $headerStr');
-        }
+        debugPrint('[Player] 设置 HTTP 请求头: ${headers.keys.join(",")}');
       }
-      
-      await state.player.open(Media(video.path));
     } catch (e) {
       debugPrint('[Player] 打开视频失败: $e');
       // 文件可能已被删除/移动，或格式不支持；直接返回防止崩溃

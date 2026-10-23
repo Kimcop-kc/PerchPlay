@@ -107,13 +107,25 @@ class AppRouter {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final queue = extra?['queueIds'];
-          final headers = extra?['headers'];
+          final rawHeaders = extra?['headers'];
+          // 兼容 Map<String, dynamic>：调用方字面量推导出的类型不一定是
+          // Map<String, String>，直接 as 会失败并把 headers 静默丢成 null，
+          // 结果就是网盘播放缺 Cookie/UA → 403 或长时间缓冲。
+          Map<String, String>? headers;
+          if (rawHeaders is Map && rawHeaders.isNotEmpty) {
+            headers = <String, String>{
+              for (final e in rawHeaders.entries)
+                if (e.key != null && e.value != null)
+                  e.key.toString(): e.value.toString(),
+            };
+            if (headers.isEmpty) headers = null;
+          }
           return PlayerPage(
             videoPath: extra?['videoPath'] ?? '',
             videoTitle: extra?['videoTitle'] ?? 'Unknown',
             queueIds: queue is List ? List<String>.from(queue) : null,
             startIndex: (extra?['startIndex'] as int?) ?? 0,
-            headers: headers is Map<String, String> ? headers : null,
+            headers: headers,
           );
         },
       ),
