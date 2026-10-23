@@ -160,17 +160,40 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       final host = url.host;
 
       // 收集所有可能域名的 cookie（当前页 + 主域）
+      //
+      // ⚠ 顺序很重要：**具体域名优先**，不能被宽泛域名覆盖。
+      //
+      // 百度是典型例子：`BDUSS` 下发在 `.baidu.com`，而 `STOKEN` 只下发在
+      // `pan.baidu.com`。如果先查 pan.baidu.com 拿到正确的 STOKEN，再用
+      // `https://baidu.com` 查一次，浏览器会返回「对 baidu.com 生效的所有
+      // cookie」——里面可能带着另一个（无效或过期的）STOKEN，后写就把正确的
+      // 覆盖掉了，接口随即返回 errno=-6（未登录）。
+      //
+      // 改成：先查宽泛域名，再查具体域名，后者覆盖前者。
       final map = <String, String>{};
-      final hostsToCheck = [host, ..._mainDomains(widget.type)];
+      final hostsToCheck = <String>{
+        ..._mainDomains(widget.type),
+        host,
+      }.toList()
+        ..sort((a, b) {
+          // 层级少的（更宽泛）排前面，层级多的（更具体）排后面覆盖它
+          final da = '.'.allMatches(a).length;
+          final db = '.'.allMatches(b).length;
+          return da.compareTo(db);
+        });
       for (final h in hostsToCheck) {
         try {
           final cookies =
               await _cookieManager!.getCookies(url: WebUri('https://$h'));
           for (final c in cookies) {
-            if (c.name.isNotEmpty) map[c.name] = c.value;
+            if (c.name.isNotEmpty && c.value.isNotEmpty) {
+              map[c.name] = c.value;
+            }
           }
         } catch (_) {}
       }
+      debugPrint('[CloudLogin] 抓到 ${map.length} 个 cookie：'
+          '${map.keys.take(12).join(",")}');
 
       // 阿里云盘：从 localStorage 取 access_token / refresh_token（不依赖 cookie）
       if (widget.type.usesToken) {

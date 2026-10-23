@@ -37,8 +37,13 @@ extension CloudDriveTypeX on CloudDriveType {
         // 115 桌面版（m.115.com 是手机版，桌面 UA 下也能用但登录入口难找）
         return 'https://115.com/';
       case CloudDriveType.baidu:
-        // 百度网盘登录页
-        return 'https://pan.baidu.com/login';
+        // 直接进网盘首页（而不是 /login）。
+        //
+        // 原因：`STOKEN` 这个 cookie 是**访问网盘页面时**才下发到
+        // pan.baidu.com 的，而 `/login` 是独立登录页，登录完成前不会给。
+        // 从首页进入，未登录时它会自动弹登录框，登录成功后原地刷新，
+        // 此时 STOKEN / BDUSS 都在正确域名下，抓取成功率最高。
+        return 'https://pan.baidu.com/disk/main';
       case CloudDriveType.aliyun:
         // 必须用 /sign/in，不能用根路径 `/`。
         //

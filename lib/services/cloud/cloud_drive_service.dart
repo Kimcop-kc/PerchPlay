@@ -187,6 +187,33 @@ class CloudDriveService {
     }
   }
 
+  /// 最近一次失败的人话说明（供 UI 展示真实原因）。
+  ///
+  /// 之前无论什么错误都提示「登录可能已过期」，用户被误导着反复重新登录；
+  /// 实际上可能是「目录不存在」或「账号被限」。
+  String lastErrorHint(String accountId) {
+    final c = _clients[accountId];
+    if (c is BaiduDriveClient) {
+      final errno = c.lastErrno;
+      switch (errno) {
+        case -6:
+          return '百度账号未登录或登录已过期。请删除该云盘后重新添加并完成登录。';
+        case -7:
+        case -9:
+          return '该目录不存在（可能已被删除或改名）。请返回上一级重试。';
+        case 31066:
+          return '百度账号受限：需要在百度网盘完成实名认证或解除限制。';
+        case 2:
+          return '请求参数错误，请重新添加云盘。';
+        default:
+          if (errno != null) {
+            return '百度返回错误码 $errno${c.lastErrmsg.isEmpty ? '' : '：${c.lastErrmsg}'}';
+          }
+      }
+    }
+    return '';
+  }
+
   /// 取文件直链（播放用）。
   Future<String?> getDownloadUrl(String accountId, String fileId) async {
     try {

@@ -464,9 +464,12 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
     final nick = await _svc.connect(acc);
     if (!mounted) return;
     if (nick == null) {
+      final hint = _svc.lastErrorHint(acc.id);
       setState(() {
         _loading = false;
-        _error = '连接失败。可能是登录已过期，删掉重新添加即可。';
+        _error = hint.isNotEmpty
+            ? hint
+            : '连接失败。可能是登录已过期，删掉重新添加即可。';
       });
       return;
     }
@@ -494,9 +497,12 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
         await _svc.listDirectory(acc.id, _dirId, parentPath: _dirPath);
     if (!mounted) return;
     if (list == null) {
+      // 用后端给出的具体原因（未登录 / 目录不存在 / 账号受限），
+      // 而不是一律甩「登录可能已过期」——那会把用户引去反复重登。
+      final hint = _svc.lastErrorHint(acc.id);
       setState(() {
         _loading = false;
-        _error = '读取目录失败。登录可能已过期。';
+        _error = hint.isNotEmpty ? hint : '读取目录失败。可能是网络异常，请重试。';
       });
       return;
     }
