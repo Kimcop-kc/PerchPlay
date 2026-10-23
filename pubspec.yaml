@@ -36,7 +36,8 @@ dependencies:
   shared_preferences: ^2.5.0
   path_provider: ^2.1.5
   # 应用内更新：从系统读真实版本号/版本代码（避免手动同步硬编码常量）
-  package_info_plus: ^8.0.0
+  # 锁 10.2.2：file_picker 13.x 需要 win32 ^6，而 package_info_plus 8.x 限 win32 <6
+  package_info_plus: 10.2.2
   # 升级 Flutter 3.47 后 flutter_test 要求 path ^1.9.1（原 1.9.0 版本解析冲突）
   path: ^1.9.1
 
@@ -48,6 +49,12 @@ dependencies:
 
   # 视频缩略图
   flutter_video_thumbnail_plus: ^1.0.6
+
+  # iOS 本地文件访问：
+  # - file_picker：从系统「文件」App 导入视频（iOS UIDocumentPicker）
+  # - photo_manager：扫描照片库视频（iOS PHPhotoLibrary）
+  file_picker: ^13.1.0
+  photo_manager: ^3.12.0
 
   # 工具
   intl: ^0.19.0

@@ -82,7 +82,15 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
     try {
       // 首选 MediaStore 索引：毫秒级出结果，且自带时长
       final viaMediaStore = await _scanner.scanViaMediaStore();
-      final videos = viaMediaStore ?? await _scanner.scanCommonDirectories();
+      List<VideoModel> videos;
+      if (viaMediaStore != null) {
+        videos = viaMediaStore;
+      } else if (Platform.isIOS) {
+        // iOS：扫描 Documents + 照片库导出（有权限时）
+        videos = await _scanner.scanIosLocalSources(exportPhotos: true);
+      } else {
+        videos = await _scanner.scanCommonDirectories();
+      }
 
       // ── 列表先出 ──
       // 扫描器内部已经把结果写库（并保留了进度/收藏/缩略图），这里读回来

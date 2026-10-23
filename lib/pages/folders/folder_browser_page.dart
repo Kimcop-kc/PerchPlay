@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/constants/app_constants.dart';
+import '../../services/local_media_import_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -59,7 +61,25 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       _errorMessage = null;
     });
     try {
-      // 直接进入内部存储根，列出其下的真实文件夹/文件，
+      if (!kIsWeb && Platform.isIOS) {
+        // iOS：沙盒 Documents 就是根（用户通过「文件」App/iTunes 放入的视频，
+        // 以及本 App 导入/导出的视频都在这里）。iOS 无 Android 那种全局存储。
+        final docs = await LocalMediaImportService.instance.documentsDirectory();
+        _rootPath = docs.path;
+        if (_rootPath.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            _entries = const [];
+            _currentPath = '';
+            _loading = false;
+          });
+          return;
+        }
+        await _navigate(_rootPath);
+        return;
+      }
+
+      // Android：直接进入内部存储根，列出其下的真实文件夹/文件，
       // 不再展示「0 / sdcard」这类无意义的存储根节点。
       final storage = Directory('/storage/emulated/0');
       if (await storage.exists()) {
@@ -122,6 +142,20 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Future<void> _requestStoragePermission() async {
+    // iOS：照片库权限（用于扫描相册视频导出；Documents 本身无需权限）
+    if (!kIsWeb && Platform.isIOS) {
+      final ok =
+          await LocalMediaImportService.instance.requestPhotoLibraryPermission();
+      if (ok) {
+        if (!mounted) return;
+        setState(() => _errorMessage = null);
+        await _loadRoots();
+      } else if (mounted) {
+        setState(() => _errorMessage = '未获得照片库权限，请在系统设置中开启');
+      }
+      return;
+    }
+
     // Android 13+ 用 videos，≤12 用 storage
     final status = await Permission.videos.request();
     final granted = status.isGranted || status.isLimited;
@@ -139,6 +173,21 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
       await _loadRoots();
     } else if (mounted) {
       setState(() => _errorMessage = '未获得存储权限，请到系统设置中开启');
+    }
+  }
+
+  /// iOS：从系统「文件」App 导入视频到 Documents/Imported，并刷新目录。
+  Future<void> _importFromFilesApp() async {
+    if (!kIsWeb && !Platform.isIOS) return;
+    setState(() => _loading = true);
+    final imported = await LocalMediaImportService.instance
+        .importVideosFromFilesApp();
+    if (!mounted) return;
+    if (imported.isNotEmpty) {
+      // 导入成功：回到 Documents 根刷新
+      await _loadRoots();
+    } else {
+      setState(() => _loading = false);
     }
   }
 
@@ -272,6 +321,14 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 ),
               ],
               const Spacer(),
+              // iOS：从「文件」App 导入视频（Documents 里没有文件时的入口）
+              if (!kIsWeb && Platform.isIOS)
+                IconButton(
+                  icon: const Icon(Icons.file_download_rounded, size: 18),
+                  color: GlassTheme.textTertiary,
+                  tooltip: '导入视频',
+                  onPressed: _importFromFilesApp,
+                ),
               // 右端四个控件：排序 / 筛选 / 刷新 / 视图切换
               _buildSortMenu(),
               _buildFilterMenu(),
@@ -544,6 +601,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildErrorState() {
+    final isIOS = !kIsWeb && Platform.isIOS;
     return Center(
       child: GlassPanel(
         padding: const EdgeInsets.all(32),
@@ -558,13 +616,22 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
                 style: const TextStyle(
                     color: GlassTheme.textPrimary, fontSize: 14, height: 1.5)),
             const SizedBox(height: 16),
-            GlassButton.outlined(
-              icon: Icons.lock_open_rounded,
-              label: '授权存储权限',
-              height: 44,
-              foregroundColor: GlassTheme.accentPurple,
-              onTap: _requestStoragePermission,
-            ),
+            if (isIOS)
+              GlassButton.outlined(
+                icon: Icons.file_download_rounded,
+                label: '导入视频',
+                height: 44,
+                foregroundColor: GlassTheme.accentPurple,
+                onTap: _importFromFilesApp,
+              )
+            else
+              GlassButton.outlined(
+                icon: Icons.lock_open_rounded,
+                label: '授权存储权限',
+                height: 44,
+                foregroundColor: GlassTheme.accentPurple,
+                onTap: _requestStoragePermission,
+              ),
             const SizedBox(height: 8),
             GlassButton(
               icon: Icons.refresh_rounded,
@@ -581,6 +648,7 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildEmptyState() {
+    final isIOS = !kIsWeb && Platform.isIOS;
     return Center(
       child: GlassPanel(
         padding: const EdgeInsets.all(32),
@@ -590,19 +658,35 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
             Icon(Icons.folder_open_rounded,
                 size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
-            const Text('未发现可访问的存储目录',
-                style: TextStyle(color: GlassTheme.textPrimary, fontSize: 16)),
+            Text(isIOS ? '文件夹为空' : '未发现可访问的存储目录',
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 16)),
             const SizedBox(height: 6),
-            const Text('请授权存储权限后重试',
-                style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
-            const SizedBox(height: 16),
-            GlassButton.outlined(
-              icon: Icons.lock_open_rounded,
-              label: '授权存储权限',
-              height: 44,
-              foregroundColor: GlassTheme.accentPurple,
-              onTap: _requestStoragePermission,
+            Text(
+              isIOS
+                  ? '通过「文件」App 把视频放进 PerchPlay，\n或点下方按钮从「文件」App 导入'
+                  : '请授权存储权限后重试',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 12),
             ),
+            const SizedBox(height: 16),
+            if (isIOS)
+              GlassButton.filled(
+                icon: Icons.file_download_rounded,
+                label: '导入视频',
+                height: 44,
+                foregroundColor: Colors.white,
+                onTap: _importFromFilesApp,
+              )
+            else
+              GlassButton.outlined(
+                icon: Icons.lock_open_rounded,
+                label: '授权存储权限',
+                height: 44,
+                foregroundColor: GlassTheme.accentPurple,
+                onTap: _requestStoragePermission,
+              ),
           ],
         ),
       ),

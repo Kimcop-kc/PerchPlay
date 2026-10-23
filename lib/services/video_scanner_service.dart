@@ -7,6 +7,7 @@ import '../core/constants/app_constants.dart';
 import 'app_settings_service.dart';
 import 'database_service.dart';
 import 'library_hidden_service.dart';
+import 'local_media_import_service.dart';
 import 'native_bridge_service.dart';
 
 class VideoScannerService {
@@ -202,13 +203,49 @@ class VideoScannerService {
 
   /// 扫描手机常用视频目录
   ///
-  /// 直接扫描共享存储根目录（包含 Movies/DCIM/Download/Pictures 等），
-  /// 去重后只会保留最外层根目录，避免重复遍历。
+  /// - Android：直接扫描共享存储根目录（包含 Movies/DCIM/Download/Pictures 等）
+  /// - iOS：扫描沙盒 Documents（用户通过「文件」App/iTunes 放入的视频，
+  ///   以及本 App 导入/导出的视频都在这里）
   Future<List<VideoModel>> scanCommonDirectories() async {
+    if (!kIsWeb && Platform.isIOS) {
+      final roots = await LocalMediaImportService.instance.localScanRoots();
+      if (roots.isNotEmpty) {
+        return scanDirectories(roots, removeMissing: false);
+      }
+      return [];
+    }
     final dirs = <String>[
       '/storage/emulated/0',
     ];
     return scanDirectories(dirs, removeMissing: false);
+  }
+
+  /// iOS 综合本地扫描：扫描 Documents + 照片库导出。
+  ///
+  /// [exportPhotos] 为 true 时，若已授权照片库权限，会把相册视频导出到
+  /// Documents/Imported/PhotoLibrary 一并入影库。Android/桌面返回空。
+  Future<List<VideoModel>> scanIosLocalSources({
+    bool exportPhotos = false,
+    void Function(int done, int total)? photoProgress,
+  }) async {
+    if (kIsWeb || !Platform.isIOS) return const [];
+
+    final found = <VideoModel>[];
+    // 1) Documents（含文件共享放入 + 已导入/导出的文件）
+    final docsVideos = await scanCommonDirectories();
+    found.addAll(docsVideos);
+
+    // 2) 照片库导出（可选）
+    if (exportPhotos) {
+      final exported = await LocalMediaImportService.instance
+          .exportPhotoLibraryVideos(progress: photoProgress);
+      if (exported.isNotEmpty) {
+        final more = await scanDirectories(exported.map((e) => p.dirname(e)).toSet().toList(),
+            removeMissing: false);
+        found.addAll(more);
+      }
+    }
+    return found;
   }
 
   Future<VideoModel?> _fileToModel(File file) async {

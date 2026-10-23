@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models/subtitle_model.dart';
 import '../core/constants/app_constants.dart';
 
@@ -76,15 +77,29 @@ class SubtitleService {
   }
 
   /// 汇总候选字幕文件：视频同目录优先，其次常见下载/影片目录
+  ///
+  /// iOS 是沙盒系统，没有 `/storage/emulated/0`，改用沙盒 Documents
+  /// （用户通过「文件」App 放入的字幕也在那里）。
   static Future<List<SubtitleModel>> findCandidateSubtitles(
       String videoPath) async {
-    final dirs = <String>[
-      p.dirname(videoPath),
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Downloads',
-      '/storage/emulated/0/Movies',
-      '/storage/emulated/0/Documents',
-    ];
+    final dirs = <String>[p.dirname(videoPath)];
+    if (!kIsWeb && Platform.isIOS) {
+      try {
+        final docs = await getApplicationDocumentsDirectory();
+        dirs.add(docs.path);
+        dirs.add(p.join(docs.path, 'Imported'));
+        dirs.add(p.join(docs.path, 'Imported', 'PhotoLibrary'));
+      } catch (e) {
+        debugPrint('[Subtitle] 读取 Documents 失败: $e');
+      }
+    } else {
+      dirs.addAll(const [
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/Downloads',
+        '/storage/emulated/0/Movies',
+        '/storage/emulated/0/Documents',
+      ]);
+    }
     final out = <SubtitleModel>[];
     final seen = <String>{};
     for (final dir in dirs) {
