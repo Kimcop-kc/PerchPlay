@@ -160,37 +160,74 @@ class VideoScannerService {
       return;
     }
     for (final entity in entries) {
+      // iOS 兼容：Directory.list() 在某些情况下（如通过「文件」App 放入、
+      // 或 iCloud Drive 同步的文件）返回的是 Link 而不是 File/Directory，
+      // 此时 `entity is File` 为 false，视频会被静默跳过。
+      // 这里显式解析 Link，避免漏扫。
+      final entityPath = entity.path;
+
+      if (entity is Link) {
+        try {
+          final target = await entity.resolveSymbolicLinks();
+          final stat = await FileStat.stat(target);
+          if (stat.type == FileSystemEntityType.directory) {
+            await _scanDirRecursive(
+                Directory(target), found, existingPaths, depth + 1);
+          } else {
+            // 指向文件：入库用原始路径，读取用解析后的真实路径
+            await _handleVideoFile(
+                File(target), found, existingPaths, entityPath);
+          }
+        } catch (e) {
+          debugPrint('[Scanner] 无法解析链接 $entityPath: $e');
+        }
+        continue;
+      }
+
       if (entity is Directory) {
         // 跳过确定无权限/无意义的系统目录
-        final name = p.basename(entity.path);
+        final name = p.basename(entityPath);
         if (name == 'Android' && depth == 0) continue;
         await _scanDirRecursive(entity, found, existingPaths, depth + 1);
       } else if (entity is File) {
-        final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
-        if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
-        // 一次 stat 拿到 size + 时间，避免 length() + stat() 两次 IO
-        FileStat stat;
-        try {
-          stat = await entity.stat();
-        } catch (_) {
-          continue;
-        }
-        // 过滤损坏/封面缓存等碎片文件（< 20KB 基本不是完整视频）
-        if (stat.size < 20 * 1024) continue;
-        existingPaths.add(entity.path);
-        found.add(VideoModel(
-          id: _uuid.v5(Namespace.url.value, entity.path),
-          path: entity.path,
-          name: p.basenameWithoutExtension(entity.path),
-          folderPath: p.dirname(entity.path),
-          size: stat.size,
-          durationMs: 0, // media_kit 在播放时可获取准确时长
-          dateAdded: stat.accessed,
-          dateModified: stat.modified,
-          thumbnailPath: '',
-        ));
+        await _handleVideoFile(entity, found, existingPaths, entityPath);
       }
     }
+  }
+
+  /// 处理单个文件：扩展名/大小过滤 + 生成 VideoModel。
+  ///
+  /// [displayPath] 用于入库路径（链接场景下用原始路径，播放时才解析），
+  /// [file] 是实际可读的文件对象。
+  Future<void> _handleVideoFile(
+    File file,
+    List<VideoModel> found,
+    List<String> existingPaths,
+    String displayPath,
+  ) async {
+    final ext = p.extension(displayPath).toLowerCase().replaceAll('.', '');
+    if (!AppConstants.supportedVideoFormats.contains(ext)) return;
+    // 一次 stat 拿到 size + 时间，避免 length() + stat() 两次 IO
+    FileStat stat;
+    try {
+      stat = await file.stat();
+    } catch (_) {
+      return;
+    }
+    // 过滤损坏/封面缓存等碎片文件（< 20KB 基本不是完整视频）
+    if (stat.size < 20 * 1024) return;
+    existingPaths.add(displayPath);
+    found.add(VideoModel(
+      id: _uuid.v5(Namespace.url.value, displayPath),
+      path: displayPath,
+      name: p.basenameWithoutExtension(displayPath),
+      folderPath: p.dirname(displayPath),
+      size: stat.size,
+      durationMs: 0, // media_kit 在播放时可获取准确时长
+      dateAdded: stat.accessed,
+      dateModified: stat.modified,
+      thumbnailPath: '',
+    ));
   }
 
   /// 去掉被其他目录包含的子目录，保留最外层目录
