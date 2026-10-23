@@ -68,8 +68,11 @@ storeFile=<keystore 路径>
 
 ## iOS 构建
 
+> iOS 构建必须在 **macOS + Xcode + CocoaPods** 环境才能完成（产出 .app/.ipa）。仓库内已配置
+> GitHub Actions 工作流 `.github/workflows/build-ios.yml` 在 macOS runner 上执行无签名构建并打包 IPA。
+
 ```bash
-# 1. 安装 CocoaPods 依赖
+# 1. 安装 CocoaPods 依赖（首次需联网下载 media_kit 的 libmpv 预编译包）
 cd ios && pod install && cd ..
 
 # 2. 构建 (仅 macOS)
@@ -78,6 +81,23 @@ flutter build ios --release
 # 3. 使用 Xcode 打开 Runner.xcworkspace 进行 Archive
 open ios/Runner.xcworkspace
 ```
+
+### iOS 构建的关键前置（容易踩坑）
+
+- **dart_smb2** 使用新的 code-assets 构建钩子（`hooks.user_defines.dart_smb2.libsmb2`）。
+  仓库把预编译库放在 `third_party/libsmb2/`，其中必须包含**对应平台的产物**：
+  - Android：`libsmb2_android-*.so`（已有）
+  - **iOS/iPadOS：`libsmb2_ios.xcframework.zip`（已补，SHA-256 与 dart_smb2 包内清单一致 `a1f0b15b…38f63`）**
+  - macOS：`libsmb2_macos.xcframework.zip`（如需构建 macOS 客户端需补充）
+  - 若缺对应文件，`flutter build ios` 会报
+    `dart_smb2: ... which has no libsmb2_ios.xcframework.zip`。
+- **media_kit iOS** 的 podspec 内含 `system("make")`，首次 `pod install` 会从
+  GitHub（media-kit/libmpv-darwin-build）下载预编译的 libmpv xcframework（v0.6.0），需要能访问
+  GitHub Release。
+- 各 iOS 插件最低部署版本均 ≤ 项目的 iOS 12.0（permission_handler_apple 12.0，
+  media_kit_libs_ios_video 9.0），`Info.plist` 与 `Podfile` 已配置完整权限。
+- iOS Bundle ID 现为 `com.vidflow.vidflow`（沿自旧名 VidFlow），与 Android 包名
+  `com.perchplay.player` 不一致；上架前建议在 `Runner.xcodeproj` 里统一。
 
 ### IPA 导出
 

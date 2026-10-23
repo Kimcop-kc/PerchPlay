@@ -185,7 +185,7 @@ CI（GitHub Actions）三个工作流均已通过：
 |---|---|
 | `CI — 代码检查` | `flutter pub get` + `analyze` + `test` |
 | `Android — 构建 APK + AAB` | analyze/test 快速失败 → 分 ABI APK + AAB → 上传产物（tag 时发 Release） |
-| `iOS — 构建 IPA` | `pod install` → `flutter build ios --no-codesign` → ad-hoc 签名打包 IPA |
+| `iOS — 构建 IPA` | `macos-15` runner → `pod install`（含 CDN 重试 + media_kit symlink 修复）→ `flutter build ios --no-codesign` → ad-hoc 签名打包 IPA。仅手动触发（`workflow_dispatch`），需配 Apple 签名证书做真机安装、可加自动触发 |
 
 ---
 

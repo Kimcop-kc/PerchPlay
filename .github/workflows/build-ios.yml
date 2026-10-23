@@ -20,8 +20,8 @@ permissions:
 jobs:
   build-ios:
     name: iOS 构建 (${{ github.event.inputs.export_method || 'ad-hoc' }})
-    runs-on: macos-14
-    timeout-minutes: 45
+    runs-on: macos-15
+    timeout-minutes: 60
 
     env:
       # 同 Android：显式用官方源，避免依赖国内镜像
@@ -41,9 +41,9 @@ jobs:
       # 说明（重要）：
       # 1) 不再 `flutter create --platforms=ios`：仓库里的 ios/ 是完整且修正过的
       #    （Xcode 工程 + Podfile + Info.plist），create 只会往仓库里写多余文件。
-      # 2) 不再把 IPHONEOS_DEPLOYMENT_TARGET 改成 18.0：macos-14 runner 的
-      #    Xcode 15 用的是 iOS 17 SDK，设 18.0 必然构建失败；而且 Podfile 与
-      #    依赖的约束是 12.0（permission_handler_apple 要求 12.0）。
+      # 2) 不再把 IPHONEOS_DEPLOYMENT_TARGET 改成 18.0：macos-15 runner 的
+      #    Xcode 用的是 iOS SDK，设 18.0 必然失败；而且 Podfile 与依赖的约束
+      #    是 12.0（permission_handler_apple 要求 12.0）。
       # 3) 不再用 ios/manifest-backup/* 覆盖真实文件：那份 Info.plist 里还留着
       #    没有 SceneDelegate 的 UIApplicationSceneManifest（启动即崩溃），并且
       #    缺少局域网权限与 ATS 例外；备份 Podfile 是 iOS 18 + 与
@@ -51,11 +51,46 @@ jobs:
       - name: 安装依赖
         run: flutter pub get
 
-      - name: 安装 CocoaPods
+      # media_kit 的 create_framework_symlinks.sh 在 1.1.4（pub.dev 当前最新）里有个
+      # bug：`cut -d '-' -f 1 -f 3` 在 darwin/BSD cut 下语法非法（应为 `-f 1,3`），
+      # 导致 .symlinks/mpv/ios 为空、链接阶段报 'Framework Mpv not found'（media-kit#709）。
+      # pub 上无 ≥1.1.5 修复版，故在 pod install 之前对该脚本做幂等修正。
+      - name: 修复 media_kit 的 framework symlink 脚本 (media-kit#709)
         run: |
+          set -euo pipefail
+          # 该脚本位于 Flutter pub cache 中 media_kit_libs_ios_video 的 ios/ 下
+          PATCHED=0
+          while IFS= read -r f; do
+            if grep -q "cut -d '-' -f 1 -f 3" "$f"; then
+              sed -i '' 's/cut -d '"'"'-'"'"' -f 1 -f 3/cut -d '"'"'-'"'"' -f 1,3/g' "$f"
+              echo "patched: $f"
+              PATCHED=1
+            fi
+          done < <(find "$HOME/.pub-cache/hosted" -path '*media_kit_libs_ios_video*/ios/create_framework_symlinks.sh' 2>/dev/null || true)
+          if [ "$PATCHED" -eq 1 ]; then
+            echo "✅ media_kit symlink 脚本已修正"
+          else
+            echo "ℹ️ 未发现需修正的脚本（可能已修复或无处可修）"
+          fi
+
+      - name: 安装 CocoaPods（含 CDN 限流重试）
+        run: |
+          set -o pipefail
           cd ios
-          pod install --repo-update 2>&1 | tail -15
+          OK=0
+          for i in 1 2 3; do
+            echo "🐢 pod install 尝试 $i/3"
+            if pod install --repo-update 2>&1 | tail -40; then
+              OK=1
+              break
+            fi
+            if [ "$i" -lt 3 ]; then echo "pod install 失败，5 秒后重试…"; sleep 5; fi
+          done
           cd ..
+          if [ "$OK" -ne 1 ]; then
+            echo "❌ pod install 连续 3 次失败"
+            exit 1
+          fi
 
       - name: 显示部署目标（便于排查）
         run: |
