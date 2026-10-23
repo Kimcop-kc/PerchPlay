@@ -168,16 +168,27 @@ class VideoScannerService {
       } else if (entity is File) {
         final ext = p.extension(entity.path).toLowerCase().replaceAll('.', '');
         if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
-        // 过滤损坏/封面缓存等碎片文件（< 20KB 基本不是完整视频）
+        // 一次 stat 拿到 size + 时间，避免 length() + stat() 两次 IO
+        FileStat stat;
         try {
-          final len = await entity.length();
-          if (len < 20 * 1024) continue;
+          stat = await entity.stat();
         } catch (_) {
           continue;
         }
+        // 过滤损坏/封面缓存等碎片文件（< 20KB 基本不是完整视频）
+        if (stat.size < 20 * 1024) continue;
         existingPaths.add(entity.path);
-        final video = await _fileToModel(entity);
-        if (video != null) found.add(video);
+        found.add(VideoModel(
+          id: _uuid.v5(Namespace.url.value, entity.path),
+          path: entity.path,
+          name: p.basenameWithoutExtension(entity.path),
+          folderPath: p.dirname(entity.path),
+          size: stat.size,
+          durationMs: 0, // media_kit 在播放时可获取准确时长
+          dateAdded: stat.accessed,
+          dateModified: stat.modified,
+          thumbnailPath: '',
+        ));
       }
     }
   }
@@ -246,24 +257,5 @@ class VideoScannerService {
       }
     }
     return found;
-  }
-
-  Future<VideoModel?> _fileToModel(File file) async {
-    try {
-      final stat = await file.stat();
-      return VideoModel(
-        id: _uuid.v5(Namespace.url.value, file.path),
-        path: file.path,
-        name: p.basenameWithoutExtension(file.path),
-        folderPath: p.dirname(file.path),
-        size: stat.size,
-        durationMs: 0, // media_kit 在播放时可获取准确时长
-        dateAdded: stat.accessed,
-        dateModified: stat.modified,
-        thumbnailPath: '',
-      );
-    } catch (_) {
-      return null;
-    }
   }
 }
