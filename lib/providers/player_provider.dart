@@ -354,8 +354,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 内存缓存（cache=yes + demuxer-max-bytes）已经够用。
     platform.setProperty('cache-on-disk', 'no').catchError((_) {});
     // 网络源：128MB 前向缓冲，容纳码率抖动
+    // 本地文件：给到 64MB。高码率 4K 片源（50~100Mbps）单秒数据量就有
+    // 6~12MB，32MB 只够 3~5 秒，seek 或起播时容易反复触发重新读取；
+    // 64MB 在手机内存上仍安全，却能让大文件起播与拖动明显更跟手。
     platform
-        .setProperty('demuxer-max-bytes', remote ? '134217728' : '33554432')
+        .setProperty('demuxer-max-bytes', remote ? '134217728' : '67108864')
         .catchError((_) {});
     platform
         .setProperty(
@@ -391,6 +394,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 关闭 demuxer 层面的激进探测，直链不需要
       platform.setProperty('demuxer-lavf-probe-info', 'nostreams')
           .catchError((_) {});
+    } else {
+      // ── 本地文件起播优化 ──
+      //
+      // 本地文件不需要网络缓冲，但**需要快速探测**。默认 ffmpeg 会读较多
+      // 数据来判断流信息，大文件/高码率时会明显延迟首帧。
+      // 降低 probe 数据量与分析时长，只解析流结构，能显著加快起播。
+      platform.setProperty('demuxer-lavf-probe-info', 'auto')
+          .catchError((_) {});
+      platform.setProperty('demuxer-lavf-analyzeduration', '1')
+          .catchError((_) {});
+      // 本地读不需要 lavf 的大缓冲区（会多一次内存拷贝）
+      platform.setProperty('demuxer-lavf-buffersize', '262144')
+          .catchError((_) {});
+      // 预读 2 秒即可：本地读几乎没有延迟，攒太多反而推迟首帧
+      platform.setProperty('cache-secs', '2').catchError((_) {});
+      platform.setProperty('demuxer-readahead-secs', '2').catchError((_) {});
+      // 关闭 ytdl 探测（本地文件绝不需要）
+      platform.setProperty('ytdl', 'no').catchError((_) {});
     }
   }
 
@@ -416,9 +437,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('cache', remote ? 'yes' : 'no');
       // 与 _applyOptionsForSource 保持一致：网络源不落盘
       await platform.setProperty('cache-on-disk', 'no');
-      // 网络源把 demuxer 缓存调到 128MB，本地文件保持默认 32MB 足够
+      // 网络源 128MB / 本地 64MB（高码率大文件需要更大前向缓冲，见
+      // _applyOptionsForSource 的说明）
       await platform.setProperty(
-          'demuxer-max-bytes', remote ? '134217728' : '33554432');
+          'demuxer-max-bytes', remote ? '134217728' : '67108864');
       await platform.setProperty(
           'demuxer-max-back-bytes', remote ? '134217728' : '33554432');
       // 网络超时：5 秒太短，网盘/NAS 偶尔慢响应会频繁超时重连，调到 15 秒
@@ -428,6 +450,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await platform.setProperty('cache-secs', '3');
         await platform.setProperty('demuxer-readahead-secs', '3');
         await platform.setProperty('demuxer-max-packets', '512');
+        await platform.setProperty('ytdl', 'no');
+      } else {
+        // 本地文件：降低 probe 开销、缩小预读时长，加快首帧
+        await platform.setProperty('demuxer-lavf-probe-info', 'auto');
+        await platform.setProperty('demuxer-lavf-analyzeduration', '1');
+        await platform.setProperty('demuxer-lavf-buffersize', '262144');
+        await platform.setProperty('cache-secs', '2');
+        await platform.setProperty('demuxer-readahead-secs', '2');
         await platform.setProperty('ytdl', 'no');
       }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -87,7 +88,12 @@ class LocalMediaImportService {
   /// iOS 上 `FileType.video` 走的是照片库选择器（PHPicker），要从
   /// 「文件」App 选任意视频文件必须用 `FileType.any` + 扩展名过滤
   /// （或 FileType.custom），这里用 supportedVideoFormats 过滤。
-  Future<List<String>> importVideosFromFilesApp() async {
+  ///
+  /// 性能：多个文件**并发复制**（默认 3 路，避免同盘随机写互相拖慢），
+  /// 比原来逐个 await 串行复制快很多；[progress] 可显示导入进度。
+  Future<List<String>> importVideosFromFilesApp({
+    void Function(int done, int total)? progress,
+  }) async {
     if (!_isIOS) return const [];
     try {
       final result = await FilePicker.pickFiles(
@@ -96,32 +102,59 @@ class LocalMediaImportService {
         allowedExtensions: AppConstants.supportedVideoFormats,
       );
       if (result.isEmpty) return const [];
-      final out = <String>[];
-      final destDir = await _importRoot();
+
+      // 先筛出真正要导入的（存在的、扩展名合法的）
+      final picked = <(File, String)>[];
       for (final f in result) {
-        if (f.path == null) continue;
-        final ext = p.extension(f.name).toLowerCase();
-        if (!AppConstants.supportedVideoFormats
-            .contains(ext.replaceAll('.', ''))) {
-          continue;
-        }
-        final src = File(f.path!);
+        final path = f.path;
+        if (path == null) continue;
+        final ext = p.extension(f.name).toLowerCase().replaceAll('.', '');
+        if (!AppConstants.supportedVideoFormats.contains(ext)) continue;
+        final src = File(path);
         if (!await src.exists()) continue;
-        // 目标文件名：保留原名，冲突时加序号
-        final destPath = await _uniqueDestPath(destDir, f.name);
-        try {
-          await src.copy(destPath);
-          out.add(destPath);
-          debugPrint('[LocalImport] 已导入: $f.name -> $destPath');
-        } catch (e) {
-          debugPrint('[LocalImport] 导入失败 ${f.name}: $e');
-        }
+        picked.add((src, f.name));
       }
+      if (picked.isEmpty) {
+        try {
+          await FilePicker.clearTemporaryFiles();
+        } catch (_) {}
+        return const [];
+      }
+
+      final destDir = await _importRoot();
+      final total = picked.length;
+      final results = List<String?>.filled(total, null);
+      var done = 0;
+
+      // 并发复制：3 路并发在闪存上吞吐最好，过多反而互相拖慢
+      const concurrency = 3;
+      for (var start = 0; start < total; start += concurrency) {
+        final end = (start + concurrency) < total ? start + concurrency : total;
+        await Future.wait([
+          for (var i = start; i < end; i++)
+            () async {
+              final (src, name) = picked[i];
+              try {
+                final fileName = await _uniqueFileName(destDir, name);
+                final destPath = p.join(destDir.path, fileName);
+                await src.copy(destPath);
+                results[i] = destPath;
+                debugPrint('[LocalImport] 已导入: $name -> $fileName');
+              } catch (e) {
+                debugPrint('[LocalImport] 导入失败 $name: $e');
+              } finally {
+                done++;
+                progress?.call(done, total);
+              }
+            }(),
+        ]);
+      }
+
       // 清理 file_picker 留在 tmp 的缓存副本
       try {
         await FilePicker.clearTemporaryFiles();
       } catch (_) {}
-      return out;
+      return results.whereType<String>().toList();
     } catch (e) {
       debugPrint('[LocalImport] 文件选择器打开失败: $e');
       return const [];
@@ -184,6 +217,10 @@ class LocalMediaImportService {
   /// - 规避 media_kit 播 photo_manager 缓存路径「仅音频无画面」的已知
   ///   bug（media-kit#1192）。
   ///
+  /// 性能要点：用「资产 ID → 已导出文件名」的持久化索引做去重，已导出过的
+  /// 资产**不再重新 copy**（早期实现用「文件名冲突就加 _1/_2」的方式，导致
+  /// 每次刷新都把整个相册重导一遍，越刷越慢、磁盘无限膨胀）。
+  ///
   /// [progress] 可选回调（已处理数, 总数），用于 UI 显示进度。
   Future<List<String>> exportPhotoLibraryVideos({
     void Function(int done, int total)? progress,
@@ -212,41 +249,83 @@ class LocalMediaImportService {
       }
 
       final destDir = await _photoDir();
+      // 读索引：资产 id -> 文件名
+      final index = await _loadPhotoIndex();
       final out = <String>[];
       var done = 0;
+      var indexDirty = false;
+
       for (final asset in allAssets) {
         done++;
         progress?.call(done, allAssets.length);
         try {
-          // 只处理视频（保险起见再过滤一次）
           if (asset.type != AssetType.video) continue;
+          final assetId = asset.id;
+
+          // 已导出且文件还在 -> 直接用，跳过昂贵的导出
+          final known = index[assetId];
+          if (known != null) {
+            final knownPath = p.join(destDir.path, known);
+            if (await File(knownPath).exists()) {
+              out.add(knownPath);
+              continue;
+            }
+          }
+
           final title = asset.title;
           final base = (title != null && title.trim().isNotEmpty)
               ? title.trim()
               : 'video_${_uuid.v4().substring(0, 8)}';
           final safeBase = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
           final ext = _videoExtOf(asset) ?? 'mp4';
-          final destPath = await _uniqueDestPath(destDir, '$safeBase.$ext');
-
-          // 检查是否已导出过（按文件名+大小去重）
-          if (await File(destPath).exists()) {
-            out.add(destPath);
-            continue;
-          }
+          final fileName = await _uniqueFileName(destDir, '$safeBase.$ext');
+          final destPath = p.join(destDir.path, fileName);
 
           final file = await asset.file; // iOS: 导出到应用缓存
           if (file == null || !await file.exists()) continue;
           await file.copy(destPath);
           out.add(destPath);
-          debugPrint('[LocalImport] 照片库导出: $base -> $destPath');
+          index[assetId] = fileName;
+          indexDirty = true;
+          debugPrint('[LocalImport] 照片库导出: $base -> $fileName');
         } catch (e) {
           debugPrint('[LocalImport] 照片库导出失败 (${asset.title}): $e');
         }
       }
+      if (indexDirty) await _savePhotoIndex(index);
       return out;
     } catch (e) {
       debugPrint('[LocalImport] 照片库扫描失败: $e');
       return const [];
+    }
+  }
+
+  /// 照片库导出索引文件（Documents/Imported/.photo_index.json）。
+  static const _photoIndexName = '.photo_index.json';
+
+  Future<Map<String, String>> _loadPhotoIndex() async {
+    try {
+      final root = await _importRoot();
+      final f = File(p.join(root.path, _photoIndexName));
+      if (!await f.exists()) return {};
+      final raw = await f.readAsString();
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+      }
+    } catch (e) {
+      debugPrint('[LocalImport] 读取照片索引失败: $e');
+    }
+    return {};
+  }
+
+  Future<void> _savePhotoIndex(Map<String, String> index) async {
+    try {
+      final root = await _importRoot();
+      final f = File(p.join(root.path, _photoIndexName));
+      await f.writeAsString(jsonEncode(index), flush: true);
+    } catch (e) {
+      debugPrint('[LocalImport] 写入照片索引失败: $e');
     }
   }
 
@@ -265,16 +344,15 @@ class LocalMediaImportService {
     return null;
   }
 
-  /// 目标目录下不冲突的文件路径：同名则加 (1)/(2)…。
-  Future<String> _uniqueDestPath(Directory dir, String name) async {
-    var candidate = p.join(dir.path, name);
-    if (!await File(candidate).exists()) return candidate;
+  /// 目标目录下不冲突的**文件名**（不是完整路径）：同名则加 _1/_2…
+  Future<String> _uniqueFileName(Directory dir, String name) async {
+    if (!await File(p.join(dir.path, name)).exists()) return name;
     final base = p.basenameWithoutExtension(name);
     final ext = p.extension(name);
     for (var i = 1; i < 1000; i++) {
-      candidate = p.join(dir.path, '${base}_$i$ext');
-      if (!await File(candidate).exists()) return candidate;
+      final candidate = '${base}_$i$ext';
+      if (!await File(p.join(dir.path, candidate)).exists()) return candidate;
     }
-    return p.join(dir.path, '${base}_${_uuid.v4().substring(0, 6)}$ext');
+    return '${base}_${_uuid.v4().substring(0, 6)}$ext';
   }
 }

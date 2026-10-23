@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import '../models/video_model.dart';
 import '../services/app_settings_service.dart';
 import '../services/database_service.dart';
 import '../services/library_prune_service.dart';
+import '../services/local_media_import_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/thumbnail_service.dart';
 import '../services/video_scanner_service.dart';
@@ -86,8 +88,10 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       if (viaMediaStore != null) {
         videos = viaMediaStore;
       } else if (Platform.isIOS) {
-        // iOS：扫描 Documents + 照片库导出（有权限时）
-        videos = await _scanner.scanIosLocalSources(exportPhotos: true);
+        // iOS 性能关键：先把「Documents 扫描」这条快路径跑完并立刻出列表，
+        // 照片库导出（要枚举 PHAsset 并逐个 copy，很慢）放到后台异步补，
+        // 否则用户每次刷新都要等整个相册导完才看到内容。
+        videos = await _scanner.scanCommonDirectories();
       } else {
         videos = await _scanner.scanCommonDirectories();
       }
@@ -99,6 +103,11 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       // 原生解码，进首页要等十几秒；现在缩略图交给 backfillThumbnails
       // 在后台补，卡片先显示「灰底 + 影片图标」占位（见 CoverThumb/_localThumb）。
       state = AsyncData(await _db.getAllVideos());
+
+      // iOS：照片库导出放后台，不阻塞列表展示
+      if (Platform.isIOS) {
+        unawaited(_scanPhotoLibraryInBackground());
+      }
 
       // 缩略图后台补：不 await，别挡住下面的分组与刮削
       unawaited(backfillThumbnails());
@@ -117,6 +126,37 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       }
     } catch (e, st) {
       state = AsyncError(e, st);
+    }
+  }
+
+  /// iOS：后台导出照片库视频并增量刷新影库。
+  ///
+  /// 为什么要拆出来：照片库导出要枚举全部 PHAsset 并逐个 copy 成真实文件，
+  /// 几百个视频时可能要几十秒。放在 [scan] 里同步等，用户每次刷新都要等
+  /// 整个相册导完才看到列表 —— 体验极差。
+  ///
+  /// 这里做成「不阻塞列表、导完再刷一次」，并且导出服务内部用
+  /// 资产 ID 索引去重，已导过的资产不会重复 copy，第二次以后几乎瞬时。
+  Future<void> _scanPhotoLibraryInBackground() async {
+    if (_disposed) return;
+    try {
+      final exported =
+          await LocalMediaImportService.instance.exportPhotoLibraryVideos();
+      if (_disposed || exported.isEmpty) return;
+
+      // 导出完成：把新文件并入影库（按所在目录扫描）
+      final dirs = exported.map((e) => p.dirname(e)).toSet().toList();
+      final more = await _scanner.scanDirectories(dirs, removeMissing: false);
+      if (_disposed || more.isEmpty) return;
+
+      // 刷新列表（只重读 DB，不重扫文件系统）
+      state = AsyncData(await _db.getAllVideos());
+      unawaited(backfillThumbnails());
+      try {
+        await ref.read(playlistListProvider.notifier).syncAutoPlaylists(more);
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('[Library] 后台照片库扫描失败: $e');
     }
   }
 
