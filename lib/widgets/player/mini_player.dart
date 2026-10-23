@@ -26,6 +26,29 @@ class MiniPlayer extends StatefulWidget {
   /// 改小窗尺寸时留白自动跟着变，不会漏改。
   static const double height = 64;
 
+  /// 导航栏高度（与 _MobileGlassScaffold._navBarHeight 保持一致）。
+  static const double navBarHeight = 72;
+
+  /// 列表底部应该留出的空白。
+  ///
+  /// 为什么需要这个函数：小窗是**浮在导航栏之上**的一层（绝对定位），
+  /// 它不占页面布局空间。所以页面列表如果只按「导航栏高度」留白，
+  /// 一旦小窗出现，列表最后一项就会正好被小窗压住 —— 用户看到的就是
+  /// 「打开视频按钮在小窗下面、点不到」。
+  ///
+  /// 两个状态的高度不同：
+  ///  - 无小窗：只需避开导航栏
+  ///  - 有小窗：导航栏 + 小窗卡片高度
+  ///
+  /// [hasMiniPlayer] 由调用方从 playerProvider 订阅得到。
+  static double bottomInset({
+    required bool hasMiniPlayer,
+    double navBarOverlay = GlassTheme.navBarOverlay,
+  }) {
+    if (!hasMiniPlayer) return navBarOverlay;
+    return navBarHeight + height + 12;
+  }
+
   const MiniPlayer({
     super.key,
     required this.video,

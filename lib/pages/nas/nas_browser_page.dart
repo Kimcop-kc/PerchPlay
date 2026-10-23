@@ -11,6 +11,8 @@ import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/common/app_page_header.dart';
+import '../../widgets/player/mini_player.dart';
+import '../../providers/player_provider.dart';
 import '../cloud/cloud_drive_page.dart';
 
 /// NAS 文件浏览器 — iOS 27 玻璃质感
@@ -53,6 +55,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     final nasState = ref.watch(nasProvider);
     final isLarge = AppBreakpoints.isLargeScreen(context);
 
+    // 订阅「有没有小窗」这个布尔量（不是整个 PlayerState）。
+    // 小窗出现/消失时页面要重建，否则列表底部留白算错：
+    // 小窗浮在导航栏之上，不占布局空间，留白不够就会压住最后几行。
+    // 只取布尔值，播放位置每秒变化不会引起本页重建。
+    final hasMini = ref.watch(playerProvider.select(
+        (p) => p.currentVideo != null && p.videoController != null));
+
     // 云盘模式：整块换成云盘页（它自带完整 header 与列表），
     // 这里只负责把顶部分段切换器叠上去，避免两套 header 叠加。
     if (_showCloud) {
@@ -94,6 +103,15 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         ),
       ),
     );
+  }
+
+  /// 当前是否显示着后台播放小窗。
+  ///
+  /// 用 read 而非 watch：外层 build 已经 watch 了 select 后的布尔量，
+  /// 这里只需要读当前值参与布局计算。
+  bool _hasMiniPlayer() {
+    final p = ref.read(playerProvider);
+    return p.currentVideo != null && p.videoController != null;
   }
 
   /// 连接/读取失败的错误横幅
@@ -336,7 +354,13 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   Widget _buildConnectionList(NasState state) {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        0,
+        12,
+        // 同 _buildFileList：小窗浮在导航栏之上，留白要把它算进去
+        MiniPlayer.bottomInset(hasMiniPlayer: _hasMiniPlayer()),
+      ),
       itemCount: state.connections.length + 1, // +1 为顶部「添加连接」按钮
       itemBuilder: (context, index) {
         // 顶部统一放「添加连接」按钮（手机/平板一致，标题栏不再放添加）
@@ -511,7 +535,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       });
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, GlassTheme.navBarOverlay),
+      // 底部留白要跟着「有没有小窗」变。小窗是浮层、不占布局空间，
+      // 只按导航栏留白的话，小窗出现时最后几行会被压住点不到。
+      padding: EdgeInsets.fromLTRB(
+        12,
+        0,
+        12,
+        MiniPlayer.bottomInset(hasMiniPlayer: _hasMiniPlayer()),
+      ),
       itemCount: sorted.length,
       itemBuilder: (context, index) {
         final item = sorted[index];
@@ -668,7 +699,19 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   ),
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                      // 底部 padding 必须叠加系统安全区。
+                      //
+                      // 这个 bottomSheet 贴屏幕底，且外层 SafeArea 被设成
+                      // bottom:false（tab 页为了内容铺满而关掉），所以
+                      // MediaQuery.padding.bottom 不会自动生效。
+                      // 不加这段，「连接 / 取消」按钮会被系统导航栏压住，
+                      // 看起来像「按钮跑到导航栏下面」。
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        8,
+                        24,
+                        24 + MediaQuery.of(ctx).padding.bottom,
+                      ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -907,34 +950,44 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   Widget _buildEmptyConnections() {
     return Center(
-      child: GlassPanel(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.dns_rounded, size: 48, color: GlassTheme.textTertiary),
-            const SizedBox(height: 12),
-            const Text('未添加 NAS 连接',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            // 后台自动搜索：找到会直接出现在上方「可用连接」里
-            const Text('正在自动搜索局域网 NAS…\n也可以手动填写地址',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 12, height: 1.5)),
-            const SizedBox(height: 16),
-            GlassButton.outlined(
-              icon: Icons.add_link_rounded,
-              label: '手动添加（WebDAV / FTP）',
-              width: double.infinity,
-              height: 44,
-              foregroundColor: GlassTheme.accentTeal,
-              onTap: () => _showAddConnectionDialog(context),
-            ),
-          ],
+      // 小窗浮在底部时会盖住居中内容的下半部分（包括「手动添加」按钮），
+      // 这个按钮是唯一入口，被挡住用户就没法添加连接了。
+      // 用 Padding 把小窗占的高度顶上去，而不是整体缩小。
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: _hasMiniPlayer()
+              ? MiniPlayer.height + MiniPlayer.navBarHeight
+              : 0,
+        ),
+        child: GlassPanel(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.dns_rounded, size: 48, color: GlassTheme.textTertiary),
+              const SizedBox(height: 12),
+              const Text('未添加 NAS 连接',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              // 后台自动搜索：找到会直接出现在上方「可用连接」里
+              const Text('正在自动搜索局域网 NAS…\n也可以手动填写地址',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12, height: 1.5)),
+              const SizedBox(height: 16),
+              GlassButton.outlined(
+                icon: Icons.add_link_rounded,
+                label: '手动添加（WebDAV / FTP）',
+                width: double.infinity,
+                height: 44,
+                foregroundColor: GlassTheme.accentTeal,
+                onTap: () => _showAddConnectionDialog(context),
+              ),
+            ],
+          ),
         ),
       ),
     );
