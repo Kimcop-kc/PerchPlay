@@ -1566,8 +1566,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       {Widget? trailing, VoidCallback? onTap}) {
     return ListTile(
       leading: Icon(icon, color: GlassTheme.textSecondary, size: 20),
-      title: Text(title,
-          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15)),
+      // 必须限制为单行 + 省略号。
+      //
+      // ListTile 的 title 在 trailing 占宽之后会被压缩，而 Text 默认允许
+      // 任意换行——中文没有空格，压缩到「每行一个字」时就变成了竖排文字，
+      // 典型受害者是「已隐藏的视频（12 个）」+「全部恢复」按钮这一行。
+      title: Text(
+        title,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15),
+      ),
       trailing: trailing,
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1578,8 +1588,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       IconData icon, String title, bool value, ValueChanged<bool> onChanged) {
     return ListTile(
       leading: Icon(icon, color: GlassTheme.textSecondary, size: 20),
-      title: Text(title,
-          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15)),
+      // 同上：单行 + 省略，避免长标题被从右侧压缩成竖排
+      title: Text(
+        title,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 15),
+      ),
       trailing: Switch(
         value: value,
         onChanged: onChanged,

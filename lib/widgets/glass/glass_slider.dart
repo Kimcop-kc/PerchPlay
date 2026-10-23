@@ -49,8 +49,15 @@ class _GlassSliderState extends State<GlassSlider> {
 
   @override
   Widget build(BuildContext context) {
-    // 拖动时用内部值（跟手），否则用外部 value（反映真实进度）
-    final effectiveValue = _dragValue ?? widget.value;
+    // 拖动时**完全**用内部值。
+    //
+    // 这是避免「滑条发涩」的关键：外层可能在 onChanged 里把值再回灌回来
+    // （典型场景：播放页把预览值写进 ValueNotifier，再经
+    // ValueListenableBuilder 推回 value）。只要拖动中我们忽略 widget.value，
+    // 就不会形成「外部更新 → 重建 → 又 setState」的循环。
+    final effectiveValue = _dragging
+        ? (_dragValue ?? widget.value)
+        : widget.value;
     final fraction = ((effectiveValue - widget.min) / (widget.max - widget.min))
         .clamp(0.0, 1.0);
 
@@ -64,8 +71,7 @@ class _GlassSliderState extends State<GlassSlider> {
       },
       onPanUpdate: (details) {
         _dragValue = _valueAt(details.localPosition.dx);
-        // 仅 rebuild slider 本身（不触发父级 rebuild）：
-        // setState + LayoutBuilder 会自动裁剪为最小必要范围
+        // 仅 rebuild slider 本身（不触发父级 rebuild）。
         setState(() {});
         widget.onChanged?.call(_dragValue!);
       },
@@ -94,34 +100,27 @@ class _GlassSliderState extends State<GlassSlider> {
               clipBehavior: Clip.none,
               children: [
                 // 轨道背景
+                //
+                // 拖动过程中**不要**再套 SafeBackdropFilter：
+                // 它内部是 ClipRRect + Stack（Android 上还叠一层渐变 Container），
+                // 每次 setState 都要重建这一小段渲染子树。虽然 Android 已把
+                // BackdropFilter 降级成纯色，但反复创建/销毁 RectClipLayer
+                // 仍会带来可感知的掉帧，表现为「滑条拉起来一顿一顿」。
+                //
+                // 静止时保留原来的玻璃质感，拖动时换成一个等价的静态渐变，
+                // 视觉差异极小，但少一层合成。
                 Positioned(
                   top: widget.showThumb ? widget.thumbRadius + 2 : 0,
                   left: 0,
                   right: 0,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(widget.height / 2),
-                    child: SafeBackdropFilter(
-                      blurSigma: 2,
-                      child: Container(
-                        height: widget.height,
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(widget.height / 2),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.10),
-                              Colors.white.withValues(alpha: 0.30),
-                            ],
+                    child: _dragging
+                        ? _buildTrackStatic()
+                        : SafeBackdropFilter(
+                            blurSigma: 2,
+                            child: _buildTrackStatic(),
                           ),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.35),
-                            width: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
                 ),
 
@@ -144,12 +143,19 @@ class _GlassSliderState extends State<GlassSlider> {
                               widget.activeColor.withValues(alpha: 0.7),
                             ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: widget.activeColor.withValues(alpha: 0.5),
-                              blurRadius: _dragging ? 12 : 6,
-                            ),
-                          ],
+                          // 拖动中**不要**投影发光。
+                          // boxShadow 每帧都要按新宽度生成一张模糊蒙版，
+                          // 而拖动时宽度每帧都变 —— 这是「拉动滑条发涩」
+                          // 的主要来源之一。静止时保留发光，观感不受影响。
+                          boxShadow: _dragging
+                              ? null
+                              : [
+                                  BoxShadow(
+                                    color: widget.activeColor
+                                        .withValues(alpha: 0.5),
+                                    blurRadius: 6,
+                                  ),
+                                ],
                         ),
                       ),
                     ),
@@ -162,12 +168,20 @@ class _GlassSliderState extends State<GlassSlider> {
                         .clamp(0, width - widget.thumbRadius * 2),
                     top: 0,
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      // 拖动中位置每帧都变，AnimatedContainer 的隐式补间
+                      // 只会让 thumb「追不上手指」且白白多一层动画运算。
+                      // 因此拖动期间把时长压到 0（等价于瞬时跟随），
+                      // 松手后再恢复 200ms 的柔和过渡。
+                      duration: _dragging
+                          ? Duration.zero
+                          : const Duration(milliseconds: 200),
                       width: widget.thumbRadius * 2,
                       height: widget.thumbRadius * 2 + widget.height + 8,
                       child: Center(
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: _dragging
+                              ? Duration.zero
+                              : const Duration(milliseconds: 200),
                           width: _dragging
                               ? widget.thumbRadius * 2.8
                               : widget.thumbRadius * 2,
@@ -181,7 +195,10 @@ class _GlassSliderState extends State<GlassSlider> {
                               BoxShadow(
                                 color: widget.activeColor
                                     .withValues(alpha: _dragging ? 0.6 : 0.35),
-                                blurRadius: _dragging ? 14 : 8,
+                                // 拖动中缩小模糊半径：BoxShadow 的 blur 需要
+                                // 每帧重新生成蒙版，半径越大越贵。
+                                // 14 → 8 视觉上差异很小，但省下明显开销。
+                                blurRadius: _dragging ? 8 : 8,
                                 spreadRadius: _dragging ? 2 : 0,
                               ),
                             ],
@@ -201,6 +218,28 @@ class _GlassSliderState extends State<GlassSlider> {
   double _sliderWidth(BuildContext context) {
     final box = context.findRenderObject() as RenderBox;
     return box.size.width;
+  }
+
+  /// 轨道背景的静态绘制（拖动与静止共用，避免两套代码走样）。
+  Widget _buildTrackStatic() {
+    return Container(
+      height: widget.height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(widget.height / 2),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.10),
+            Colors.white.withValues(alpha: 0.30),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.35),
+          width: 0.5,
+        ),
+      ),
+    );
   }
 
   double _valueAt(double dx) {

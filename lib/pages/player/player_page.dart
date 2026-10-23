@@ -1453,33 +1453,39 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               builder: (context, live) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 进度条：ValueListenableBuilder 只在拖动时局部重建滑块，
-                  // 避免整页 setState 打断手势（这是之前"只能滑几下"的根因）
-                  ValueListenableBuilder<double?>(
-                    valueListenable: _seekPreviewMs,
-                    builder: (context, seekPreview, _) {
-                      final previewMs = seekPreview;
-                      return Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 16 * scale),
-                        child: GlassSlider(
-                          value: previewMs ??
+                  // 进度条
+                  //
+                  // 关键：拖动期间**不回灌 value**。
+                  // GlassSlider 内部已有 `_dragValue` 跟手渲染；如果外层再把
+                  // `_seekPreviewMs` 的变化推回 `value`，就会形成
+                  //   onPanUpdate → setState → onChanged → valueListenable 变化
+                  //   → ValueListenableBuilder 重建 → 再 setState …
+                  // 的每帧双重重建，滑条就会发涩。
+                  //
+                  // 做法：传入的 value 只在**未拖动**时跟随真实播放位置；
+                  // 拖动中传 null，让 GlassSlider 完全由内部 _dragValue 驱动。
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                    child: ValueListenableBuilder<double?>(
+                      valueListenable: _seekPreviewMs,
+                      builder: (context, seekPreview, _) {
+                        return GlassSlider(
+                          value: seekPreview ??
                               live.position.inMilliseconds.toDouble(),
                           min: 0,
                           max: live.duration.inMilliseconds.toDouble(),
                           activeColor: GlassTheme.accentPink,
                           height: 3,
                           showThumb: true,
-                          // 直接拖进度条时也实时预览
                           onChanged: (v) => _onSeekPreview(v.round()),
                           onChangeEnd: (v) {
                             _onSeekCommit(v.round());
                           },
                           onDragStart: _onSliderDragStart,
                           onDragEnd: _onSliderDragEnd,
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                   SizedBox(height: 4 * scale),
                   // 时间行：从 _LivePosition 实时取，不用 ValueListenableBuilder
