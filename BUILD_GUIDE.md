@@ -88,9 +88,11 @@ open ios/Runner.xcworkspace
   仓库把预编译库放在 `third_party/libsmb2/`，其中必须包含**对应平台的产物**：
   - Android：`libsmb2_android-*.so`（已有）
   - **iOS/iPadOS：`libsmb2_ios.xcframework.zip`（已补，SHA-256 与 dart_smb2 包内清单一致 `a1f0b15b…38f63`）**
+  - Linux / Windows：`libsmb2_linux-x86_64.so`、`libsmb2_windows-x86_64.dll`（已补，
+    供 GitHub Actions 的 ubuntu runner 与本地 Windows 跑 `flutter test` 使用）
   - macOS：`libsmb2_macos.xcframework.zip`（如需构建 macOS 客户端需补充）
-  - 若缺对应文件，`flutter build ios` 会报
-    `dart_smb2: ... which has no libsmb2_ios.xcframework.zip`。
+  - 若缺对应文件，构建/测试会报
+    `dart_smb2: ... which has no libsmb2_ios.xcframework.zip`（或对应平台的 DLL/SO）。
 - **media_kit iOS** 的 podspec 内含 `system("make")`，首次 `pod install` 会从
   GitHub（media-kit/libmpv-darwin-build）下载预编译的 libmpv xcframework（v0.6.0），需要能访问
   GitHub Release。
@@ -102,6 +104,29 @@ open ios/Runner.xcworkspace
   media_kit_libs_ios_video 9.0），`Info.plist` 与 `Podfile` 已配置完整权限。
 - iOS Bundle ID 现为 `com.vidflow.vidflow`（沿自旧名 VidFlow），与 Android 包名
   `com.perchplay.player` 不一致；上架前建议在 `Runner.xcodeproj` 里统一。
+
+### iOS 本地文件访问（沙盒模型）
+
+iOS 没有 Android 那样的全局存储扫描，App 只能访问自己的容器目录。本项目通过三条途径
+让 iOS 也能扫描/导入本地视频（实现见 `lib/services/local_media_import_service.dart`）：
+
+| 途径 | 说明 | 用户操作 |
+|---|---|---|
+| **沙盒 Documents 扫描** | 扫描 `getApplicationDocumentsDirectory()`。配合 Info.plist 的 `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`，该目录会显示在系统「文件」App →「我的 iPhone」→ PerchPlay | 把视频拖进「文件」App 里 PerchPlay 文件夹，回到 App 点「扫描视频」 |
+| **「文件」App 多选导入** | `file_picker` 打开 UIDocumentPicker（`FileType.custom` + 支持的视频扩展名），选中后复制到 `Documents/Imported/` | 文件夹页右上角「导入视频」按钮 / 空库页按钮 |
+| **照片库视频扫描** | `photo_manager` 枚举 `RequestType.video` 资产，导出为 `Documents/Imported/PhotoLibrary/` 下的真实文件 | 首次会弹照片库权限；授权后点「扫描视频」即自动导出并入库 |
+
+> 为什么照片库要**导出成真实文件**而不是直接播：`photo_manager` 的 `AssetEntity.file`
+> 在 iOS 上返回的是应用缓存临时文件，且 media_kit 播这类路径有「只有音频无画面」的
+> 已知问题（[media-kit#1192](https://github.com/media-kit/media-kit/issues/1192)）。
+> 复制到 Documents 后路径稳定，也便于缩略图/字幕等后续处理。
+
+权限相关：
+- `Info.plist` 需有 `NSPhotoLibraryUsageDescription`（已配置）。
+- `Podfile` 的 `post_install` 中 `PERMISSION_PHOTOS=1` / `PERMISSION_MEDIA_LIBRARY=1`
+  已启用（permission_handler 的 iOS 权限宏）。
+- `permission_provider` 在 iOS 上用 `Permission.photos`，与 photo_manager 请求的是
+  同一个 PHPhotoLibrary 权限，不会重复弹窗冲突。
 
 ### IPA 导出
 

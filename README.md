@@ -65,7 +65,7 @@
 |---|---|---|
 | 画中画（小窗） | ✅ 可用（系统不支持时按钮自动隐藏，不再有"点了没反应"的按钮） | ❌ 未实现（按钮不显示） |
 | 后台播放 | ✅ 前台服务 + 通知（受「后台播放」开关控制） | 声明了 `UIBackgroundModes: audio`（真机未验证） |
-| 所有文件访问权限引导 | ✅ Android 11+ 首次自动跳系统开关页，设置/空库页也可再进 | —（沙盒，需用「文件」App 导入或走 WebDAV） |
+| 所有文件访问权限引导 | ✅ Android 11+ 首次自动跳系统开关页，设置/空库页也可再进 | ✅ 沙盒 Documents 扫描 + 「文件」App 多选导入 + 照片库视频扫描（`file_picker` / `photo_manager`） |
 | 高刷新率 | ✅ 取该分辨率下最高的 display mode | ✅ 允许 >60fps（`CADisableMinimumFrameDurationOnPhone`） |
 | 完整键盘快捷键 | ✅ 外接键盘 | ✅ 妙控键盘 |
 
