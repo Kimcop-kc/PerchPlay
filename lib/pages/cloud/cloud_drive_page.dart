@@ -579,7 +579,12 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
             errorMsg += '百度网盘直链获取失败，普通账号可能有限速限制。';
             break;
           case CloudDriveType.pan115:
-            errorMsg += '115 网盘直链获取失败，请检查登录状态。';
+            // 115 的网页下载通道只允许 ≤200MB；超出会被弹回登录页。
+            // 这个限制是服务端行为，不是 cookie 问题，说清楚免得用户白折腾。
+            errorMsg += '115 网盘直链获取失败。常见原因：\n'
+                '· 文件大于 200MB（网页下载通道限制，属 115 服务端限制）\n'
+                '· 登录已过期（重新添加一次云盘）\n'
+                '· 文件已删除或含违规内容被限制';
             break;
           case CloudDriveType.aliyun:
             errorMsg += '阿里云盘直链获取失败，token 可能已过期，请重新登录。';
@@ -612,11 +617,20 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
           'Referer': 'https://pan.baidu.com/',
         };
       }
-      // 115网盘：需要 Cookie
+      // 115网盘：需要 Cookie + UA。直链 URL 的 f 参数决定校验要求：
+      //  - f=1：要求 UA 与取链时一致
+      //  - f=3：还要带上取链响应里 Set-Cookie 下发的那个 Cookie
+      // 缺一个都会 403，所以这里把两者都拼上。
       else if (acc.type == CloudDriveType.pan115) {
+        final extraCookie = _svc.currentExtraCookie(acc.id);
+        final cookie = extraCookie.isEmpty
+            ? acc.cookie
+            : '${acc.cookie}; $extraCookie';
         playParams['headers'] = {
-          'Cookie': acc.cookie,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Cookie': cookie,
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Referer': 'https://115.com/',
         };
       }

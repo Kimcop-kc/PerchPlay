@@ -213,6 +213,20 @@ class CloudDriveService {
     return null;
   }
 
+  /// 取 115 直链时服务端下发的附加 Cookie（形如 `k=v`，可能为空）。
+  ///
+  /// 115 直链 URL 里的 `f` 参数决定播放校验要求，`f=3` 时必须带上这个
+  /// Cookie，否则 403。其它云盘返回空串。
+  String currentExtraCookie(String accountId) {
+    final c = _clients[accountId];
+    if (c is Pan115DriveClient) {
+      try {
+        return c.lastSetCookie;
+      } catch (_) {}
+    }
+    return '';
+  }
+
   /// 释放所有底层连接（App 退出时调用）。
   void dispose() {
     for (final c in _clients.values) {
