@@ -37,6 +37,15 @@ class CastDiscoveryService {
     // SSDP 响应收不到 → 设备列表永远是空的
     await NativeBridgeService.instance.acquireMulticastLock();
 
+    // iOS 14+：任何局域网访问（组播/TCP 探测）都要先拿到「本地网络」权限。
+    // 系统只会在**第一次真正发起局域网连接**时弹窗；如果用户当时点了拒绝，
+    // 之后所有探测都会静默失败、设备列表恒为空，且不会再弹窗。
+    // 这里先做一次「明确会触达局域网」的探测，让权限弹窗在进入投屏页时
+    // 立刻出现（而不是藏在后台的 SSDP 里，用户根本不知道有东西在等授权）。
+    if (!kIsWeb && Platform.isIOS) {
+      await _warmUpLocalNetworkPermission();
+    }
+
     await _startSsdp();
     await _scanMdns();
 
@@ -49,6 +58,35 @@ class CastDiscoveryService {
     _cleanupTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _cleanStaleDevices();
     });
+  }
+
+  /// iOS：触发本地网络权限弹窗。
+  ///
+  /// 做法是主动向组播地址发一个 SSDP 包并尝试短连接——这会命中 iOS 的
+  /// 本地网络权限检查，从而弹出系统授权框。失败无所谓（用户可能已授权、
+  /// 也可能拒绝），后续真实探测会拿到正确结果。
+  Future<void> _warmUpLocalNetworkPermission() async {
+    try {
+      final probe = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      probe.broadcastEnabled = true;
+      try {
+        probe.send(
+          'M-SEARCH * HTTP/1.1\r\n'
+                  'HOST: $_ssdpMulticastAddr:$_ssdpPort\r\n'
+                  'MAN: "ssdp:discover"\r\n'
+                  'MX: 1\r\n'
+                  'ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n'
+                  '\r\n'
+              .codeUnits,
+          InternetAddress(_ssdpMulticastAddr),
+          _ssdpPort,
+        );
+      } catch (_) {}
+      probe.close();
+      debugPrint('[CastDiscovery] 已触发 iOS 本地网络权限检查');
+    } catch (e) {
+      debugPrint('[CastDiscovery] 本地网络权限探测失败: $e');
+    }
   }
 
   /// 停止设备发现
