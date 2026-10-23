@@ -102,8 +102,10 @@ open ios/Runner.xcworkspace
   `pod install` 会报 `pod "Flutter" ... required a higher minimum deployment target`。
 - 各 iOS 插件最低部署版本均 ≤ 项目的 iOS 15.0（permission_handler_apple 12.0、
   media_kit_libs_ios_video 9.0），`Info.plist` 与 `Podfile` 已配置完整权限。
-- iOS Bundle ID 现为 `com.vidflow.vidflow`（沿自旧名 VidFlow），与 Android 包名
-  `com.perchplay.player` 不一致；上架前建议在 `Runner.xcodeproj` 里统一。
+- iOS Bundle ID 为 `com.perchplay.player`，与 Android 包名一致
+  （RunnerTests 为 `com.perchplay.player.RunnerTests`）。
+  注意 `com.vidflow/native`、`com.vidflow/pip` 是 MethodChannel 名，
+  与 Bundle ID 无关，**不要一起改**（Dart 侧 `NativeBridgeService` 用的是同一字符串）。
 
 ### iOS 本地文件访问（沙盒模型）
 

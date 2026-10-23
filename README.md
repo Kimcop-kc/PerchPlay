@@ -157,7 +157,7 @@ flutter build ios --release          # iOS（需 macOS + Xcode）
 ```
 
 Android 的 `release` 构建：本仓库提供默认回退（无 keystore 时用 debug 签名，保证 clone 后可直接构建）。正式发布需在 `android/key.properties` 里指向你自己的 keystore（该文件已被 `.gitignore` 忽略，不会进仓库）。
-iOS 首次在 Xcode 里需要改两处：**Bundle ID**（现为 `com.vidflow.vidflow`）和 **Signing Team**，然后打开 `Runner.xcworkspace`（不是 `.xcodeproj`）。
+iOS 首次在 Xcode 里需要设置 **Signing Team**（Bundle ID 已与 Android 统一为 `com.perchplay.player`），然后打开 `Runner.xcworkspace`（不是 `.xcodeproj`）。
 
 ### 权限说明（Android）
 - Android 13+：`READ_MEDIA_VIDEO`（弹窗授权）

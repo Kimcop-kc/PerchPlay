@@ -95,5 +95,15 @@ iOS 是沙盒系统，之前 App 扫描本地文件完全不可用——扫描�
 
 - **iOS 画中画**仍未实现（按钮不显示）
 - **照片库视频需先导出**：首次扫描大相册会花一些时间（已做索引去重，第二次起几乎瞬时）
-- **iOS Bundle ID** 仍是 `com.vidflow.vidflow`（沿自旧名），与 Android 的 `com.perchplay.player` 不一致，上架前需统一
+- **iOS 应用内更新**：受 iOS 限制无法自安装，只提供「复制下载链接」引导（用 AltStore 等工具装 IPA）
 - 网盘相关限制同前版本（115 大文件、夸克限速、百度/阿里 OAuth）
+
+---
+
+## 附：本版其他修复
+
+- **iOS Bundle ID 统一为 `com.perchplay.player`**（原 `com.vidflow.vidflow`），与 Android 一致
+- **iOS 从「文件」App 打开视频**：补上 `application(_:open:options:)` 处理，
+  外部文件会复制进 `Documents/Incoming` 后播放
+- **iOS 投屏**：进入投屏页主动触发「本地网络」权限弹窗，避免设备列表恒为空
+- **iOS 权限**：照片库被拒绝后不再挡住 Documents 扫描
