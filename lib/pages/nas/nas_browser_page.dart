@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
+import '../../core/system/system_ui_policy.dart';
 import '../../models/nas_connection_model.dart';
 import '../../providers/nas_provider.dart';
 import '../../widgets/glass/glass_card.dart';
@@ -704,13 +705,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                       // 这个 bottomSheet 贴屏幕底，且外层 SafeArea 被设成
                       // bottom:false（tab 页为了内容铺满而关掉），所以
                       // MediaQuery.padding.bottom 不会自动生效。
-                      // 不加这段，「连接 / 取消」按钮会被系统导航栏压住，
-                      // 看起来像「按钮跑到导航栏下面」。
+                      // 而且 Android 8/9 是 manual 模式，padding.bottom 直接是 0
+                      // —— 必须用 bottomSheetInset 才能拿到真实导航栏占位。
+                      // 不加这段，「连接 / 取消」按钮会被系统导航栏压住。
                       padding: EdgeInsets.fromLTRB(
                         24,
                         8,
                         24,
-                        24 + MediaQuery.of(ctx).padding.bottom,
+                        24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,

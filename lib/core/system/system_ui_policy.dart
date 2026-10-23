@@ -1,7 +1,8 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart' show Brightness, Color, Colors;
+import 'package:flutter/material.dart'
+    show Brightness, Color, Colors, MediaQuery, MediaQueryData;
 import 'package:flutter/services.dart';
 
 import '../../services/native_bridge_service.dart';
@@ -104,4 +105,38 @@ class SystemUiPolicy {
       );
     }
   }
+
+  /// 底部浮层（bottomSheet / 弹窗）必须避让的系统栏高度。
+  ///
+  /// ## 为什么不能直接用 `MediaQuery.padding.bottom`
+  ///
+  /// 这个值只在「内容延伸到系统栏下方」（edgeToEdge）时才等于导航栏高度。
+  /// Android 9 及以下走 `manual` 模式 —— 系统把导航栏区域**从布局里扣掉**，
+  /// 于是 `padding.bottom` 变成 **0**。
+  ///
+  /// 但 `showModalBottomSheet` 是**浮在最上层、覆盖整个物理屏幕**的，
+  /// 它不参与那个「扣掉导航栏」的布局计算。所以在 Android 8/9 上：
+  ///   - `padding.bottom == 0` → 我们算出「不需要留白」
+  ///   - 浮层实际仍贴着屏幕物理底边 → 下半截被导航栏盖住
+  ///
+  /// 表现正是「二级菜单被导航栏挡住，且挡住的区域点不到、也滑不到」。
+  ///
+  /// 修法：低版本上额外补一个导航栏高度。用 `viewPadding` 而不是 `padding`，
+  /// 因为 `viewPadding` 反映的是**系统栏真实占位**，不受「内容是否延伸」影响。
+  static double bottomSheetInset(MediaQueryData mq) {
+    // viewPadding 在 edgeToEdge 下就是导航栏高度，在 manual 下也是真实占位
+    final view = mq.viewPadding.bottom;
+    if (view > 0) return view;
+    // 极端兜底：某些 ROM 连 viewPadding 都给 0，但导航栏确实存在
+    if (!supportsEdgeToEdge && (kIsWeb ? false : Platform.isAndroid)) {
+      return _fallbackNavBarHeight;
+    }
+    return 0;
+  }
+
+  /// 无法从系统拿到导航栏高度时的兜底值。
+  ///
+  /// 三键导航约 48dp，手势导航约 24dp；取 48 偏保守，
+  /// 多留一点空白比被挡住好（挡住会导致按钮点不到）。
+  static const double _fallbackNavBarHeight = 48;
 }

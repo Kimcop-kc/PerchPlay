@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
+import '../../core/system/system_ui_policy.dart';
 import '../../services/device_info_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
@@ -861,7 +862,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           final previewSize = fontSize > 0 ? fontSize : 16.0;
 
           // 半屏弹出：约束高度 50%，超出滚动
-          final safeBottom = MediaQuery.of(sheetCtx).padding.bottom;
+          //
+          // 底部留白必须用 bottomSheetInset 而不是 padding.bottom：
+          // Android 8/9 走 manual 模式时 padding.bottom 是 0，
+          // 而 bottomSheet 仍覆盖整个物理屏幕，会被导航栏压住。
+          final safeBottom =
+              SystemUiPolicy.bottomSheetInset(MediaQuery.of(sheetCtx));
           return ClipRRect(
             borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(GlassTheme.radiusXl)),
@@ -1719,7 +1725,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required String current,
     required void Function(String) onSelect,
   }) {
-    final bottomInset = MediaQuery.of(context).padding.bottom + 96;
+    // 同 _pickerSheet：低版本 padding.bottom 为 0，必须用 bottomSheetInset
+    final bottomInset =
+        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
     const options = <(String, String, String)>[
       ('auto', '自动', '跟随手机当前方向，可自由旋转'),
       ('landscape', '横屏', '打开视频即横屏全屏'),
@@ -1799,8 +1807,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return StatefulBuilder(
       builder: (ctx, setSheetState) {
         double value = current;
-        // 避让悬浮玻璃导航栏 + 底部安全区
-        final bottomInset = MediaQuery.of(ctx).padding.bottom + 96;
+        // 避让悬浮玻璃导航栏 + 底部系统栏
+        // 同 _pickerSheet：低版本 padding.bottom 为 0，必须用 bottomSheetInset
+        final bottomInset =
+            SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)) + 96;
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(
               top: Radius.circular(GlassTheme.radiusXl)),
@@ -1898,8 +1908,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required void Function(double) onSelect,
     required String Function(double) format,
   }) {
-    // 避让悬浮玻璃导航栏 + 底部安全区
-    final bottomInset = MediaQuery.of(context).padding.bottom + 96;
+    // 避让悬浮玻璃导航栏 + 底部系统栏。
+    //
+    // 底部系统栏用 bottomSheetInset 而非 padding.bottom：
+    // Android 8/9 是 manual 模式，padding.bottom == 0，但 bottomSheet
+    // 覆盖整个物理屏幕，不加就会让最后几个选项被导航栏压住且点不到。
+    final safeBottom = SystemUiPolicy.bottomSheetInset(MediaQuery.of(context));
+    final bottomInset = safeBottom + 96;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(
           top: Radius.circular(GlassTheme.radiusXl)),
@@ -1919,53 +1934,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   color: Colors.black.withValues(alpha: 0.06), width: 0.5),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 32,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    color: Colors.black.withValues(alpha: 0.15),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 32,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
+                      color: Colors.black.withValues(alpha: 0.15),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(title,
-                  style: const TextStyle(
-                      color: GlassTheme.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700)),
-              if (subtitle != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(subtitle,
-                      style: const TextStyle(
-                          color: GlassTheme.textTertiary, fontSize: 13)),
-                ),
-              const SizedBox(height: 12),
-              ...items.map((v) {
-                final isActive = v == current;
-                return GlassButton(
-                  label: format(v),
-                  width: double.infinity,
-                  height: 44,
-                  ghost: true,
-                  filled: false,
-                  foregroundColor: isActive
-                      ? GlassTheme.accentPurple
-                      : GlassTheme.textPrimary,
-                  onTap: () {
-                    onSelect(v);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-              const SizedBox(height: 20),
-            ],
+                const SizedBox(height: 16),
+                Text(title,
+                    style: const TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(subtitle,
+                        style: const TextStyle(
+                            color: GlassTheme.textTertiary, fontSize: 13)),
+                  ),
+                const SizedBox(height: 12),
+                ...items.map((v) {
+                  final isActive = v == current;
+                  return GlassButton(
+                    label: format(v),
+                    width: double.infinity,
+                    height: 44,
+                    ghost: true,
+                    filled: false,
+                    foregroundColor: isActive
+                        ? GlassTheme.accentPurple
+                        : GlassTheme.textPrimary,
+                    onTap: () {
+                      onSelect(v);
+                      Navigator.pop(context);
+                    },
+                  );
+                }),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
