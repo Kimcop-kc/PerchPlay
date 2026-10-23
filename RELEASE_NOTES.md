@@ -1,200 +1,99 @@
-# PerchPlay v1.1.0 更新说明
+# PerchPlay v1.1.1 更新说明
 
-本次是一个较大的修复版本，重点解决**网盘登录/播放**与**界面遮挡**两类问题。
+本次版本重点是 **iOS 端从「完全不能用」到「可用」**，以及 **播放性能** 的一轮系统性修复。
 
 ---
 
-## 一、网盘
+## 一、iOS 本地文件扫描（新功能）
 
-### 115 网盘：大文件直链（新增）
+iOS 是沙盒系统，之前 App 扫描本地文件完全不可用——扫描逻辑硬编码了 Android 的 `/storage/emulated/0`，iOS 上该路径不存在，扫出来永远是空列表。
 
-之前 115 的直链获取有三个缺陷，导致「直链获取失败」：
+现在 iOS 通过三条途径获取本地视频：
 
-- **不检查接口的 `state` 字段**。失败时服务端返回 `{"state":false,"error":"请重新登录","errno":99}`，`data` 是空数组。旧代码只看 `data is Map`，不成立就直接返回 null，把「登录过期」这个真实原因丢掉了。
-- **成功时 `data` 是 RSA 加密字符串，不是 Map**。所以即使鉴权完全正常，这条路径也必然失败。
-- **响应字段名是 `file_url`，不是 `url`**。即使拿到明文也提取不到。
-
-现在按三条通道依次降级：
-
-| 通道 | 端点 | 是否加密 | 大小限制 |
-|---|---|---|---|
-| A | `115.com/?ct=download&ac=video`（302 Location） | 否 | ≤200MB |
-| B | `webapi.115.com/files/download` | 否 | ≤200MB |
-| C | `proapi/app/chrome/downurl` | **是（已实现解密）** | **无限制** |
-
-小文件走 A/B（更快，一次请求即返回），超过 200MB 自动落到 C。
-
-通道 C 的 RSA 解密用**纯 Dart 的 BigInt 实现**，没有引入任何第三方加密库。链路是：模幂还原 → 剥 PKCS#1 填充 → 取前 16 字节派生 XOR 密钥 → XOR → 逆序 → 再 XOR 固定密钥。该实现用 Python 参考实现交叉验证过（含 208 字节需分段的长明文用例）。
-
-同时修复了 `pickcode` 字段兼容（列表里可能是 `pc` 或 `pickcode`），以及直链 `f` 参数要求的附加 Cookie（`f=3` 时不带会 403）。
-
-### 阿里云盘：登录界面（修复）
-
-**根因是打开错了页面。** 原来打开 `https://www.alipan.com/`，那是产品介绍首页（`aliyun-drive-home`），**没有任何登录入口**，在 WebView 里只看到宣传图。
-
-`https://www.alipan.com/sign/in` 才是登录应用（`aliyun-drive-fe/h5-sign`），有手机号登录和扫码。已改。
-
-同时修正了 token 抓取：
-- 优先读 `sessionStorage`（h5-sign 就是这么存的，代码是 `sessionStorage.getItem(L) || localStorage.getItem(L)`），原来只读 localStorage
-- 兼容 `tokenDetailInfo` 嵌套结构
-- 不再把 token 前 20 字符打进日志
-
-**关于 OAuth2.0**：目前阿里云盘开放平台对第三方应用的 OAuth 授权是关闭的。直接请求 `auth.alipan.com/v2/oauth/authorize` 会返回：
-
-```
-403 {"code":"Forbidden",
-     "message":"...domain not support oauth."}
-```
-
-这与 client_id 无关（空 client_id 返回 400，任意 client_id 返回 403）。真正的 OAuth 端点 `open.aliyundrive.com/oauth/authorize` 需要单独申请应用，且 `redirect_uri` 必须与申请时登记的一致。代码里保留了走 OAuth 的骨架，拿到凭证后可直接切换。
-
-### 百度网盘：读取目录失败（修复）
-
-**根因是 Cookie 抓取时的域名覆盖顺序。**
-
-```dart
-final hostsToCheck = [host, 'pan.baidu.com', 'baidu.com'];
-for (final h in hostsToCheck) {
-  for (final c in cookies) map[c.name] = c.value;   // 后写的覆盖前面的
-}
-```
-
-百度的关键 Cookie 分散在不同域名：`BDUSS` 在 `.baidu.com`，`STOKEN` 只在 `pan.baidu.com`。查询 `https://baidu.com` 时浏览器会返回所有对其生效的 Cookie，其中可能包含另一个（无效的）`STOKEN`，把前面从 `pan.baidu.com` 拿到的正确值覆盖掉 → 接口返回 `errno: -6`（未登录）。
-
-改为：**先查宽泛域名，再查具体域名**，让精确值覆盖宽泛值。
-
-另外三处修复：
-- 登录入口从 `/login` 改为 `pan.baidu.com/disk/main`（`STOKEN` 只在访问网盘页面时下发）
-- 补齐 `bdstoken`（CSRF token，从 Cookie 里提取）
-- 取直链改走 `api/filemetas`（Cookie 认证）。原代码用 `xpan/multimedia` 但 `access_token` 传的是空值，必然失败
-
-### 网盘错误提示（改进）
-
-之前不管什么失败都提示「登录可能已过期」，用户被误导着反复重新登录，而真实原因可能是目录不存在或账号受限。现在按错误码区分：
-
-| 错误码 | 含义 | 提示 |
+| 途径 | 说明 | 操作方式 |
 |---|---|---|
-| `-6` | 未登录/过期 | 重新添加并完成登录 |
-| `-7` / `-9` | 目录不存在 | 已删除或改名，返回上一级 |
-| `31066` | 账号受限 | 需完成实名认证 |
-| 其他 | — | 显示错误码与原始信息 |
+| **沙盒 Documents 扫描** | 扫描 App 自己的 Documents 目录，配合系统文件共享，该目录会显示在「文件」App →「我的 iPhone」→ PerchPlay | 把视频放进该目录，回 App 点「扫描视频」 |
+| **「文件」App 多选导入** | 打开系统文件选择器，可一次选多个视频，自动复制进 App 沙盒 | 文件夹页右上角「导入视频」按钮 |
+| **照片库视频扫描** | 读取相册里的视频并导出为本地文件纳入影库 | 首次弹照片库权限，授权后点「扫描视频」 |
 
-夸克也补上了同样处理（取直链接口原来完全不检查业务错误码）。
+同时适配了：
+- 文件夹浏览器的 iOS 根目录（不再是 Android 路径）
+- 字幕候选目录（iOS 改用沙盒 Documents）
+- 空状态/错误状态的按钮与文案按平台切换
 
-### 播放缓冲优化（夸克/115/百度/阿里全部生效）
-
-三个问题：
-
-1. **HTTP 请求头手工拼接会被逗号截断**。原代码把 headers 拼成 `'Key:value','Key2:value2'` 塞给 mpv 的 `http-header-fields`，而夸克/百度的 Cookie 本身含逗号，会被拆错 → 鉴权残缺 → 服务端限速或反复 403。改为使用 media_kit 的 `Media(httpHeaders:)`，内部用 `MPV_FORMAT_NODE_ARRAY` 逐条下发，不做字符串拼接。
-
-2. **网络流走了磁盘缓存**。`cache-on-disk=yes` 会把网络流先写进手机存储再读出来，多一次闪存写 + 读。改为 `no`，只保留内存缓存。
-
-3. **起播预读 10 秒**。这是 mpv 默认值，意味着先攒够 10 秒数据才开播。网盘首包本来就慢，叠加后表现为「点开要转圈十几秒」。改为 3 秒。
-
-另外对网盘直链关闭了 mpv 的并发 Range 抢带宽行为（多连接会被判定为异常流量，反而更慢），并调整了 `network-timeout`、`demuxer-lavf-buffersize` 等参数。
-
-### 慢源提示（新增）
-
-网盘（尤其夸克非会员）对第三方直链有**服务端限速**，这是客户端绕不过去的。但以前用户只能对着转圈干等，不知道是网络问题、App 问题还是限速。
-
-现在缓冲超过 8 秒会显示提示：
-
-> 网盘服务器限速，可能因非会员／并发过大。
-> 可尝试：切换到 4G/Wi-Fi、换清晰度较低的片源，或把文件转存到本地后播放。
+> 照片库视频会**导出为真实文件**再入库，而不是直接播系统临时路径——后者在 media_kit 上有「只有音频没画面」的已知问题。
 
 ---
 
-## 二、NAS / 串流
+## 二、播放性能修复
 
-### 添加连接的按钮被遮挡（修复）
+### 1. 高码率/大文件起播慢
 
-两个独立问题，根因相同：**浮层不占布局空间，而列表留白没把它算进去**。
+- 本地文件 demuxer 缓冲 32MB → 64MB（高码率 4K 单秒数据量就有 6~12MB，32MB 只够 3~5 秒）
+- 降低 ffmpeg probe 开销（`analyzeduration=1`、`buffersize=256KB`）
+- 本地预读时长 10s → 2s（本地读几乎没有延迟，攒太多反而推迟首帧）
 
-**① 添加连接弹窗的按钮被导航栏压住**
+### 2. 播放卡顿掉帧
 
-弹窗贴屏幕底，而外层 `SafeArea` 是 `bottom: false`（tab 页为了内容铺满特意关掉的），所以 `MediaQuery.padding.bottom` 不生效。滚动区底部只给了 24px，正好落进系统导航栏区域——「连接 / 取消」被压住。
+- `framedrop` 改为 `decoder+vo`：解码/渲染任一侧跟不上都允许丢帧
+  （原来只丢渲染侧，解码排队会越积越多，表现为「越播越卡、音画逐渐错位」）
+- 显式 `video-sync=audio`，以音频为主时钟
+- 关闭运动插值（`interpolation=no`），高开销且手机上收益极小
 
-**② 列表最后几项被播放小窗压住**
+### 3. SDR 视频白白消耗 HDR 开销（重要性能浪费）
 
-小窗是浮层，位置在导航栏之上（`bottom = 72 + 手势条`），本身高 64px。但列表只按 96px 留白，小窗出现后实际需要 148px，最后几行正好落在小窗背后点不到。
+之前对**所有**片源无条件开启色调映射 + `hdr-compute-peak=yes`（逐帧直方图计算），SDR 片源纯属浪费 CPU/GPU，高码率时直接表现为掉帧。
 
-现在统一用 `MiniPlayer.bottomInset()` 计算，连接列表、文件列表、空状态三处都已改。
+现在只在真实 HDR 片源启用；SDR 走 `tone-mapping=clip` 最轻路径。
 
-### 协议与路径（已是现有能力）
+### 4. 解码参数生效时机修正
 
-NAS 支持四种协议，都可自定义：
+`hwdec` / `vd-lavc-threads` 是 mpv 的**每文件选项**，必须在 `open()` **之前**设置。之前放在 open 之后，导致每次首播实际走的是 mpv 默认解码配置——高码率片源因此掉帧。已调整到 open 前。
 
-| 协议 | 默认端口 | 需要填写 |
-|---|---|---|
-| WebDAV | 5005 | 路径（如群晖 `/dav`、Nextcloud `/remote.php/dav/files/用户名`） |
-| FTP | 21 | 远程起始路径 |
-| SMB | 445 | 共享名（必填） |
-| NFS | — | 暂不支持（需内核支持，Dart 层无法实现） |
+### 5. 刷新/导入慢
 
-WebDAV 的路径建议不要留空——很多服务在根目录返回 404/405。
-
----
-
-## 三、播放器
-
-### 播放界面状态栏不隐藏（修复）
-
-`initState` 里只调用了 `_applyPlayerFullscreenUi()`，它只设置 overlay style：
-
-```dart
-SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-  statusBarColor: Colors.transparent,   // 只是把底色设透明
-  ...
-));
-```
-
-在 `edgeToEdge` 模式下，`statusBarColor: transparent` **只是让状态栏底色变透明，状态栏本身仍然存在**——它依然占据屏幕顶部空间、依然显示时间电量图标。
-
-真正隐藏需要 `SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky)`，而这个调用原来只在用户主动点「全屏」时才执行。
-
-现在进入播放页就调用 `applyImmersive()`，并调整顺序为「先设样式 → 再进沉浸」（反过来会让样式覆盖沉浸状态）。退出全屏时也不再恢复状态栏（此时仍在播放页）。
-
-### 进度条拖动发涩（修复）
-
-四个性能问题叠加：
-
-1. **每帧双重重建**。拖动时 `GlassSlider` 内部 `setState` → 触发 `onChanged` → 改外部 `ValueNotifier` → `ValueListenableBuilder` 重建 → 把新 value 推回滑块 → 再次 `setState`。现在拖动期间滑块完全忽略外部 value。
-
-2. **`AnimatedContainer` 拖后腿**。thumb 位置每帧都变，但 200ms 隐式补间让滑块「追不上手指」。拖动时把时长压到 0。
-
-3. **`boxShadow` 每帧重算模糊蒙版**。活跃轨道的发光效果会随宽度变化每帧重新生成蒙版。拖动时去掉发光，松手后恢复。
-
-4. **`SafeBackdropFilter` 多一层合成**。拖动时跳过。
+- **修复相册无限重导的 bug**：原实现遇到同名文件就生成 `_1`/`_2` 新名字，导致每次刷新都把整个相册重导一遍、磁盘无限膨胀。改用「资产 ID → 文件名」持久化索引，已导出的直接跳过。
+- **照片库导出改为后台异步**：先出 Documents 的列表，照片库导完再增量刷新，不再让用户等整个相册导完。
+- **文件导入改 3 路并发复制**（原来逐个串行 await）。
+- **扫描时每个文件只做一次 `stat()`**（原来 `length()` + `stat()` 两次 IO）。
 
 ---
 
-## 四、界面
+## 三、倍速修复
 
-### 设置页「已隐藏的视频」竖排（修复）
+### 1. 高倍速点不动
 
-`ListTile` 的 `title` 在 `trailing`（「全部恢复」按钮）占宽后被压缩，而 `Text` 默认允许任意换行。中文没有空格，压到「每行一个字」时就变成竖排文字。
+之前只调 `setRate`，没有配置 mpv 的音频变速，超过 2x 时音频跟不上会被钳回 2.0——表现就是「点 2.5x/3x/4x 没反应」。
 
-已给 `_settingRow` / `_settingSwitch` 的标题加 `maxLines: 1` + `ellipsis`。空间不够时显示「已隐藏的视频（12…」而不是竖排。
+现在配置了 `audio-pitch-correction` + `scaletempo2` 变速滤镜，并且**只在非 1x 时挂滤镜**（1x 下挂滤镜是纯浪费，会拖低流畅度）。
+
+播放倍速选项也从 2.0x 上限扩展到 **3.0x**。
+
+### 2. 倍速换片后被重置
+
+`loadVideo` 里原来写死 `speed: defaultSpeed`，用户手动切到 1.5x/2x 后一换片就被打回默认值，看起来像「倍速点了没用」。已改为保留当前倍速。
 
 ---
 
-## 五、其他修复
+## 四、复播黑屏修复
 
-- **首页进度条不刷新**。首页卡片读的是 `libraryProvider` 缓存里的 `lastPosition`，而播放结束只递增 `playbackVersionProvider`，provider 没监听它，进度条永远停在旧值。现在 `build()` 会监听版本号并从数据库重读（只重读 DB，不重扫文件系统）。
+「退出播放再回来，先黑屏一段、卡一下才出画面」的修复：
 
-- **缓冲看门狗串片**。上一部视频正在缓冲时切到下一部，旧定时器 8 秒后会在新视频上误弹「限速」提示。已加代次令牌并在换片时清理。
+1. **open 前先 `stop()`**：mpv 在已有文件播放状态下直接 open 新文件，旧的视频输出上下文不会立刻释放，新文件首帧常渲染到旧纹理上。
+2. **播放页复用判断**：同一视频且队列未变时不再重新 `open`，直接恢复播放。这是从小窗/后台回播放页的关键路径——原来会无条件重载，等于把正在播的视频拆掉重建。
 
-- **网盘错误提示失效**。`_clients` 原本在 `connect()` 成功后才存，失败路径下 `lastErrorHint()` 取不到 client、永远返回空串，导致「按 errno 区分原因」的逻辑在最需要它的场景（登录过期）下不工作。改为先注册再 connect。
+---
 
-- **阿里云 token 失效后仍返回坏 token**。原兜底会让上层拿一个已验证失败的 token 去发请求，真实原因被掩盖成「列目录失败」。改为返回 null。
+## 五、其他
 
-- **版本号被硬编码覆盖**。`android/local.properties` 里有 `flutter.versionName=1.0.98`，会覆盖 `pubspec.yaml` 的版本号，导致之前打包版本号一直是 1.0.98。已同步为 1.1.0 / versionCode 110。
+- 补齐 `libsmb2` 的 Linux / Windows 预编译库（CI 与本地测试需要），iOS/Android 库此前已具备
+- iOS 最低部署目标统一为 **15.0**（Flutter 3.47+ 的硬性要求）
 
 ---
 
 ## 已知限制
 
-- **115 网盘 >200MB 的文件**：走 RSA 解密通道，但真实服务端响应结构未经真机验证，如果失败请提供 `[115]` 开头的日志
-- **夸克网盘限速**：服务端行为，非会员尤其明显，客户端无法绕过
-- **百度开放平台**：OAuth 需要审核，且通过后也只能访问 `/apps/{应用名}/` 这一个目录，无法读取用户网盘其他位置 —— 因此仍使用 Cookie 方案
-- **阿里云盘 OAuth**：需自行申请开放平台应用，当前使用 WebView 抓 token
+- **iOS 画中画**仍未实现（按钮不显示）
+- **照片库视频需先导出**：首次扫描大相册会花一些时间（已做索引去重，第二次起几乎瞬时）
+- **iOS Bundle ID** 仍是 `com.vidflow.vidflow`（沿自旧名），与 Android 的 `com.perchplay.player` 不一致，上架前需统一
+- 网盘相关限制同前版本（115 大文件、夸克限速、百度/阿里 OAuth）
