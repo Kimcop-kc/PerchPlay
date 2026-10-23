@@ -407,6 +407,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           p.currentIndex,
           p.isPlaying,
           p.isBuffering,
+          p.isSlowSource,
+          p.slowSourceHint,
           p.isCompleted,
           p.duration.inMilliseconds,
           p.speed,
@@ -586,9 +588,28 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             // 缓冲
             if (state.isBuffering)
               Center(
-                child: CircularProgressIndicator(
-                  color: GlassTheme.accentPurple,
-                  strokeWidth: isLarge ? 4 : 3,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      color: GlassTheme.accentPurple,
+                      strokeWidth: isLarge ? 4 : 3,
+                    ),
+                    // 长时间缓冲（>8s）时说明原因，避免用户对着转圈干等
+                    if (state.isSlowSource && state.slowSourceHint.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16, left: 32, right: 32),
+                        child: Text(
+                          state.slowSourceHint,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: GlassTheme.textSecondary,
+                            fontSize: isLarge ? 15 : 13,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
           ],

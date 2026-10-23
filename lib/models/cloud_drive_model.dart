@@ -40,8 +40,15 @@ extension CloudDriveTypeX on CloudDriveType {
         // 百度网盘登录页
         return 'https://pan.baidu.com/login';
       case CloudDriveType.aliyun:
-        // 阿里云盘旧域名（桌面版 SPA，登录后存 refresh_token 到 localStorage）
-        return 'https://www.alipan.com/';
+        // 必须用 /sign/in，不能用根路径 `/`。
+        //
+        // 根路径加载的是 `aliyun-drive-fe/aliyun-drive-home`（产品介绍首页），
+        // 那个页面**没有任何登录入口**，在 WebView 里看起来就是「一片空白 /
+        // 只有宣传图」，用户根本没地方输入账号 —— 这就是「阿里云没有登录界面」。
+        //
+        // `/sign/in` 加载的是 `aliyun-drive-fe/h5-sign`，是独立的登录应用
+        // （手机号 + 验证码 / 扫码），登录成功后会把 token 写进 localStorage。
+        return 'https://www.alipan.com/sign/in';
     }
   }
 

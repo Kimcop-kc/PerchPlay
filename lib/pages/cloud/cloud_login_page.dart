@@ -237,20 +237,35 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       InAppWebViewController controller) async {
     const js = r'''
 (function(){
+  function pick(o){
+    if (!o || typeof o !== 'object') return null;
+    var at = o.access_token || o.accessToken || '';
+    var rt = o.refresh_token || o.refreshToken || '';
+    // 阿里 h5-sign 会把真正的 token 放在 tokenDetailInfo 里
+    var d = o.tokenDetailInfo || o.token_detail_info;
+    if (d && typeof d === 'object') {
+      at = at || d.access_token || d.accessToken || '';
+      rt = rt || d.refresh_token || d.refreshToken || '';
+    }
+    if (at || rt) return JSON.stringify({at: at, rt: rt});
+    return null;
+  }
+
   try {
-    // 方案1: 从 localStorage.token 取（新版 alipan.com）
-    var v = localStorage.getItem('token');
-    if (v) {
+    // 方案1: localStorage / sessionStorage 的 'token' 键
+    //
+    // 阿里 h5-sign 的读写顺序是 sessionStorage 优先（见 app.js：
+    //   sessionStorage.getItem(L) || localStorage.getItem(L)
+    //   t ? localStorage.setItem(L, e) : sessionStorage.setItem(L, e)
+    // ），所以两个都要查，且 session 优先。
+    var raw = sessionStorage.getItem('token') || localStorage.getItem('token');
+    if (raw) {
       try {
-        var o = JSON.parse(v);
-        if (o) {
-          var at = o.access_token || '';
-          var rt = o.refresh_token || '';
-          if (at || rt) return JSON.stringify({at: at, rt: rt});
-        }
+        var hit = pick(JSON.parse(raw));
+        if (hit) return hit;
       } catch (e) {}
     }
-    
+
     // 方案2: 从 cookie 取（部分情况下 token 在 cookie 里）
     var cookies = document.cookie.split(';');
     for (var i = 0; i < cookies.length; i++) {
@@ -258,36 +273,27 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
       if (c.indexOf('token=') === 0 || c.indexOf('refresh_token=') === 0) {
         var val = decodeURIComponent(c.substring(c.indexOf('=') + 1));
         try {
-          var o = JSON.parse(val);
-          if (o && (o.access_token || o.refresh_token)) {
-            return JSON.stringify({at: o.access_token || '', rt: o.refresh_token || ''});
-          }
+          var hit2 = pick(JSON.parse(val));
+          if (hit2) return hit2;
         } catch (e) {
-          // 如果是纯 token 字符串
-          if (val.length > 50) {
-            return JSON.stringify({at: val, rt: ''});
-          }
+          if (val.length > 50) return JSON.stringify({at: val, rt: ''});
         }
       }
     }
-    
+
     // 方案3: 全量扫描 localStorage + sessionStorage
     var keys = [];
-    for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
     for (var i = 0; i < sessionStorage.length; i++) keys.push(sessionStorage.key(i));
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
-      if (!k) continue;
-      var v2 = localStorage.getItem(k) || sessionStorage.getItem(k);
+    for (var j = 0; j < localStorage.length; j++) keys.push(localStorage.key(j));
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      if (!key) continue;
+      var v2 = sessionStorage.getItem(key) || localStorage.getItem(key);
       if (!v2) continue;
       if (v2.indexOf('refresh_token') < 0 && v2.indexOf('access_token') < 0) continue;
       try {
-        var o = JSON.parse(v2);
-        if (o) {
-          var at = o.access_token || (o.token && o.token.access_token) || '';
-          var rt = o.refresh_token || (o.token && o.token.refresh_token) || '';
-          if (at || rt) return JSON.stringify({at: at, rt: rt});
-        }
+        var hit3 = pick(JSON.parse(v2));
+        if (hit3) return hit3;
       } catch (e) {
         var am = v2.match(/"access_token"\s*:\s*"([^"]+)"/);
         var rm = v2.match(/"refresh_token"\s*:\s*"([^"]+)"/);
@@ -296,15 +302,12 @@ class _CloudLoginPageState extends State<CloudLoginPage> {
         if (at2 || rt2) return JSON.stringify({at: at2, rt: rt2});
       }
     }
-    
+
     // 方案4: 从 window 对象取（某些 SPA 会挂在全局）
-    if (window.__TOKEN__) {
-      try {
-        var o = window.__TOKEN__;
-        if (o.access_token || o.refresh_token) {
-          return JSON.stringify({at: o.access_token || '', rt: o.refresh_token || ''});
-        }
-      } catch (e) {}
+    var g = window.__TOKEN__ || window.__INITIAL_STATE__;
+    if (g) {
+      var hit4 = pick(g);
+      if (hit4) return hit4;
     }
   } catch (e) {}
   return null;

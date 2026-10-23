@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -87,6 +87,15 @@ class PlayerState {
   /// 因此可以统一走 Flutter 渲染，不必依赖 mpv 原生绘制第二字幕。
   final List<String> secondarySubtitleLines;
 
+  /// 当前播放源被判定为「服务器限速」。
+  ///
+  /// 用于播放页在长时间缓冲时给用户一条明确提示，
+  /// 而不是让用户对着转圈干等、以为是 App 卡了。
+  final bool isSlowSource;
+
+  /// 慢源提示文案（为空表示无提示）。
+  final String slowSourceHint;
+
   const PlayerState({
     required this.player,
     this.videoController,
@@ -97,6 +106,8 @@ class PlayerState {
     this.duration = Duration.zero,
     this.volume = 1.0,
     this.brightness = 0.5,
+    this.isSlowSource = false,
+    this.slowSourceHint = '',
     this.speed = 1.0,
     this.currentVideo,
     this.queue = const [],
@@ -159,6 +170,8 @@ class PlayerState {
     int? secondarySubtitleIndex,
     List<String>? currentSubtitleLines,
     List<String>? secondarySubtitleLines,
+    bool? isSlowSource,
+    String? slowSourceHint,
     bool clearActiveSubtitle = false,
     bool clearTrackId = false,
     bool clearMediaInfo = false,
@@ -221,6 +234,8 @@ class PlayerState {
       currentSubtitleLines: currentSubtitleLines ?? this.currentSubtitleLines,
       secondarySubtitleLines:
           secondarySubtitleLines ?? this.secondarySubtitleLines,
+      isSlowSource: isSlowSource ?? this.isSlowSource,
+      slowSourceHint: slowSourceHint ?? this.slowSourceHint,
     );
   }
 
@@ -358,6 +373,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       platform.setProperty('demuxer-max-packets', '512').catchError((_) {});
       // YouTube-DL 之类的探测会额外发请求拖慢起播，网盘直链不需要
       platform.setProperty('ytdl', 'no').catchError((_) {});
+
+      // ── 分段下载策略 ──
+      //
+      // mpv/ffmpeg 默认会并发开多个 Range 连接「抢带宽」。对网盘直链这反而
+      // 有害：夸克/115 对第三方直链有频次与并发限速，多发几个连接会被判定
+      // 为异常流量，整体吞吐反而更低，表现为「一直缓冲、进度条几乎不动」。
+      //
+      // 改成单连接顺序读取：吞吐稳定，不会触发风控。
+      platform.setProperty('http-max-request-retries', '3').catchError((_) {});
+      // 关闭「预读时另起连接探测文件大小」的行为，省一次往返
+      platform.setProperty('http-seekable', 'yes').catchError((_) {});
+      // 单次读 1MB，减少请求次数又不至于让首包等待过久
+      platform.setProperty('demuxer-lavf-buffersize', '1048576')
+          .catchError((_) {});
+      // 关闭 demuxer 层面的激进探测，直链不需要
+      platform.setProperty('demuxer-lavf-probe-info', 'nostreams')
+          .catchError((_) {});
     }
   }
 
@@ -457,6 +489,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 避免暂停→关小窗的路径让 flag 被置为 false 导致通知永远不消失。
   bool _bgServiceOn = false;
 
+  /// 缓冲看门狗定时器（见 [_startBufferWatchdog]）
+  Timer? _bufferWatchdog;
+
   /// 根据「后台播放」设置与播放状态启停前台服务
   void _syncBackgroundService(bool playing) {
     if (!Platform.isAndroid) return;
@@ -483,6 +518,34 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (!Platform.isAndroid) return;
     _bgServiceOn = false;
     NativeBridgeService.instance.stopBackgroundService();
+  }
+
+  /// 缓冲看门狗：缓冲超过阈值就判定「源太慢」，给用户可执行的提示。
+  ///
+  /// 为什么需要它：网盘（尤其夸克非会员）对第三方直链有服务端限速，
+  /// 这种情况客户端怎么调参数都救不回来。让用户对着转圈干等是最糟的
+  /// 体验——他不知道是自己的网、App 的 bug，还是网盘限速。
+  ///
+  /// 8 秒是个经验值：正常起播（含首包 + 预读 3s）通常 2~5 秒完成，
+  /// 超过 8 秒还没出画基本都是源端吞吐不够。
+  void _startBufferWatchdog() {
+    _bufferWatchdog?.cancel();
+    _bufferWatchdog = Timer(const Duration(seconds: 8), () {
+      if (!state.isBuffering) return;
+      final path = state.currentVideo?.path ?? '';
+      final isCloud = path.contains('quark.cn') ||
+          path.contains('115.com') ||
+          path.contains('alidrive') ||
+          path.contains('alipan') ||
+          path.contains('baidu.com');
+      final hint = isCloud
+          ? '网盘服务器限速，可能因非会员／并发过大。\n'
+              '可尝试：切换到 4G/Wi-Fi、换清晰度较低的片源，\n'
+              '或把文件转存到本地后播放。'
+          : '网络较慢或文件码率过高，正在努力加载…';
+      state = state.copyWith(isSlowSource: true, slowSourceHint: hint);
+      debugPrint('[Player] 缓冲超过 8s，判定慢源: $path');
+    });
   }
 
   /// 停止播放时关掉前台服务（在 stop()/dispose 路径调用）
@@ -546,6 +609,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.buffering.listen((buffering) {
       state = state.copyWith(isBuffering: buffering);
+      if (buffering) {
+        _startBufferWatchdog();
+      } else {
+        _bufferWatchdog?.cancel();
+        _bufferWatchdog = null;
+        if (state.isSlowSource) {
+          state = state.copyWith(isSlowSource: false, slowSourceHint: '');
+        }
+      }
     });
 
     // 画面分辨率（详情展示用）
@@ -1422,6 +1494,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   @override
   void dispose() {
+    _bufferWatchdog?.cancel();
     // 恢复系统亮度 + 收掉前台通知
     _restoreBrightness();
     _forceShutdownBackgroundService();
