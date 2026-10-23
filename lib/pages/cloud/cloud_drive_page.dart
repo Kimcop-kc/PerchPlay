@@ -608,28 +608,32 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
         return;
       }
       if (!mounted) return;
-      
+
       // 构建播放参数，网盘需要额外的请求头才能正常播放
       final playParams = <String, dynamic>{
         'videoPath': url,
         'videoTitle': f.name,
       };
-      
+
+      // 各家的「取直链时用的请求头」。必须与实际播放一致，否则 CDN 403。
+      Map<String, String>? streamHeaders;
+
       // 夸克网盘：三样东西必须和「取直链」时完全一致，否则 CDN 403：
       //  1) Cookie —— 用**轮换后的最新值**（服务端会更新 __pus/__puus）
       //  2) User-Agent —— 必须与取直链时同一个，包括渠道标识
       //  3) Referer
       if (acc.type == CloudDriveType.quark) {
-        final liveCookie = _svc.currentCookie(acc.id);
-        playParams['headers'] = {
-          'Cookie': liveCookie.isEmpty ? acc.cookie : liveCookie,
+        streamHeaders = {
+          'Cookie': _svc.currentCookie(acc.id).isEmpty
+              ? acc.cookie
+              : _svc.currentCookie(acc.id),
           'User-Agent': QuarkDriveClient.userAgent,
           'Referer': 'https://pan.quark.cn/',
         };
       }
       // 百度网盘：需要 Cookie
       else if (acc.type == CloudDriveType.baidu) {
-        playParams['headers'] = {
+        streamHeaders = {
           'Cookie': acc.cookie,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Referer': 'https://pan.baidu.com/',
@@ -644,7 +648,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
         final cookie = extraCookie.isEmpty
             ? acc.cookie
             : '${acc.cookie}; $extraCookie';
-        playParams['headers'] = {
+        streamHeaders = {
           'Cookie': cookie,
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -655,7 +659,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       // 阿里云盘：直链自带签名，但部分文件/账号仍校验 Bearer 头，带上更稳
       else if (acc.type == CloudDriveType.aliyun) {
         final tk = await _svc.currentAccessToken(acc.id);
-        playParams['headers'] = {
+        streamHeaders = {
           'Referer': 'https://www.alipan.com/',
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -663,7 +667,36 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
           if (tk != null && tk.isNotEmpty) 'Authorization': 'Bearer $tk',
         };
       }
-      
+
+      // ── 串流代理 ──
+      //
+      // 夸克/百度/115 的 CDN 对每一条 Range 分块都校验鉴权头，而 mpv 自己
+      // 发的分块请求不带这些头 —— 表现为缓冲、反复重连、甚至 403。
+      // 起本地代理把这些接管后，mpv 只连 127.0.0.1，鉴权/分块/重试全由
+      // 代理层负责。
+      //
+      // 阿里云盘不启用：它的直链是「预签名 URL」，鉴权已在 query 里，
+      // 不走 Cookie，代理没有收益反而多一跳。
+      if (acc.type != CloudDriveType.aliyun && streamHeaders != null) {
+        final headers = streamHeaders;
+        final proxied = await _svc.startStreamProxy(
+          acc.id,
+          f.id,
+          headers: () => Map<String, String>.from(headers),
+        );
+        if (proxied != null) {
+          playParams['videoPath'] = proxied;
+          // 代理在本地，mpv 不需要再带任何网盘请求头
+          debugPrint('[Cloud] ${acc.type.name} 走串流代理: $proxied');
+        } else {
+          // 代理起不来就退回直链（至少还能播）
+          playParams['headers'] = headers;
+          debugPrint('[Cloud] 代理启动失败，退回直链播放');
+        }
+      } else if (streamHeaders != null) {
+        playParams['headers'] = streamHeaders;
+      }
+
       if (!mounted) return;
       await context.pushNamed('player', extra: playParams);
     } finally {

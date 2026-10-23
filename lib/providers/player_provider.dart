@@ -14,6 +14,7 @@ import '../services/subtitle_auto_service.dart';
 import '../services/subtitle_matcher.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/cloud/cloud_drive_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/library_prune_service.dart';
@@ -1055,6 +1056,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _restoreBrightness();
     try {
       await state.player.stop();
+    } catch (_) {}
+    // 关掉串流代理，释放本地端口。
+    // 必须在这里而不是播放页 dispose：用户可能从播放页返回首页继续用小窗
+    // 听声音，那时代理还要活着；只有真正 stop（关小窗/结束播放）才该释放。
+    try {
+      await CloudDriveService.instance.stopStreamProxy();
     } catch (_) {}
     // 停止播放后不再需要前台服务（无条件关，就算状态不对也关到位）
     _forceShutdownBackgroundService();

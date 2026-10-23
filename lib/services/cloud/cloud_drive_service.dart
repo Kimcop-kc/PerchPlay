@@ -8,6 +8,7 @@ import 'aliyun_drive_client.dart';
 import 'baidu_drive_client.dart';
 import 'pan115_drive_client.dart';
 import 'quark_drive_client.dart';
+import 'stream_proxy_server.dart';
 
 /// 云盘统一入口。
 ///
@@ -287,6 +288,53 @@ class CloudDriveService {
       } catch (_) {}
     }
     return '';
+  }
+
+  // ──────────── 串流代理 ────────────
+
+  /// 当前活跃的串流代理（同一时间只服务一个播放）。
+  StreamProxyServer? _stream;
+
+  /// 为某个文件启动本地串流代理，返回播放器可用的 URL。
+  ///
+  /// 为什么不直接把直链给播放器：
+  ///  - mpv 发 Range 请求时不会带 Cookie/UA，CDN 分块校验会 403
+  ///  - 拿不到 CDN 的 Set-Cookie 轮换，也校验不了 206
+  ///  - 控制不了并发，对已限速的网盘反而更慢
+  ///
+  /// 代理层把这些全接管后，mpv 只需要连 `127.0.0.1`。
+  ///
+  /// 返回 null 表示启动失败（调用方应退回直链播放）。
+  Future<String?> startStreamProxy(
+    String accountId,
+    String fileId, {
+    required Map<String, String> Function() headers,
+  }) async {
+    await stopStreamProxy();
+    try {
+      final server = await StreamProxyServer.start(
+        resolveUrl: () => getDownloadUrl(accountId, fileId),
+        headers: headers,
+      );
+      _stream = server;
+      final url = server.urlFor();
+      debugPrint('[Cloud] 串流代理已启动: $url');
+      return url;
+    } catch (e) {
+      debugPrint('[Cloud] 启动串流代理失败: $e');
+      return null;
+    }
+  }
+
+  /// 停止当前串流代理（换片 / 退出播放时调用）。
+  Future<void> stopStreamProxy() async {
+    final s = _stream;
+    _stream = null;
+    if (s != null) {
+      try {
+        await s.stop();
+      } catch (_) {}
+    }
   }
 
   /// 释放所有底层连接（App 退出时调用）。
