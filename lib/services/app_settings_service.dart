@@ -188,7 +188,6 @@ class AppSettingsService {
         _kAutoPlayNext: _autoPlayNext,
         _kBackgroundPlay: _backgroundPlay,
         _kHardwareDecoding: _hardwareDecoding,
-        _kHdrMode: _hdrMode,
         _kPlayerOrientation: _playerOrientation,
         _kAllFilesPrompted: _allFilesPrompted,
         _kGlassBlurV2: _glassBlur,
@@ -334,7 +333,6 @@ class AppSettingsService {
     _autoPlayNext = map[_kAutoPlayNext] as bool? ?? true;
     _backgroundPlay = map[_kBackgroundPlay] as bool? ?? true;
     _hardwareDecoding = map[_kHardwareDecoding] as bool? ?? true;
-    _hdrMode = (map[_kHdrMode] as String?) ?? 'tonemap';
     _playerOrientation = map[_kPlayerOrientation] as String? ?? 'auto';
     _allFilesPrompted = map[_kAllFilesPrompted] as bool? ?? false;
     _glassBlur = map[_kGlassBlurV2] as bool? ?? true;
@@ -379,7 +377,6 @@ class AppSettingsService {
     _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
     _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
     _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
-    _hdrMode = prefs.getString(_kHdrMode) ?? 'tonemap';
     _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
     _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
     if (prefs.containsKey(_kGlassBlurV2)) {
@@ -593,34 +590,6 @@ class AppSettingsService {
       await prefs.setBool(_kHardwareDecoding, value);
     } catch (e) {
       debugPrint('[PerchPlay] setHardwareDecoding SP write failed: $e');
-    }
-    _scheduleJsonFlush();
-  }
-
-  // ── HDR 输出模式 ──
-
-  /// HDR 输出模式：'tonemap'（默认，映射到 SDR）/ 'passthrough'（直通）。
-  ///
-  /// 为什么做成三档而不是布尔：
-  ///  - `tonemap`：HDR 内容压到 SDR 输出。任何设备都安全，观感稳定，
-  ///    但在真正的 HDR 屏上浪费了屏幕能力。
-  ///  - `passthrough`：设 `target-colorspace-hint=yes` 且关掉 tone-mapping，
-  ///    让 mpv 直接把 HDR 交给系统。需要屏幕+系统+渲染链全支持，
-  ///    否则会过曝/偏色 —— 所以必须让用户手动开启。
-  ///
-  /// 只在 Android 上有意义（iOS 的 media_kit 不支持这条路径）。
-  static const _kHdrMode = 'settings.hdrMode';
-  String _hdrMode = 'tonemap';
-  String get hdrMode => _hdrMode;
-  bool get hdrPassthrough => _hdrMode == 'passthrough';
-
-  Future<void> setHdrMode(String value) async {
-    _hdrMode = (value == 'passthrough') ? 'passthrough' : 'tonemap';
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kHdrMode, _hdrMode);
-    } catch (e) {
-      debugPrint('[PerchPlay] setHdrMode SP write failed: $e');
     }
     _scheduleJsonFlush();
   }

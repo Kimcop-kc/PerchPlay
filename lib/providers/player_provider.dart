@@ -612,98 +612,47 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 按当前片源是否为 HDR 启用/关闭色调映射。
+  /// 按当前片源是否为 HDR 启用色调映射。
   ///
-  /// 性能要点：色调映射（尤其 `hdr-compute-peak=yes` 的逐帧直方图计算）
-  /// 对 **SDR 片源是纯浪费**，会稳定占用 CPU/GPU，高码率播放时直接表现为
-  /// 掉帧。所以只有真实 HDR 片源才开这套，SDR 走最轻的 `tone-mapping=clip`。
+  /// ## 重要背景：为什么没有「HDR 直通」
   ///
-  /// 调用时机很关键：`stream.videoParams` 是 open 之后的异步事件，
-  /// `applyRobustPlayback` 里同步调用时元数据还没到（会被误判成 SDR），
-  /// 所以这里被 videoParams 监听器再调一次，确保判断基于真实参数。
+  /// 早期版本尝试过 `target-colorspace-hint=yes` 做 HDR 直通输出，
+  /// 但实测证明在 media_kit 上**永远无效**：
+  ///  - media_kit 官方构建脚本里显式 `-Dvulkan=disabled -Dlibplacebo=disabled`
+  ///  - Android 上唯一可用的渲染后端是 OpenGL ES（`opengl-es=yes`）
+  ///  - OpenGL ES 不支持 HDR 直通合成
+  /// 所以所有 target-colorspace-hint / 直通相关设置都被渲染后端忽略。
+  /// 直通开关已删除，这里只做「把 HDR 内容正确映射成 SDR 显示」。
+  ///
+  /// ## 为什么映射策略要区分 HLG / HDR10
+  ///
+  ///  - HDR10(PQ)：绝对亮度系统，片源标注明确峰值（1000/4000 nit），
+  ///    映射用 bt.2390 + 250nit 保守值，避免过曝。
+  ///  - HLG：**相对亮度**系统（杜比 8.4 的基础层就是 HLG），设计上
+  ///    自适应不同亮度屏幕。用 bt.2390 + 250 会把画面压得发灰，
+  ///    clip + 更高目标峰值观感更接近系统相册。
+  ///
+  /// 性能要点：色调映射（尤其 hdr-compute-peak=yes 的逐帧直方图计算）
+  /// 对 SDR 片源是纯浪费，会稳定占用 CPU/GPU。所以只有真实 HDR 片源
+  /// 才开这套，SDR 走最轻的 tone-mapping=clip。
   Future<void> applyHdrToneMapping() async {
     try {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
       final isHdr = state.hdrType != null;
 
-      // ── 去重：同一「模式 + HDR 类型」只应用一次 ──
-      //
-      // 用户反馈「一直在检测」的根源：videoParams 触发多次 +
-      // open 后 applyRobustPlayback 又调一次，每次都打日志 + setProperty。
-      // 设备检测本身只做一次，这里把「应用 HDR 属性」也收敛成
-      // 状态真正变化时才做，避免重复。
-      final passthrough = AppSettingsService.instance.hdrPassthrough;
-      final sig = '${passthrough ? "pt" : "map"}|${state.hdrType ?? "sdr"}';
+      // ── 去重：同一 HDR 类型只应用一次 ──
+      // videoParams 触发多次 + open 后 applyRobustPlayback 又调一次，
+      // 每次都打日志 + setProperty。用签名去重，状态真正变化才应用。
+      final sig = state.hdrType ?? 'sdr';
       if (sig == _lastHdrAppliedSig) return;
       _lastHdrAppliedSig = sig;
 
-      // ── HDR 直通模式（用户手动开启）──
-      //
-      // 关键三个属性，缺一不可：
-      //  1. target-colorspace-hint=yes：告诉系统「本窗口要输出 HDR」。
-      //     Android 上 mpv 通过这个让 SurfaceFlinger 切换到 HDR 合成路径。
-      //     不设它，即使屏幕支持 HDR，输出也会被按 SDR 处理。
-      //  2. tone-mapping=clip：**不做**动态范围压缩。
-      //     之前用 bt.2390 是把 HDR 压成 SDR，等于主动放弃 HDR。
-      //     clip 只做超范围截断，保持原始亮度映射。
-      //  3. target-peak：直通模式下要告诉 mpv 屏幕真实峰值亮度，
-      //     否则它仍按默认值做预处理。
-      //
-      // ⚠ 这三项在「屏幕/系统/渲染链任一环不支持」时会导致
-      // 画面过曝发白或严重偏色。所以必须由用户在设置里手动开启，
-      // 不能默认打开。
-      if (isHdr && passthrough) {
-        debugPrint('[HDR] 直通模式：${state.hdrType} '
-            'tf=${state.transferFunction} cp=${state.colorPrimaries} '
-            'sigPeak=${state.sigPeak} codec=${state.videoCodec}');
-        // 允许 HDR 输出
-        await platform.setProperty('target-colorspace-hint', 'yes');
-        // 不压缩动态范围
-        await platform.setProperty('tone-mapping', 'clip');
-        await platform.setProperty('hdr-compute-peak', 'no');
-        // ⚠ target-peak 的单位是 **nit**，必须用「设备屏幕峰值亮度」。
-        //
-        // 之前这里把 sigPeak 当 nit 用，是个致命 bug：
-        //   sigPeak=4.926（HLG 的归一化峰值，含义是「4.9 倍 SDR 参考」）
-        //   → toStringAsFixed(0) → "5"
-        //   → mpv 认为屏幕只有 5 nit，画面几乎全黑。
-        //
-        // sigPeak 是**相对于 SDR 的倍数**，永远不能直接当 nit。
-        // 正确做法：只用设备真实峰值（Display.getHdrCapabilities 的
-        // desiredMaxLuminance），拿不到再退到片源峰值换算或通用 1000。
-        final device = DeviceInfoService.instance;
-        final devicePeak = device.hdrDetected ? device.maxLuminance : -1.0;
-        final double peak;
-        if (devicePeak > 0) {
-          peak = devicePeak; // 设备真实峰值（nit），最优先
-        } else {
-          // 没有设备峰值：退到通用 HDR 参考 1000 nit
-          peak = 1000;
-        }
-        debugPrint('[HDR] target-peak=${peak.toStringAsFixed(0)} '
-            '设备峰值=${device.hdrDetected ? devicePeak : "未知"}');
-        await platform.setProperty('target-peak', peak.toStringAsFixed(0));
-        // HDR10+ / 杜比视界：直通时都交给下游
-        await platform.setProperty('hdr10plus', 'auto');
-        await platform.setProperty('dolbyvision', 'yes');
-        return;
-      }
-
-      // ── 色调映射模式（默认，安全）──
       if (isHdr) {
-        // HLG 和 HDR10(PQ) 的映射策略不同：
-        //
-        //  - HDR10(PQ)：绝对亮度系统，片源标注了明确的峰值（1000/4000 nit），
-        //    映射到 SDR 屏用 bt.2390 + 250nit 保守值，避免过曝。
-        //  - HLG（你的杜比 8.4 基础层就是 HLG / arib-std-b67）：**相对亮度**
-        //    系统，设计上就自适应不同亮度的屏幕。用 bt.2390 + 250 会把
-        //    画面压得发灰发暗。HLG 应该用更高的目标峰值（按设备真实能力），
-        //    观感才接近系统相册。
+        // HLG 和 HDR10(PQ) 的映射策略不同
         final isHlg = (state.hdrType ?? '') == 'HLG';
         if (isHlg) {
-          // HLG：用设备真实峰值，tone-mapping 用 clip（相对亮度不需要
-          // 像 PQ 那样做复杂的 EETF 映射，clip 直通最准）
+          // HLG：相对亮度，clip 直通最准，用设备真实峰值（拿不到退 1000）
           final device = DeviceInfoService.instance;
           final devicePeak = device.hdrDetected ? device.maxLuminance : -1.0;
           final peak = devicePeak > 0 ? devicePeak.toStringAsFixed(0) : '1000';
@@ -714,49 +663,43 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         } else {
           // HDR10 / 杜比 PQ：bt.2390（业界标准 EETF），最接近片源色彩意图
           await platform.setProperty('tone-mapping', 'bt.2390');
-          // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
+          // 目标显示亮度：SDR 屏用 250 保守值避免过曝
           await platform.setProperty('target-peak', '250');
           // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
           await platform.setProperty('hdr-compute-peak', 'yes');
+          debugPrint('[HDR] HDR10 映射: bt.2390 target-peak=250');
         }
         // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
         await platform.setProperty('hdr10plus', 'auto');
-        // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
+        // 杜比视界：mpv 若解 profile 5 单层则解，否则回退基础层
         await platform.setProperty('dolbyvision', 'yes');
-        // 非直通模式下明确关掉 colorspace hint，避免系统尝试 HDR 合成
-        await platform.setProperty('target-colorspace-hint', 'no');
       } else {
         // SDR：关掉全部色调映射开销，让渲染管线走最轻路径
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
         await platform.setProperty('hdr10plus', 'no');
         await platform.setProperty('dolbyvision', 'no');
-        await platform.setProperty('target-colorspace-hint', 'no');
       }
     } catch (e) {
       debugPrint('[Player] 应用 HDR 色调映射失败: $e');
     }
   }
 
-  /// 打开新文件前把 HDR 相关属性复位到 SDR 安全状态。
+  /// 打开新文件前把 HDR 相关属性复位到中性状态。
   ///
-  /// 为什么要显式复位：mpv 的 `target-colorspace-hint` / `tone-mapping`
-  /// 是**播放器全局**属性，不会随 `stop()` 自动清空。上一个 HDR 片源
-  /// 把它们设成直通（hint=yes），如果直接 open 下一个片源，mpv 会在
-  /// 残留的 HDR 合成上下文上重建渲染管线，部分设备 native 崩溃。
-  ///
-  /// 复位后由新片源的 videoParams → applyHdrToneMapping 按需重开。
+  /// mpv 的 tone-mapping / hdr 相关属性是**播放器全局**的，不会随 stop()
+  /// 自动清空。上一个 HDR 片源把它们设成 HLG 或 HDR10 映射，直接 open
+  /// 下一个片源时若残留状态不符，可能画面异常。复位后由新片源的
+  /// videoParams → applyHdrToneMapping 按需重设。
   Future<void> _resetHdrBeforeOpen() async {
     try {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
-      // 关掉 HDR 合成，回到标准 SDR 输出路径
-      await platform.setProperty('target-colorspace-hint', 'no');
       await platform.setProperty('tone-mapping', 'clip');
       await platform.setProperty('hdr-compute-peak', 'no');
       await platform.setProperty('hdr10plus', 'no');
       await platform.setProperty('dolbyvision', 'no');
-      // 复位 target-peak 到一个中性值（1000），避免残留极值影响新文件探测
+      // 中性峰值，避免残留极值影响新文件探测
       await platform.setProperty('target-peak', '1000');
     } catch (e) {
       // 复位失败不阻塞播放：最坏情况是下一个视频沿用旧 HDR 状态
