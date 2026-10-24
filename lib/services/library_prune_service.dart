@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/video_model.dart';
 
@@ -67,10 +68,34 @@ class LibraryPruneService {
     for (final video in videos) {
       if (isRemotePath(video.path)) continue;
       if (fileCheck(video.path)) continue;
+
+      // iOS 关键：Bundle ID 变更（com.vidflow.vidflow -> com.perchplay.player）
+      // 或重装 App 后，旧数据的路径指向的是**已不存在的旧沙盒容器**
+      // （/var/mobile/Containers/Data/Application/<旧UUID>/...）。
+      // 这类路径父目录必然也不存在，下面「目录不在了就放过」的保守逻辑
+      // 会让这些幽灵记录永远留在库里：界面上能看到、点开却播不了。
+      // 所以 iOS 上只要文件不存在、且路径属于 App 自己的沙盒，就直接判缺失。
+      if (!kIsWeb && Platform.isIOS && _isAppSandboxPath(video.path)) {
+        missing.add(video);
+        continue;
+      }
+
       // 文件没了但目录还在 = 真删了；目录都进不去 = 存储/权限异常，放过
       if (!dirCheck(video.path)) continue;
       missing.add(video);
     }
     return missing;
+  }
+
+  /// 路径是否落在 App 自己的沙盒容器里（iOS）。
+  ///
+  /// 只有这类路径可以「文件不存在就判定缺失」——比如外接存储、iCloud 挂载点
+  /// 暂时不可用时，不能误删记录。
+  static bool _isAppSandboxPath(String path) {
+    return path.contains('/Containers/Data/Application/') ||
+        path.contains('/Containers/Shared/AppGroup/') ||
+        path.contains('/Documents/') ||
+        path.contains('/Library/') ||
+        path.contains('/tmp/');
   }
 }

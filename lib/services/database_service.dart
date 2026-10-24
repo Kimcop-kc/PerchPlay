@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/video_model.dart';
@@ -195,6 +197,57 @@ class DatabaseService {
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+
+    // 清理历史重复记录：早期照片库导出在「导出成功但索引没落盘」时会生成
+    // xxx_1.mp4 之类的新文件名，同一视频因此变成多条不同 path 的记录。
+    // 修好导出逻辑后，这些脏数据也要顺手清掉，否则用户升级后仍看到重复条目。
+    await _pruneDuplicateAssetCopies(
+      {for (final v in videos) v.path},
+    );
+  }
+
+  /// 清理同一照片库资产被重复导出的副本。
+  ///
+  /// 文件名格式由 LocalMediaImportService 决定：`ph_<12位hash>_<标题>.<ext>`。
+  /// 这里按 `ph_ + 12 位 hash + _`（前 16 字符）分组，每组只保留一条。
+  Future<void> _pruneDuplicateAssetCopies(Set<String> keepPaths) async {
+    try {
+      final all = await getAllVideos();
+      final groups = <String, List<VideoModel>>{};
+      for (final v in all) {
+        final name = v.path.split('/').last;
+        if (!name.startsWith('ph_') || name.length < 16) continue;
+        groups.putIfAbsent(name.substring(0, 16), () => []).add(v);
+      }
+      final removeIds = <String>[];
+      final removePaths = <String>[];
+      for (final list in groups.values) {
+        if (list.length < 2) continue;
+        // 优先保留「本次扫描结果里」的那条，其次保留播放进度最完整的
+        list.sort((a, b) {
+          final ka = keepPaths.contains(a.path) ? 0 : 1;
+          final kb = keepPaths.contains(b.path) ? 0 : 1;
+          if (ka != kb) return ka - kb;
+          return b.playCount.compareTo(a.playCount);
+        });
+        for (var i = 1; i < list.length; i++) {
+          removeIds.add(list[i].id);
+          removePaths.add(list[i].path);
+        }
+      }
+      if (removeIds.isEmpty) return;
+      await deleteVideos(removeIds);
+      // 顺带删掉多余文件本体，避免继续占空间
+      for (final path in removePaths) {
+        try {
+          final f = File(path);
+          if (await f.exists()) await f.delete();
+        } catch (_) {}
+      }
+      debugPrint('[DB] 已清理 ${removeIds.length} 条重复的相册导出记录');
+    } catch (e) {
+      debugPrint('[DB] 清理重复记录失败: $e');
+    }
   }
 
   /// 删除单条视频记录（不删除磁盘文件）

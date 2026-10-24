@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart' show sha1;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -255,6 +256,10 @@ class LocalMediaImportService {
       var done = 0;
       var indexDirty = false;
 
+      // 兼容旧数据：把同目录里「文件名以资产 id 前缀开头」的孤儿文件也认回来，
+      // 避免旧版本中断留下的副本被当成新资产重复导出。
+      // （旧实现导出成功才写索引，中途退出就会漏索引 → 下次生成 _1 副本。）
+
       for (final asset in allAssets) {
         done++;
         progress?.call(done, allAssets.length);
@@ -270,6 +275,10 @@ class LocalMediaImportService {
               out.add(knownPath);
               continue;
             }
+            // 索引有但文件没了（用户清了 App 数据/被系统清理）：
+            // 删掉这一条，下面按同一稳定文件名重新导出。
+            index.remove(assetId);
+            indexDirty = true;
           }
 
           final title = asset.title;
@@ -278,12 +287,31 @@ class LocalMediaImportService {
               : 'video_${_uuid.v4().substring(0, 8)}';
           final safeBase = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
           final ext = _videoExtOf(asset) ?? 'mp4';
-          final fileName = await _uniqueFileName(destDir, '$safeBase.$ext');
-          final destPath = p.join(destDir.path, fileName);
+
+          // 用资产 ID 派生**稳定**文件名，保证同一个资产永远落到同一个路径。
+          //
+          // 旧实现用 _uniqueFileName：中断一次没写索引，下次就生成 xxx_1.mp4，
+          // 同一视频变成两条不同 path 的记录 → 界面上重复显示。
+          // 现在文件名只由资产 ID 决定，重扫是幂等的。
+          final stableName = '${_assetFilePrefix(assetId)}$safeBase.$ext';
+          final destPath = p.join(destDir.path, stableName);
+
+          // 稳定文件已存在（上次导出成功但没来得及写索引）→ 直接认领
+          if (await File(destPath).exists()) {
+            final len = await File(destPath).length();
+            if (len > 20 * 1024) {
+              out.add(destPath);
+              index[assetId] = stableName;
+              indexDirty = true;
+              continue;
+            }
+            // 太小：上次可能只写了一部分，删掉重来
+            try {
+              await File(destPath).delete();
+            } catch (_) {}
+          }
 
           // iCloud 未下载到本地的资产：asset.file 会返回 null 或抛异常。
-          // 这种情况不该静默跳过（用户会以为「扫不出来」），先判断可用性，
-          // 尝试让 photo_manager 触发下载后再取文件。
           try {
             final available = await asset.isLocallyAvailable();
             if (!available) {
@@ -302,9 +330,14 @@ class LocalMediaImportService {
           }
           await file.copy(destPath);
           out.add(destPath);
-          index[assetId] = fileName;
+          index[assetId] = stableName;
           indexDirty = true;
-          debugPrint('[LocalImport] 照片库导出: $base -> $fileName');
+          // 每个文件导出后立刻落盘索引：中途被杀也不会丢掉已完成的进度
+          if (indexDirty && done % 5 == 0) {
+            await _savePhotoIndex(index);
+            indexDirty = false;
+          }
+          debugPrint('[LocalImport] 照片库导出: $base -> $stableName');
         } catch (e) {
           debugPrint('[LocalImport] 照片库导出失败 (${asset.title}): $e');
         }
@@ -315,6 +348,16 @@ class LocalMediaImportService {
       debugPrint('[LocalImport] 照片库扫描失败: $e');
       return const [];
     }
+  }
+
+  /// 由照片库资产 ID 派生一个稳定的文件名前缀。
+  ///
+  /// 目的：让「同一个资产」永远落到同一个文件名，重扫幂等。
+  /// 取 ID 的稳定哈希（不用原始 ID：里面可能带 `/`、`:` 等文件名非法字符，
+  /// 而且长度可能很长）。
+  String _assetFilePrefix(String assetId) {
+    final digest = sha1.convert(utf8.encode(assetId)).toString();
+    return 'ph_${digest.substring(0, 12)}_';
   }
 
   /// 照片库导出索引文件（Documents/Imported/.photo_index.json）。
