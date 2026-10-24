@@ -208,16 +208,34 @@ class DatabaseService {
 
   /// 清理同一照片库资产被重复导出的副本。
   ///
-  /// 文件名格式由 LocalMediaImportService 决定：`ph_<12位hash>_<标题>.<ext>`。
-  /// 这里按 `ph_ + 12 位 hash + _`（前 16 字符）分组，每组只保留一条。
+  /// 两种历史命名都要兼容：
+  ///  1. 新版：`ph_<12位hash>_<标题>.<ext>` —— 按前 16 字符（ph_ + hash + _）分组
+  ///  2. 旧版：`<标题>.mp4` 与 `<标题>_1.mp4` / `<标题>_2.mp4`
+  ///     —— 旧实现遇到同名就加序号，所以把「去掉尾部 _N 后的基名」当分组键
+  ///
+  /// 只处理照片库导出目录（.../Imported/PhotoLibrary/）下的文件，
+  /// 不碰用户自己通过「文件」App 放进来的视频（那些加序号是合理的，
+  /// 用户可能真的有两个同名不同内容的文件）。
   Future<void> _pruneDuplicateAssetCopies(Set<String> keepPaths) async {
     try {
       final all = await getAllVideos();
       final groups = <String, List<VideoModel>>{};
       for (final v in all) {
+        // 只在照片库导出目录里做去重
+        if (!v.path.contains('/Imported/PhotoLibrary/')) continue;
         final name = v.path.split('/').last;
-        if (!name.startsWith('ph_') || name.length < 16) continue;
-        groups.putIfAbsent(name.substring(0, 16), () => []).add(v);
+        String key;
+        if (name.startsWith('ph_') && name.length >= 16) {
+          key = name.substring(0, 16);
+        } else {
+          // 旧命名：去掉扩展名和尾部 _N 作为基名
+          final noExt = name.contains('.')
+              ? name.substring(0, name.lastIndexOf('.'))
+              : name;
+          key = noExt.replaceFirst(RegExp(r'_\d+$'), '');
+        }
+        if (key.isEmpty) continue;
+        groups.putIfAbsent(key, () => []).add(v);
       }
       final removeIds = <String>[];
       final removePaths = <String>[];
