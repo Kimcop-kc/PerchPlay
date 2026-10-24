@@ -14,6 +14,7 @@ import 'services/device_info_service.dart';
 import 'services/app_settings_service.dart';
 import 'services/native_bridge_service.dart';
 import 'services/app_version.dart';
+import 'services/log_service.dart';
 
 /// 应用根组件是否已成功挂载。
 /// 挂载后出现的局部 FlutterError 不再整屏替换崩溃页，
@@ -23,9 +24,18 @@ bool _appMounted = false;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 装日志收集器 —— **必须在一切之前**。
+  // 之后所有 debugPrint（含 MediaKit / 设备信息初始化、第三方库）
+  // 都会被接住，用户可在「设置 → 诊断日志」里一键复制发出来。
+  LogService.instance.install();
+  LogService.instance.log('[启动] PerchPlay 开始初始化');
+
   // 兜底错误处理：仅记录，不在启动后重复替换根应用。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
+    // 把 Flutter 层异常也收进日志，用户复制出来就能看到完整堆栈
+    LogService.instance.error('FlutterError', details.exception,
+        details.stack);
     if (!_appMounted && details.silent != true) {
       runApp(_CrashScreen(details: details));
     }

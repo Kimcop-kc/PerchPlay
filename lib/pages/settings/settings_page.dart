@@ -8,6 +8,7 @@ import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/system/system_ui_policy.dart';
 import '../../services/device_info_service.dart';
+import '../../services/log_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
@@ -1474,8 +1475,165 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             foregroundColor: GlassTheme.accentPurple,
             onTap: _checkForUpdate,
           ),
+          const SizedBox(height: 10),
+          // 诊断日志：出问题时一键复制发给开发者
+          GlassButton.outlined(
+            icon: Icons.bug_report_rounded,
+            label: '诊断日志',
+            width: double.infinity,
+            height: 40,
+            foregroundColor: GlassTheme.accentTeal,
+            onTap: _showDiagnosticsSheet,
+          ),
         ],
       ),
+    );
+  }
+
+  /// 诊断日志面板：查看 / 复制 / 清空 / 分享。
+  ///
+  /// 设计目标是「用户不需要懂技术，出问题时能一键把有用信息发出来」，
+  /// 所以面板里同时提供三个动作：
+  ///  - 复制全文（粘到微信/邮件最快）
+  ///  - 分享文件（长日志更适合当附件）
+  ///  - 只看最近若干条（手机屏幕小，全文翻不动）
+  Future<void> _showDiagnosticsSheet() async {
+    final svc = LogService.instance;
+    final device = DeviceInfoService.instance;
+    // 设备信息用 brand/capabilities 拼（DeviceInfoService 没有 model getter）
+    final devInfo = '品牌: ${device.brand.name} · '
+        'RAM: ${device.ramGB.toStringAsFixed(1)}GB · '
+        '手势导航: ${device.capabilities.isGestureNavigation}';
+    final report = await svc.buildReport(
+      appVersion: 'v${AppVersion.display}',
+      extraInfo: devInfo,
+    );
+
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Color(0xFFF7F7FA),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          16 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.bug_report_rounded,
+                    color: GlassTheme.accentTeal, size: 20),
+                const SizedBox(width: 8),
+                const Text('诊断日志',
+                    style: TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text('${svc.count} 条',
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '遇到问题时点「复制全部」发给我，能快速定位原因。'
+              '日志只在本机保存，不会上传。',
+              style: TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 11, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            // 日志正文
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    report,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      height: 1.45,
+                      color: Color(0xFF2C2C2E),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: GlassButton.filled(
+                    icon: Icons.copy_rounded,
+                    label: '复制全部',
+                    height: 42,
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: report));
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        _showSnack('已复制，直接粘贴发给我即可');
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // 清空：方便用户复现「只记录本次操作」，避免旧日志淹没关键信息
+                Expanded(
+                  child: GlassButton.outlined(
+                    icon: Icons.delete_sweep_rounded,
+                    label: '清空',
+                    height: 42,
+                    foregroundColor: GlassTheme.textTertiary,
+                    onTap: () {
+                      svc.clear();
+                      svc.log('[日志] 已由用户清空');
+                      Navigator.pop(ctx);
+                      _showSnack('已清空，请复现问题后再来看');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 轻量提示（设置页内多处复用）。
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
     );
   }
 
