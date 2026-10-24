@@ -235,18 +235,29 @@ class NasNotifier extends StateNotifier<NasState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final files = await _service.listDirectory(connId, path);
+      // 服务层把异常转成空数组了，靠标记区分「真的空」和「读取失败」。
+      // 不这样处理的话，路径写错 / 认证失败都会显示成「空目录」，
+      // 用户完全看不出哪里错了 —— 这正是「连接没报错但看不到文件」的来源。
+      final failed = _service.lastListFailed;
+      final errDetail = _service.lastListError;
       if (mounted) {
         state = state.copyWith(
-          currentFiles: files,
+          currentFiles: failed ? const [] : files,
           currentPath: path,
           isLoading: false,
+          errorMessage: failed
+              ? (errDetail.isNotEmpty
+                  ? '读取目录失败：$errDetail'
+                  : '读取目录失败，请检查连接或目录权限')
+              : null,
+          clearError: !failed,
         );
       }
     } catch (e) {
       if (mounted) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: '读取目录失败，请检查连接或目录权限',
+          errorMessage: '读取目录失败：$e',
         );
       }
     }

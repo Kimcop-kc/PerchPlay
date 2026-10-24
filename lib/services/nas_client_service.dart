@@ -14,6 +14,12 @@ class _NasConnection {
   Smb2Pool? smbPool;
   bool connected = false;
 
+  /// 最近一次操作的具体错误（空串 = 无错误）。
+  ///
+  /// 各 `_listXxx` 内部把异常转成空数组返回，但会把原因写到这里，
+  /// 让上层能区分「空目录」和「读取失败」。
+  String lastError = '';
+
   Future<bool> connect() async {
     // SMB 不走 HttpClient
     if (config.protocol != NasProtocol.smb) {
@@ -75,7 +81,10 @@ class _NasConnection {
   Future<List<NasFileItem>> _listWebDav(String path) async {
     final c = config;
     final client = httpClient;
-    if (client == null) return [];
+    if (client == null) {
+      lastError = 'WebDAV 未连接';
+      return [];
+    }
     try {
       final uri = Uri(
         scheme: c.useHttps ? 'https' : 'http',
@@ -87,10 +96,30 @@ class _NasConnection {
           client: client,
           headers: {'Depth': '1'},
           body: _propfindBody);
-      if (resp == null) return [];
+      if (resp == null) {
+        lastError = 'PROPFIND 无响应（地址或网络问题）';
+        return [];
+      }
       final body = await resp.transform(utf8.decoder).join();
-      return _parseWebDavMultiStatus(body);
+      if (resp.statusCode != 207) {
+        // 401 认证失败 / 404 路径不存在 / 405 不是 WebDAV 端点
+        lastError = switch (resp.statusCode) {
+          401 => '认证失败（用户名或密码错误）',
+          403 => '无访问权限',
+          404 => '路径不存在：$path\n'
+              '（若服务器要求 WebDAV 前缀如 /dav，请在「路径」里填上）',
+          405 => '该地址不是 WebDAV 端点（METHOD 不允许）',
+          _ => 'PROPFIND 失败 HTTP ${resp.statusCode}',
+        };
+        debugPrint('[NAS] WebDAV $path -> ${resp.statusCode}');
+        return [];
+      }
+      // 把「当前请求的路径」传进去：解析时要靠它跳过「自身」那一条，
+      // 只跳过自身、保留子目录。原来靠「href 以 / 结尾」判断目录，
+      // 结果把所有目录都跳过了。
+      return _parseWebDavMultiStatus(body, requestPath: path);
     } catch (e) {
+      lastError = '网络异常：$e';
       debugPrint('[NAS] WebDAV list 失败: $e');
       return [];
     }
@@ -158,7 +187,7 @@ class _NasConnection {
           .join();
       dataSocket.destroy();
       await ftp.quit();
-      return _parseFtpList(data);
+      return _parseFtpList(data, basePath: p);
     } catch (e) {
       debugPrint('[NAS] FTP list 失败: $e');
       return [];
@@ -297,7 +326,37 @@ class _NasConnection {
   </D:prop>
 </D:propfind>''';
 
-  List<NasFileItem> _parseWebDavMultiStatus(String xml) {
+  /// 解析 WebDAV 的 multistatus 响应。
+  ///
+  /// ## 修复的三个缺陷
+  ///
+  /// **① 目录被整体跳过（根因）**
+  /// 原代码有这一行：
+  /// ```dart
+  /// if (href.endsWith('/') && !href.contains('?')) continue; // skip dirs
+  /// ```
+  /// WebDAV 规范里**目录的 href 一定以 `/` 结尾**，所以这一行把所有目录
+  /// 都丢掉了，只剩文件。如果用户配置的目录下只有子文件夹（很常见），
+  /// 列表就是完全空白 —— 表现正是「连接没报错，但看不到文件」。
+  ///
+  /// **② 第二个跳过条件也误伤目录**
+  /// ```dart
+  /// if (name.isEmpty || name == href.split('/').last && isDir) continue;
+  /// ```
+  /// 当服务器没给 `<D:displayname>` 时，name 会回退成 `href.split('/').last`，
+  /// 此时目录必然命中这个条件被跳过。
+  ///
+  /// **③ path 直接用 href**
+  /// href 可能是绝对路径（`/dav/movies`）、也可能是完整 URL
+  /// （`https://host/dav/movies`）。直接用会把 URL 当路径拼接，
+  /// 后续请求拼出畸形地址。这里统一归一化成以 `/` 开头的路径。
+  ///
+  /// 正确的做法是**只跳过「当前请求目录自身」那一条**（WebDAV 响应里
+  /// 第一条总是自身），其余全部保留。
+  List<NasFileItem> _parseWebDavMultiStatus(
+    String xml, {
+    String requestPath = '',
+  }) {
     final items = <NasFileItem>[];
     final responsePattern = RegExp(
       r'<D:response>.*?</D:response>',
@@ -312,32 +371,87 @@ class _NasConnection {
     final modifiedPattern =
         RegExp(r'<D:getlastmodified>(.*?)</D:getlastmodified>');
 
+    /// 归一化：去掉完整 URL 的 scheme/host、解码、去掉末尾 `/`
+    String normPath(String raw) {
+      var s = raw.trim();
+      if (s.isEmpty) return '';
+      // 完整 URL -> 只取 path
+      if (s.startsWith('http://') || s.startsWith('https://')) {
+        final u = Uri.tryParse(s);
+        s = u?.path ?? s;
+      }
+      try {
+        s = Uri.decodeFull(s);
+      } catch (_) {}
+      // 去掉 query/fragment
+      final q = s.indexOf('?');
+      if (q >= 0) s = s.substring(0, q);
+      final h = s.indexOf('#');
+      if (h >= 0) s = s.substring(0, h);
+      // 去掉末尾斜杠（保留根）
+      while (s.length > 1 && s.endsWith('/')) {
+        s = s.substring(0, s.length - 1);
+      }
+      if (!s.startsWith('/')) s = '/$s';
+      return s;
+    }
+
+    final selfPath = normPath(requestPath);
+
     for (final m in responsePattern.allMatches(xml)) {
       final resp = m.group(0)!;
-      final href = hrefPattern.firstMatch(resp)?.group(1) ?? '';
-      if (href.endsWith('/') && !href.contains('?')) continue; // skip dirs
+      final rawHref = hrefPattern.firstMatch(resp)?.group(1) ?? '';
+      if (rawHref.isEmpty) continue;
 
-      final name = Uri.decodeFull(
-          displayNamePattern.firstMatch(resp)?.group(1) ?? href.split('/').last);
       final isDir = collectionPattern.hasMatch(resp);
+      final path = normPath(rawHref);
+      if (path.isEmpty) continue;
+
+      // 只跳过「当前目录自身」（WebDAV 响应第一条固定是自身）
+      if (selfPath.isNotEmpty && path == selfPath) continue;
+
+      // 名称：优先 displayname，其次路径最后一段
+      var name = displayNamePattern.firstMatch(resp)?.group(1) ?? '';
+      name = name.trim();
+      if (name.isEmpty) {
+        final segs = path.split('/').where((e) => e.isNotEmpty).toList();
+        name = segs.isEmpty ? '' : segs.last;
+      }
+      try {
+        name = Uri.decodeFull(name);
+      } catch (_) {}
+      if (name.isEmpty) continue;
+
       final sizeStr = lengthPattern.firstMatch(resp)?.group(1) ?? '0';
       final modStr = modifiedPattern.firstMatch(resp)?.group(1);
 
-      if (name.isEmpty || name == href.split('/').last && isDir) continue;
-
       items.add(NasFileItem(
         name: name,
-        path: Uri.decodeFull(href),
+        path: path,
         isDirectory: isDir,
         size: int.tryParse(sizeStr) ?? 0,
         modifiedTime: modStr != null ? DateTime.tryParse(modStr) : null,
       ));
     }
+
+    // 稳定排序：目录在前，同类按名称
+    items.sort((a, b) {
+      if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
     return items;
   }
 
-  List<NasFileItem> _parseFtpList(String data) {
+  /// 解析 FTP LIST 的类 Unix 长格式输出。
+  ///
+  /// [basePath] 是本次 LIST 的目录路径。子项的 path 必须拼上它，
+  /// 否则进入子目录后返回的 path 都变成 `/名字`，把父目录层级丢掉 ——
+  /// 表现为「进得去、退不回，点文件也播不了」。
+  List<NasFileItem> _parseFtpList(String data, {String basePath = '/'}) {
     final items = <NasFileItem>[];
+    final base = basePath.trim().isEmpty || basePath.trim() == '/'
+        ? ''
+        : basePath.trim().replaceAll(RegExp(r'/+$'), '');
     for (final line in data.split('\n')) {
       if (line.trim().isEmpty) continue;
       final parts = line.trim().split(RegExp(r'\s+'));
@@ -352,13 +466,18 @@ class _NasConnection {
       } else {
         name = parts.sublist(8).join(' ');
       }
+      if (name.isEmpty || name == '.' || name == '..') continue;
       items.add(NasFileItem(
         name: name,
-        path: '/$name',
+        path: '$base/$name',
         isDirectory: isDir,
         size: size,
       ));
     }
+    items.sort((a, b) {
+      if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
     return items;
   }
 
@@ -454,12 +573,36 @@ class NasClientService {
     _conns.clear();
   }
 
+  /// 最近一次列目录是否**真正失败**（区别于「目录真的是空的」）。
+  ///
+  /// 为什么需要这个标记：`listDirectory` 内部把所有异常都 catch 掉、
+  /// 返回空数组，于是调用方无法区分：
+  ///  - 目录确实是空的（正常）
+  ///  - 路径不对 / 401 / 404 / 超时（异常）
+  ///
+  /// 结果就是用户看到「连接没报错，但目录是空的」，完全无法排查。
+  /// 上层应该检查这个标记，为 true 时提示具体错误而不是显示空状态。
+  bool lastListFailed = false;
+  String lastListError = '';
+
   /// 列目录。
   Future<List<NasFileItem>> listDirectory(
       String connectionId, String path) async {
+    lastListFailed = false;
+    lastListError = '';
     final c = _conns[connectionId];
-    if (c == null) return [];
-    return c.listDirectory(path);
+    if (c == null) {
+      lastListFailed = true;
+      lastListError = '连接未建立';
+      return [];
+    }
+    final result = await c.listDirectory(path);
+    if (c.lastError.isNotEmpty) {
+      lastListFailed = true;
+      lastListError = c.lastError;
+      c.lastError = '';
+    }
+    return result;
   }
 
   /// 获取文件播放 URL。
