@@ -271,6 +271,45 @@ WebDAV 规范里**目录的 href 一定以 `/` 结尾**，所以这行把所有�
 
 **实现要点**：`updateConnection` 会**先断开旧连接**再替换配置。因为 `_NasConnection` 里缓存着 HttpClient / FTP socket / SMB pool，都拿着旧的主机和凭据 —— 不断开的话，改完密码再连接仍走旧连接，表现为「改了没用」。
 
+### ⑥ 播放后返回再点连接无反应（修复）
+
+**现象**：浏览 NAS 文件 → 播放视频 → 返回 NAS 主页 → 再点「我的 NAS」，
+**点了完全没反应**，必须杀掉 App 重进才能恢复。
+
+**根因**：连接复用的判断只信任一个历史标志。
+
+```dart
+var c = _conns[config.id];
+if (c != null && c.connected) return true;   // 无脑信任
+```
+
+`connected` 只表示「上次 connect 成功过」，**不代表底层连接还活着**。
+播放器（media_kit）用同一台 NAS 的 URL 拉流，可能把 HttpClient 里那条
+keep-alive 连接用掉或半关闭。返回主页再点连接时：
+
+- `connected` 仍是 true → 直接 `return true`（以为成功）
+- 底层连接已废 → 紧接着的 `PROPFIND` 失败
+- UI 上就是「点了没反应」，且没有任何错误提示
+
+**实测复现**（模拟底层连接被破坏）：
+
+| 逻辑 | connect 返回 | 随后 PROPFIND |
+|---|---|---|
+| 修复前 | `true`（声称成功） | **失败** ← 点了没反应 |
+| 修复后 | `true` | 成功，读到 1068 字节 |
+
+**修复**：
+
+1. **复用前必须 ping 验证** —— 新增 `ping()` 发轻量 OPTIONS，
+   3 秒硬超时。注意用 `Future.any` 而不是 `connectionTimeout`：
+   后者只管「建立连接」，连接已建立但对端不回包时会一直等下去。
+   失败即断开旧连接、重建。
+2. **connect 时关掉旧 HttpClient** —— 原来每次 new 却从不 close，
+   反复往返会累积连接池。顺带把 `idleTimeout` 设为 5 秒。
+3. **provider 层兜底重试** —— 若连接成功但首次读目录失败，
+   强制断开重建一次再试，保证不杀 App 也能恢复。
+
+---
 ### ⑤ 路径填写提示
 
 WebDAV 的「路径」不是可选的，各家不同：
