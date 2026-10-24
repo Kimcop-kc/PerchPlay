@@ -194,7 +194,16 @@ class NasNotifier extends StateNotifier<NasState> {
   }
 
   Future<bool> connect(NasConnection config) async {
-    debugPrint('[NAS] connect 开始: ${config.name}');
+    // 规范化远程路径：补前导 `/`、去掉末尾多余的 `/`。
+    //
+    // 实测踩到：用户填 `webdav`（没写前导斜杠），拼出来的 URL 变成
+    // `192.168.1.7:80webdav`，虽然服务端刚好容忍了，但路径解析、
+    // 面包屑、上级跳转都会错。normalizeRemotePath 早就写好了却从没被调用。
+    config = config.copyWith(
+      remotePath: NasClientService.normalizeRemotePath(config.remotePath),
+    );
+    debugPrint('[NAS] connect 开始: ${config.name} '
+        'path=${config.remotePath}');
     state = state.copyWith(isLoading: true, clearError: true);
 
     final ok = await _service.connect(config);

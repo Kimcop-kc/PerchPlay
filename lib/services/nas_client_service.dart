@@ -622,10 +622,12 @@ class NasClientService {
   ///
   /// 所以复用前必须真发一次轻量请求验证。失败就重建连接。
   Future<bool> connect(NasConnection config) async {
-    debugPrint('[NAS] connect 请求: ${config.protocol.name} '
-        '${config.host}:${config.port}${config.remotePath}');
-
-    final existing = _conns[config.id];
+    // 规范化路径：补前导 `/`。这里再做一次是防御 —— 上层可能忘了调，
+    // 而 path 少斜杠会让 Uri 拼出 `host:portwebdav` 这种畸形地址。
+    final cfg = config.copyWith(
+      remotePath: normalizeRemotePath(config.remotePath),
+    );
+    final existing = _conns[cfg.id];
     if (existing != null && existing.connected) {
       // 轻量探测：OPTIONS 打到配置路径。超时很短，不拖慢正常流程。
       debugPrint('[NAS] 已有连接，ping 验证…');
@@ -636,13 +638,14 @@ class NasClientService {
       }
       debugPrint('[NAS] 复用连接已失效，重建');
       await existing.disconnect();
-      _conns.remove(config.id);
+      _conns.remove(cfg.id);
     }
 
-    final c = _NasConnection(config);
+    final c = _NasConnection(cfg);
     final ok = await c.connect();
-    debugPrint('[NAS] 新建连接 ${ok ? "成功" : "失败"}');
-    _conns[config.id] = c;
+    debugPrint('[NAS] 新建连接 ${ok ? "成功" : "失败"} '
+        '(${cfg.host}:${cfg.port}${cfg.remotePath})');
+    _conns[cfg.id] = c;
     return ok;
   }
 

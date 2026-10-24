@@ -58,6 +58,12 @@ class NasConnection {
     DateTime? lastConnected,
     String? useHttpsStr,
     bool? useHttps,
+    // 注意：`savePassword` 原来是漏的 —— 方法体里写了
+    // `savePassword: savePassword ?? this.savePassword`，但参数表没这个参数，
+    // 于是它引用到的是类字段自身，永远是 `bool`（非 null），
+    // 编译器报 dead_null_aware_expression。虽然结果恰好正确，
+    // 但意味着 copyWith 无法修改这个字段，且语义含糊。补上参数。
+    bool? savePassword,
   }) {
     // 兼容 JSON 反序列化：可能传入字符串 "true"/"false"
     final https = useHttps ??
@@ -233,28 +239,35 @@ class NasFileItem {
     );
   }
 
-  /// 是否为支持的视频文件
+  /// 是否为支持的视频文件。
+  ///
+  /// ## 为什么从 name 推导，而不只看 [extension]
+  ///
+  /// [extension] 是构造时可选的字段，而三个解析分支（WebDAV / FTP / SMB）
+  /// 全都**没有传它** —— 于是它恒为空串，这个 getter 恒返回 false。
+  /// 表现就是：点视频文件毫无反应（既不是目录、也不被识别为视频）。
+  ///
+  /// 现在优先用 [extension]，为空时从 [name] 自己截取后缀，
+  /// 这样不依赖调用方是否记得传字段。
   bool get isVideo {
-    const videoExtensions = [
-      '.mp4',
-      '.mkv',
-      '.avi',
-      '.mov',
-      '.wmv',
-      '.flv',
-      '.webm',
-      '.m4v',
-      '.mpg',
-      '.mpeg',
-      '.3gp',
-      '.ts',
-      '.m2ts',
-      '.vob',
-      '.rmvb',
-      '.asf',
-      '.divx',
-    ];
-    return videoExtensions.any((ext) => extension.toLowerCase() == ext);
+    // 实际后缀：优先显式字段，否则从文件名取
+    var ext = extension.trim().toLowerCase();
+    if (ext.isEmpty) {
+      final dot = name.lastIndexOf('.');
+      if (dot >= 0 && dot < name.length - 1) {
+        ext = name.substring(dot + 1).toLowerCase();
+      }
+    }
+    // 统一成不带点的形式比较（历史列表里带点，去掉更稳）
+    if (ext.startsWith('.')) ext = ext.substring(1);
+    if (ext.isEmpty) return false;
+
+    const videoExtensions = {
+      'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v',
+      'mpg', 'mpeg', '3gp', 'ts', 'm2ts', 'vob', 'rmvb', 'asf',
+      'divx', 'xvid', 'f4v', 'ogv', '3g2',
+    };
+    return videoExtensions.contains(ext);
   }
 
   @override
