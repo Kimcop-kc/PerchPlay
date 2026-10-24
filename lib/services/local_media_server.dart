@@ -24,13 +24,37 @@ class LocalMediaServer {
         includeLoopback: false,
         includeLinkLocal: false,
       );
-      // 优先 wlan/wifi 接口，避免拿到蜂窝/VPN 网段
+      // 优先「真正连到局域网的」接口，避免拿到蜂窝 / VPN 网段。
+      //
+      // 各平台的 Wi-Fi 接口名完全不同：
+      //   Android: wlan0
+      //   iOS:     en0   ← 之前没匹配，导致 iOS 上 Wi-Fi 得分最低，
+      //                    可能先返回蜂窝(pdp_ip0)或 VPN(utun*)地址，
+      //                    投屏 URL 就变成一个电视根本连不上的 IP。
+      //   macOS:   en0/en1
+      //   Windows: 名称含 Wi-Fi / WLAN
       final sorted = interfaces.toList()
         ..sort((a, b) {
           int score(NetworkInterface i) {
             final n = i.name.toLowerCase();
-            if (n.contains('wlan') || n.contains('wifi')) return 0;
+            // 明确的 Wi-Fi / 以太网接口
+            if (n.contains('wlan') ||
+                n.contains('wifi') ||
+                n == 'en0' ||
+                n == 'en1') {
+              return 0;
+            }
             if (n.contains('eth')) return 1;
+            // 明确要避免的：蜂窝 / VPN / 热点虚拟接口
+            if (n.startsWith('pdp_ip') ||
+                n.startsWith('utun') ||
+                n.startsWith('ipsec') ||
+                n.startsWith('tap') ||
+                n.startsWith('tun') ||
+                n.contains('rmnet') ||
+                n.contains('ccmni')) {
+              return 9;
+            }
             return 2;
           }
 
