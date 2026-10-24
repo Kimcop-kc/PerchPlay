@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../core/system/system_ui_policy.dart';
 import 'device_info_service.dart';
 
 /// iPad 布局模式
@@ -120,7 +122,14 @@ class IPadOptimizationService {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(28),
+        padding: EdgeInsets.fromLTRB(
+          28,
+          28,
+          28,
+          // 底部补真实系统栏高度：Android 8/9 上 SafeArea/viewPadding
+          // 都给 0，最后一个按钮会被导航栏压住
+          28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

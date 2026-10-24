@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/glass_theme.dart';
+import '../../core/system/system_ui_policy.dart';
 import '../../models/scrape_result.dart';
 import '../../providers/scrape_provider.dart';
 import '../glass/glass_button.dart';
@@ -289,7 +290,12 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
             BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
       ),
       padding: EdgeInsets.fromLTRB(
-          20, 16, 20, 20 + MediaQuery.of(context).viewPadding.bottom),
+          20,
+          16,
+          20,
+          // 用 bottomSheetInset：Android 8/9 上 viewPadding.bottom 为 0，
+          // 「手动匹配」底部按钮会被导航栏压住
+          20 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(context))),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

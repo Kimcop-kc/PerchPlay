@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/glass_theme.dart';
+import '../../core/system/system_ui_policy.dart';
 import '../../models/cloud_drive_model.dart';
 import '../../services/cloud/cloud_drive_service.dart';
 import '../../services/cloud/quark_drive_client.dart';
@@ -390,13 +391,17 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         margin: const EdgeInsets.all(12),
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: GlassTheme.bg,
           borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
         ),
-        child: SafeArea(
-          top: false,
+        // 不用 SafeArea：Android 8/9 的 manual 模式下它不提供 bottom 留白，
+        // 弹窗会压到导航栏上。用 bottomSheetInset 拿真实高度。
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

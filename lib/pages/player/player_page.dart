@@ -872,7 +872,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          28 + MediaQuery.of(ctx).viewPadding.bottom,
+          // 用 bottomSheetInset 而不是 viewPadding：Android 8/9 上
+          // viewPadding.bottom 为 0，弹窗底部按钮会被导航栏压住
+          28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -969,7 +971,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + MediaQuery.of(ctx).viewPadding.bottom,
+          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1211,7 +1213,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + MediaQuery.of(ctx).viewPadding.bottom,
+          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1384,7 +1386,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + MediaQuery.of(ctx).viewPadding.bottom,
+          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2140,7 +2142,7 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
         20,
         16,
         20,
-        28 + MediaQuery.of(context).viewPadding.bottom,
+        28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
