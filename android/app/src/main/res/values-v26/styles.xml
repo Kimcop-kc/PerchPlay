@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 8.0 / 8.1（API 26 / 27）专用的主题覆盖。
+
+  ## 为什么需要单独一份
+
+  `values/styles.xml` 把 `navigationBarColor` 设成了 `transparent`，
+  并开了 `windowDrawsSystemBarBackgrounds` —— 这是为 Android 10+ 的
+  `edgeToEdge` 准备的：内容延伸到系统栏后面，看起来才是全屏。
+
+  但 Android 8 只支持 `manual` 模式，问题出在两处叠加：
+
+  1. **系统认为「内容不延伸」**，于是 `MediaQuery.padding.bottom` 算成 0；
+     而 Flutter 的 `setSystemUIOverlayStyle` 在 Android 8.0 上设置
+     `navigationBarColor` 有个著名缺陷，经常静默失效。
+  2. **主题里导航栏仍是 transparent**，内容实际照样画到了导航栏底下。
+
+  结果就是：Dart 侧算出「不需要留白」，浮层却压在导航栏区域上 ——
+  表现为二级菜单下半截被挡住，且挡住的地方滑不到、点不到。
+
+  这里在 API 26/27 上直接让系统画一条**不透明**的导航栏：
+  - `navigationBarColor` 给实色（跟 App 背景一致，观感统一）
+  - 关掉 `windowDrawsSystemBarBackgrounds`，让系统自己占位
+  - 系统会把导航栏区域从布局里真正扣掉，Dart 侧不再需要猜高度
+
+  注意：`values-v27` 只覆盖 API 27+。API 26（Android 8.0）需要
+  `values-v26`；这里用 `-v26` 让 8.0 和 8.1 都吃到。
+-->
+<resources>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- 状态栏保持透明（顶部没有遮挡问题，且视觉上更干净） -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <!-- 导航栏给实色，让系统真正占位 -->
+        <item name="android:navigationBarColor">#F2F2F7</item>
+        <!-- 关键：关掉「内容画到系统栏后面」 -->
+        <item name="android:windowDrawsSystemBarBackgrounds">false</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+    </style>
+</resources>

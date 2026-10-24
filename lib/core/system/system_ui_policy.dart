@@ -1,8 +1,8 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart'
-    show Brightness, Color, Colors, MediaQuery, MediaQueryData;
+    show Brightness, Color, Colors, MediaQueryData;
 import 'package:flutter/services.dart';
 
 import '../../services/native_bridge_service.dart';
@@ -106,6 +106,36 @@ class SystemUiPolicy {
     }
   }
 
+  /// 从原生读到的导航栏真实高度（dp）。启动时刷新一次。
+  ///
+  /// 为什么需要缓存：`bottomSheetInset` 会在 build 里同步调用，不能 await。
+  /// 所以启动时问一次原生、存下来，之后同步用。
+  static double _navBarDp = -1;
+
+  /// 原生上报的导航栏高度是否已就绪。
+  static bool get hasNavBarMeasurement => _navBarDp >= 0;
+
+  /// 读一次导航栏真实高度（在 `init()` 之后调用）。
+  ///
+  /// 必须问原生的原因见 [bottomSheetInset] 的注释 —— 简言之，
+  /// 我们的主题把导航栏设成透明、内容压到它底下，但 Flutter 在 Android 8/9
+  /// 的 manual 模式下 `padding.bottom` 是 0，`viewPadding.bottom` 在部分
+  /// ROM 上也是 0。两个 Dart 侧的值都不可信。
+  static Future<void> refreshNavBarHeight() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      _navBarDp = 0;
+      return;
+    }
+    try {
+      final dp = await NativeBridgeService.instance.getNavigationBarHeightDp();
+      // 负值/异常一律视为 0，避免把布局顶飞
+      _navBarDp = dp.isFinite && dp >= 0 ? dp : 0;
+      debugPrint('[SystemUi] 导航栏高度 = ${_navBarDp}dp');
+    } catch (_) {
+      _navBarDp = -1;
+    }
+  }
+
   /// 底部浮层（bottomSheet / 弹窗）必须避让的系统栏高度。
   ///
   /// ## 为什么不能直接用 `MediaQuery.padding.bottom`
@@ -119,15 +149,22 @@ class SystemUiPolicy {
   ///   - `padding.bottom == 0` → 我们算出「不需要留白」
   ///   - 浮层实际仍贴着屏幕物理底边 → 下半截被导航栏盖住
   ///
-  /// 表现正是「二级菜单被导航栏挡住，且挡住的区域点不到、也滑不到」。
+  /// 更麻烦的是：本项目的 `styles.xml` 把 `navigationBarColor` 设成了
+  /// **transparent**，内容实际确实画到了导航栏底下。所以 `viewPadding.bottom`
+  /// 在部分 ROM 上同样给 0（系统认为没有需要避让的栏）。
   ///
-  /// 修法：低版本上额外补一个导航栏高度。用 `viewPadding` 而不是 `padding`，
-  /// 因为 `viewPadding` 反映的是**系统栏真实占位**，不受「内容是否延伸」影响。
+  /// 因此优先级是：**原生实测值 > viewPadding > 常量兜底**。
   static double bottomSheetInset(MediaQueryData mq) {
-    // viewPadding 在 edgeToEdge 下就是导航栏高度，在 manual 下也是真实占位
+    // 1) 原生实测（最可靠，能区分手势导航 / 三键导航）
+    if (_navBarDp > 0) return _navBarDp;
+
+    // 2) Flutter 侧测量（edgeToEdge 下正确，manual 下可能为 0）
     final view = mq.viewPadding.bottom;
     if (view > 0) return view;
-    // 极端兜底：某些 ROM 连 viewPadding 都给 0，但导航栏确实存在
+    final pad = mq.padding.bottom;
+    if (pad > 0) return pad;
+
+    // 3) 常量兜底：只在 Android 低版本上补
     if (!supportsEdgeToEdge && (kIsWeb ? false : Platform.isAndroid)) {
       return _fallbackNavBarHeight;
     }

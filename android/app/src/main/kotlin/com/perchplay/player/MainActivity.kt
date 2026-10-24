@@ -349,6 +349,17 @@ class MainActivity : FlutterActivity() {
                         result.success(Build.VERSION.SDK_INT)
                     }
 
+                    // 系统导航栏的真实高度（dp）。
+                    //
+                    // 为什么需要问原生：我们的 styles.xml 把 navigationBarColor
+                    // 设成 transparent，内容确实画到了导航栏底下；但 Flutter 在
+                    // Android 8/9 的 manual 模式下会把 MediaQuery.padding.bottom
+                    // 算成 0，部分 ROM 连 viewPadding.bottom 也给 0。
+                    // 两个 Dart 侧的值都不可信时，只能直接问窗口的真实 insets。
+                    "getNavigationBarHeightDp" -> {
+                        result.success(getNavigationBarHeightDp())
+                    }
+
                     // ── 后台播放前台服务 ──
                     // 之前 Dart 侧从未启动过这个服务，「后台播放」开关等于空转；
                     // 现在按设置真正启停（持前台服务才能在息屏/内存回收下继续播）
@@ -423,6 +434,80 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    // ──────────────────────────────
+    // 系统栏尺寸
+    // ──────────────────────────────
+
+    /**
+     * 系统导航栏的真实高度，单位 dp（0 = 没有导航栏）。
+     *
+     * 三级降级，因为各家 ROM 给的答案不一样：
+     *
+     * 1. **API 30+ / WindowInsets**：`navigationBars(Insets.Type.systemBars())`
+     *    是最权威的来源，手势导航时也能拿到正确值。
+     * 2. **API 20~29 / getRealMetrics**：拿「屏幕真实高度 - 应用可用高度」，
+     *    差值就是状态栏 + 导航栏；再减掉状态栏（用 status_bar_height 资源）。
+     * 3. **资源兜底**：读 `navigation_bar_height` 系统资源。
+     *
+     * 之所以要这么麻烦：我们的 styles.xml 把导航栏设成透明、内容压到它底下，
+     * 但 Flutter 在 Android 8/9 的 manual 模式下 `padding.bottom` 是 0，
+     * 靠 Dart 侧猜永远会差一个导航栏高度。
+     */
+    private fun getNavigationBarHeightDp(): Double {
+        val density = resources.displayMetrics.density
+        if (density <= 0f) return 0.0
+
+        // 1) API 30+：WindowInsets
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val insets = window.decorView.rootWindowInsets
+                if (insets != null) {
+                    val bars = insets.getInsets(android.view.WindowInsets.Type.navigationBars())
+                    if (bars.bottom > 0) {
+                        return (bars.bottom / density).toDouble()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("PerchPlay", "WindowInsets navigationBars failed", e)
+            }
+        }
+
+        // 2) API 20~29：真实屏幕高度 - 应用可用高度 - 状态栏
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            try {
+                val real = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                window.windowManager.defaultDisplay.getRealMetrics(real)
+                val usable = resources.displayMetrics.heightPixels
+                val diff = real.heightPixels - usable
+                val statusBar = statusBarHeightPx()
+                val navPx = diff - statusBar
+                if (navPx > 0) {
+                    return (navPx / density).toDouble()
+                }
+            } catch (e: Exception) {
+                Log.w("PerchPlay", "getRealMetrics navigation bar failed", e)
+            }
+        }
+
+        // 3) 系统资源兜底
+        val fromRes = systemResHeightPx("navigation_bar_height")
+        if (fromRes > 0) {
+            return (fromRes / density).toDouble()
+        }
+        return 0.0
+    }
+
+    private fun statusBarHeightPx(): Int {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    private fun systemResHeightPx(name: String): Int {
+        val id = resources.getIdentifier(name, "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
     }
 
     // ──────────────────────────────

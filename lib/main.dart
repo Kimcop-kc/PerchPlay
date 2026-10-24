@@ -77,6 +77,10 @@ void main() async {
   // 系统栏策略：Android 10+ 用 edgeToEdge，Android 9 及以下用 manual。
   // edgeToEdge 在低版本不受支持，会让导航栏变成不透明黑条遮住页面底部。
   await SystemUiPolicy.init();
+  // 读一次导航栏真实高度（原生实测）。
+  // 必须在 runApp 之前完成：bottomSheetInset 在 build 里同步调用，
+  // 晚于首帧就会有一段「还没测到」的窗口期，二级菜单仍会被挡。
+  await SystemUiPolicy.refreshNavBarHeight();
   await SystemUiPolicy.applyIdle(
     navigationBarColor: GlassTheme.bg,
     navigationIconBrightness: Brightness.dark,

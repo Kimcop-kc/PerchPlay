@@ -251,6 +251,27 @@ class NativeBridgeService {
     }
   }
 
+  /// 系统导航栏的真实像素高度（0 = 无导航栏 / 非 Android）。
+  ///
+  /// 为什么必须问原生，而不能靠 `MediaQuery`：
+  ///
+  /// 我们的 `styles.xml` 把 `navigationBarColor` 设成 transparent，
+  /// 内容实际是画到导航栏底下的。但 Flutter 在 Android 8/9 上走 `manual`
+  /// 模式时，`MediaQuery.padding.bottom` 会被算成 0（系统认为「内容不延伸」），
+  /// `viewPadding.bottom` 在部分 ROM 上同样给 0。
+  ///
+  /// 两个值都不可信，就只能直接问窗口真实配置：
+  /// 用 `WindowInsets` / `getRealMetrics` 拿系统栏实际占位。
+  Future<double> getNavigationBarHeightDp() async {
+    if (kIsWeb || !Platform.isAndroid) return 0;
+    try {
+      final v = await _channel.invokeMethod<num>('getNavigationBarHeightDp');
+      return v?.toDouble() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<bool> isIPad() async {
     try {
       return await _channel.invokeMethod('isIPad') ?? false;
