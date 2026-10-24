@@ -349,6 +349,14 @@ class MainActivity : FlutterActivity() {
                         result.success(Build.VERSION.SDK_INT)
                     }
 
+                    // ── HDR 能力检测 ──
+                    // 返回设备真实支持的 HDR 类型与峰值亮度（不是拍脑袋猜）。
+                    // 之前 Dart 侧按品牌硬编码 supportHDR（任何小米都 true），
+                    // 低端机误判为 HDR 屏，直通模式在 SDR 屏上被错误放行。
+                    "getHdrCapabilities" -> {
+                        result.success(getHdrCapabilities())
+                    }
+
                     // 系统导航栏的真实高度（dp）。
                     //
                     // 为什么需要问原生：我们的 styles.xml 把 navigationBarColor
@@ -503,6 +511,99 @@ class MainActivity : FlutterActivity() {
     private fun statusBarHeightPx(): Int {
         val id = resources.getIdentifier("status_bar_height", "dimen", "android")
         return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    // ──────────────────────────────
+    // HDR 能力检测
+    // ──────────────────────────────
+
+    /**
+     * 查询设备真实的 HDR 显示能力。
+     *
+     * 通过 `Display.getHdrCapabilities()`（API 24+）拿到：
+     *  - 支持的 HDR 类型（HDR10 / HDR10+ / DOLBY_VISION / HLG）
+     *  - 峰值亮度（nit）、最大平均亮度
+     *
+     * 为什么必须问原生：Flutter 侧拿不到这个信息，之前只能按品牌硬编码
+     * 「小米=支持 HDR」，低端机也会被误判。真实 API 才能让直通模式
+     * 只在真 HDR 屏上放行。
+     *
+     * 返回 Map：
+     *   - "supported"      : 支持的类型列表，如 ["HDR10", "HDR10+", "DOLBY_VISION"]
+     *   - "hdr10"          : 是否支持 HDR10
+     *   - "hdr10Plus"      : 是否支持 HDR10+
+     *   - "dolbyVision"    : 是否支持杜比视界
+     *   - "hlg"            : 是否支持 HLG
+     *   - "maxLuminance"   : 峰值亮度 nit（拿不到时 -1）
+     */
+    private fun getHdrCapabilities(): Map<String, Any?> {
+        // API 24 才引入 Display.getHdrCapabilities
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return mapOf(
+                "supported" to emptyList<String>(),
+                "maxLuminance" to -1,
+            )
+        }
+        return try {
+            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                this.display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            } ?: return mapOf(
+                "supported" to emptyList<String>(),
+                "maxLuminance" to -1,
+            )
+
+            @Suppress("DEPRECATION")
+            val caps = display.hdrCapabilities
+            val types = caps.supportedHdrTypes
+
+            val names = mutableListOf<String>()
+            var hdr10 = false
+            var hdr10Plus = false
+            var dolby = false
+            var hlg = false
+            for (t in types) {
+                when (t) {
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 -> {
+                        hdr10 = true; names.add("HDR10")
+                    }
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> {
+                        hdr10Plus = true; names.add("HDR10+")
+                    }
+                    android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> {
+                        dolby = true; names.add("DOLBY_VISION")
+                    }
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HLG -> {
+                        hlg = true; names.add("HLG")
+                    }
+                    else -> names.add("TYPE_$t")
+                }
+            }
+
+            val maxLum = try {
+                caps.desiredMaxLuminance
+            } catch (_: Exception) {
+                -1f
+            }
+
+            mapOf(
+                "supported" to names,
+                "hdr10" to hdr10,
+                "hdr10Plus" to hdr10Plus,
+                "dolbyVision" to dolby,
+                "hlg" to hlg,
+                // desiredMaxLuminance 单位是 nit（cd/m²）
+                "maxLuminance" to maxLum,
+            )
+        } catch (e: Exception) {
+            Log.w("PerchPlay", "getHdrCapabilities failed", e)
+            mapOf(
+                "supported" to emptyList<String>(),
+                "maxLuminance" to -1,
+            )
+        }
     }
 
     private fun systemResHeightPx(name: String): Int {

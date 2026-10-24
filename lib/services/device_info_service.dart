@@ -1,5 +1,9 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
+import 'native_bridge_service.dart';
+
 /// 设备品牌枚举
 enum DeviceBrand {
   xiaomi,
@@ -52,6 +56,26 @@ class DeviceCapabilities {
     this.maxScreenWidth = 428,
     this.maxScreenHeight = 926,
   });
+
+  /// 仅覆盖 supportHDR，其余字段保持不变。
+  ///
+  /// 用于真实 HDR 检测结果回填（init 里拿到原生数据后覆盖硬编码值）。
+  DeviceCapabilities copyWithSupportHDR(bool value) {
+    return DeviceCapabilities(
+      hasNotch: hasNotch,
+      hasPunchHole: hasPunchHole,
+      isGestureNavigation: isGestureNavigation,
+      supportHDR: value,
+      has120Hz: has120Hz,
+      supportPiP: supportPiP,
+      supportStageManager: supportStageManager,
+      hasLidar: hasLidar,
+      isM1OrAbove: isM1OrAbove,
+      cpuCores: cpuCores,
+      maxScreenWidth: maxScreenWidth,
+      maxScreenHeight: maxScreenHeight,
+    );
+  }
 }
 
 /// 设备信息服务 —— 检测品牌、型号、能力、RAM
@@ -70,6 +94,33 @@ class DeviceInfoService {
 
   double _ramGB = 0;
   double get ramGB => _ramGB;
+
+  // ── 真实 HDR 能力（来自 Android Display.getHdrCapabilities）──
+
+  /// 是否已拿到真实 HDR 检测结果（区别于还没检测）。
+  bool _hdrDetected = false;
+  bool get hdrDetected => _hdrDetected;
+
+  /// 设备真实支持的 HDR 类型（如 HDR10 / HDR10+ / DOLBY_VISION / HLG）。
+  /// 未检测到或非 Android 时为空列表。
+  List<String> _hdrTypes = const [];
+  List<String> get hdrTypes => _hdrTypes;
+
+  bool _hdr10 = false;
+  bool get hdr10 => _hdr10;
+
+  bool _hdr10Plus = false;
+  bool get hdr10Plus => _hdr10Plus;
+
+  bool _dolbyVision = false;
+  bool get dolbyVision => _dolbyVision;
+
+  bool _hlg = false;
+  bool get hlg => _hlg;
+
+  /// 峰值亮度（nit）。-1 表示拿不到。
+  double _maxLuminance = -1;
+  double get maxLuminance => _maxLuminance;
 
   bool _initialized = false;
   bool get initialized => _initialized;
@@ -118,12 +169,54 @@ class DeviceInfoService {
       }
 
       _capabilities = _androidCapabilities(_brand, model);
+
+      // 真实 HDR 能力：用原生 Display.getHdrCapabilities() 覆盖
+      // 「按品牌拍脑袋」的 supportHDR。必须在 init 里做（要 await 原生），
+      // 拿到后 _androidCapabilities 里的硬编码值就被真实值取代。
+      await _detectHdrCapabilities();
     }
 
     // 读取 RAM（Android 读 /proc/meminfo）
     _ramGB = await _readTotalRamGB();
 
     _initialized = true;
+  }
+
+  /// 用原生 API 检测设备真实 HDR 显示能力。
+  ///
+  /// 之前 [DeviceCapabilities.supportHDR] 是按品牌硬编码（任何小米都 true），
+  /// 低端机也会被误判成 HDR 屏。现在用 `Display.getHdrCapabilities()`
+  /// 拿真实支持的类型与峰值亮度：
+  ///  - 支持 HDR10/HDR10+/杜比/HLG 的任一种 → 真正支持 HDR
+  ///  - 拿不到（非 Android / API<24 / 异常）→ 回退到品牌猜测值
+  Future<void> _detectHdrCapabilities() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final caps = await NativeBridgeService.instance.getHdrCapabilities();
+      if (caps == null) return;
+
+      _hdrDetected = true;
+      _hdr10 = caps['hdr10'] as bool? ?? false;
+      _hdr10Plus = caps['hdr10Plus'] as bool? ?? false;
+      _dolbyVision = caps['dolbyVision'] as bool? ?? false;
+      _hlg = caps['hlg'] as bool? ?? false;
+
+      final names = caps['supported'] as List<dynamic>? ?? const [];
+      _hdrTypes = names.map((e) => e.toString()).toList();
+
+      final lum = caps['maxLuminance'];
+      _maxLuminance = (lum is num) ? lum.toDouble() : -1;
+
+      // 用真实检测覆盖 capabilities.supportHDR
+      final anyHdr = _hdr10 || _hdr10Plus || _dolbyVision || _hlg;
+      _capabilities = _capabilities.copyWithSupportHDR(anyHdr);
+
+      debugPrint('[Device] HDR 检测: ${_hdrTypes.isEmpty ? "无" : _hdrTypes.join("/")}'
+          ' 峰值=${_maxLuminance > 0 ? "${_maxLuminance.toInt()}nit" : "未知"}'
+          ' supportHDR=$anyHdr');
+    } catch (e) {
+      debugPrint('[Device] HDR 检测失败: $e');
+    }
   }
 
   /// 模型 RAM 门槛是否超出本机总 RAM

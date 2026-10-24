@@ -622,10 +622,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         // 不压缩动态范围
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
-        // 目标亮度按屏幕真实峰值给；拿不到时用一个 HDR 屏的通用值
+        // 目标亮度优先级：片源信号峰值 > 设备真实峰值 > 通用 1000。
+        // 设备真实峰值来自 Display.getHdrCapabilities()（小米 15 Pro = 3200nit），
+        // 用它才能跑满屏幕；拿不到时退到片源峰值；再没有用 1000。
+        final device = DeviceInfoService.instance;
         final peak = (state.sigPeak ?? 0) > 1.0
             ? state.sigPeak!.toStringAsFixed(0)
-            : '1000';
+            : (device.hdrDetected && device.maxLuminance > 0
+                ? device.maxLuminance.toStringAsFixed(0)
+                : '1000');
+        debugPrint('[HDR] target-peak=$peak '
+            '设备峰值=${device.hdrDetected ? device.maxLuminance : "未知"}');
         await platform.setProperty('target-peak', peak);
         // HDR10+ / 杜比视界：直通时都交给下游
         await platform.setProperty('hdr10plus', 'auto');

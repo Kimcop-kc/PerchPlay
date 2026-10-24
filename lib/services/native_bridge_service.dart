@@ -332,6 +332,24 @@ class NativeBridgeService {
     }
   }
 
+  /// 查询设备真实 HDR 显示能力（仅 Android 24+）。
+  ///
+  /// 返回 null 表示拿不到（非 Android / API < 24 / 异常）。
+  /// 拿到时含：
+  ///  - `hdr10` / `hdr10Plus` / `dolbyVision` / `hlg`：各自是否支持
+  ///  - `maxLuminance`：峰值亮度 nit（拿不到为 -1）
+  Future<Map<String, dynamic>?> getHdrCapabilities() async {
+    if (kIsWeb || !Platform.isAndroid) return null;
+    try {
+      final v = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+          'getHdrCapabilities');
+      if (v == null) return null;
+      return v.map((k, val) => MapEntry(k.toString(), val));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> isIPad() async {
     try {
       return await _channel.invokeMethod('isIPad') ?? false;
