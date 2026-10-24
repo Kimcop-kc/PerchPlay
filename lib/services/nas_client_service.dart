@@ -95,13 +95,14 @@ class _NasConnection {
         Future<int?>.delayed(const Duration(seconds: 3), () => null),
       ]);
       if (code == null) {
-        debugPrint('[NAS] ping 超时，判定连接失效');
+        debugPrint('[NAS] ping 超时(3s)，判定连接失效');
         return false;
       }
+      debugPrint('[NAS] ping 返回 HTTP $code');
       // 只要拿到响应就算活着（OPTIONS 可能返回 405/501）
       return code > 0;
     } catch (e) {
-      debugPrint('[NAS] ping 失败: $e');
+      debugPrint('[NAS] ping 异常: $e');
       return false;
     }
   }
@@ -164,16 +165,19 @@ class _NasConnection {
           405 => '该地址不是 WebDAV 端点（METHOD 不允许）',
           _ => 'PROPFIND 失败 HTTP ${resp.statusCode}',
         };
-        debugPrint('[NAS] WebDAV $path -> ${resp.statusCode}');
+        debugPrint('[NAS] PROPFIND $path -> HTTP ${resp.statusCode}');
         return [];
       }
       // 把「当前请求的路径」传进去：解析时要靠它跳过「自身」那一条，
       // 只跳过自身、保留子目录。原来靠「href 以 / 结尾」判断目录，
       // 结果把所有目录都跳过了。
-      return _parseWebDavMultiStatus(body, requestPath: path);
+      final parsed = _parseWebDavMultiStatus(body, requestPath: path);
+      debugPrint('[NAS] PROPFIND $path -> HTTP 207, '
+          '响应 ${body.length} 字节, 解析出 ${parsed.length} 项');
+      return parsed;
     } catch (e) {
       lastError = '网络异常：$e';
-      debugPrint('[NAS] WebDAV list 失败: $e');
+      debugPrint('[NAS] WebDAV list 异常: $e');
       return [];
     }
   }
@@ -618,11 +622,18 @@ class NasClientService {
   ///
   /// 所以复用前必须真发一次轻量请求验证。失败就重建连接。
   Future<bool> connect(NasConnection config) async {
+    debugPrint('[NAS] connect 请求: ${config.protocol.name} '
+        '${config.host}:${config.port}${config.remotePath}');
+
     final existing = _conns[config.id];
     if (existing != null && existing.connected) {
       // 轻量探测：OPTIONS 打到配置路径。超时很短，不拖慢正常流程。
+      debugPrint('[NAS] 已有连接，ping 验证…');
       final alive = await existing.ping();
-      if (alive) return true;
+      if (alive) {
+        debugPrint('[NAS] ping 成功，复用连接');
+        return true;
+      }
       debugPrint('[NAS] 复用连接已失效，重建');
       await existing.disconnect();
       _conns.remove(config.id);
@@ -630,12 +641,14 @@ class NasClientService {
 
     final c = _NasConnection(config);
     final ok = await c.connect();
+    debugPrint('[NAS] 新建连接 ${ok ? "成功" : "失败"}');
     _conns[config.id] = c;
     return ok;
   }
 
   /// 断开某个连接。
   Future<void> disconnect(String id) async {
+    debugPrint('[NAS] disconnect($id)');
     final c = _conns.remove(id);
     await c?.disconnect();
   }
@@ -669,13 +682,18 @@ class NasClientService {
     if (c == null) {
       lastListFailed = true;
       lastListError = '连接未建立';
+      debugPrint('[NAS] listDirectory 失败: 连接 $connectionId 不存在');
       return [];
     }
+    debugPrint('[NAS] listDirectory 请求: $path');
     final result = await c.listDirectory(path);
     if (c.lastError.isNotEmpty) {
       lastListFailed = true;
       lastListError = c.lastError;
+      debugPrint('[NAS] listDirectory 失败: ${c.lastError}');
       c.lastError = '';
+    } else {
+      debugPrint('[NAS] listDirectory 成功: $path -> ${result.length} 项');
     }
     return result;
   }
@@ -683,8 +701,13 @@ class NasClientService {
   /// 获取文件播放 URL。
   String getPlayableUrl(String connectionId, String path) {
     final c = _conns[connectionId];
-    if (c == null) return '';
-    return c.getPlayableUrl(path);
+    if (c == null) {
+      debugPrint('[NAS] getPlayableUrl 失败: 连接 $connectionId 不存在');
+      return '';
+    }
+    final url = c.getPlayableUrl(path);
+    debugPrint('[NAS] getPlayableUrl: $url');
+    return url;
   }
 
   /// 规范化远程路径：补上前导 `/`，去掉末尾多余 `/`，去首尾空格。

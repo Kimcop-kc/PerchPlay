@@ -394,8 +394,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             selected: isActive,
             tint: isActive ? GlassTheme.tintTeal : GlassTheme.tintWhite,
             onTap: () async {
+              // 用户操作也记进日志：排查「点了没反应」时，先要确认点击事件
+              // 到底有没有到达这里 —— 没有就是 UI 层问题，有就是连接层问题。
+              debugPrint('[NAS-UI] 点击连接「${conn.name}」'
+                  ' isActive=$isActive loading=${state.isLoading}');
               if (!isActive) {
-                await ref.read(nasProvider.notifier).connect(conn);
+                final ok =
+                    await ref.read(nasProvider.notifier).connect(conn);
+                debugPrint('[NAS-UI] connect 返回 $ok');
               }
             },
             child: Row(
@@ -611,11 +617,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         tint: GlassTheme.tintWhite,
         onTap: () {
+          debugPrint('[NAS-UI] 点击「${item.name}」'
+              ' dir=${item.isDirectory} video=${item.isVideo}');
           if (item.isDirectory) {
             ref.read(nasProvider.notifier).navigateTo(item.path);
           } else if (item.isVideo) {
             final url =
                 ref.read(nasProvider.notifier).getPlayableUrl(item.path);
+            debugPrint('[NAS-UI] 播放 URL = $url');
             context.pushNamed('player', extra: {
               'videoPath': url,
               'videoTitle': item.name,

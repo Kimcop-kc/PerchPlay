@@ -194,9 +194,11 @@ class NasNotifier extends StateNotifier<NasState> {
   }
 
   Future<bool> connect(NasConnection config) async {
+    debugPrint('[NAS] connect 开始: ${config.name}');
     state = state.copyWith(isLoading: true, clearError: true);
 
     final ok = await _service.connect(config);
+    debugPrint('[NAS] service.connect = $ok');
     if (ok) {
       state = state.copyWith(
         isLoading: false,
@@ -206,6 +208,9 @@ class NasNotifier extends StateNotifier<NasState> {
         clearError: true,
       );
       await navigateTo(config.remotePath);
+      debugPrint('[NAS] 连接后首次读取: '
+          'files=${state.currentFiles.length} '
+          'err=${state.errorMessage ?? "-"}');
       // 连接成功但读不到目录：多半是复用的底层连接其实是坏的
       // （ping 也可能被中间设备伪装成功）。这里强制重建一次再试，
       // 让「返回主页后再点连接」不再需要杀 App 才能恢复。
@@ -213,11 +218,15 @@ class NasNotifier extends StateNotifier<NasState> {
         debugPrint('[NAS] 首次读取失败，重建连接后重试');
         await _service.disconnect(config.id);
         final retry = await _service.connect(config);
+        debugPrint('[NAS] 重建结果 = $retry');
         if (retry) {
           await navigateTo(config.remotePath);
+          debugPrint('[NAS] 重试后: files=${state.currentFiles.length} '
+              'err=${state.errorMessage ?? "-"}');
         }
       }
     } else {
+      debugPrint('[NAS] connect 失败（service 层返回 false）');
       state = state.copyWith(
         isLoading: false,
         errorMessage: '连接失败，请检查地址、端口和账号密码',
@@ -276,7 +285,11 @@ class NasNotifier extends StateNotifier<NasState> {
 
   Future<void> navigateTo(String path) async {
     final connId = state.activeConnection?.id;
-    if (connId == null) return;
+    if (connId == null) {
+      debugPrint('[NAS] navigateTo($path) 被跳过: activeConnection 为 null');
+      return;
+    }
+    debugPrint('[NAS] navigateTo($path)');
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final files = await _service.listDirectory(connId, path);

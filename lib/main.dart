@@ -1,3 +1,4 @@
+import 'dart:async' show runZonedGuarded;
 import 'dart:io' show Platform;
 
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
@@ -103,10 +104,22 @@ void main() async {
   // 冷启动的 URI 也要尽早取走（原生侧只给一次）。
   await _setupExternalVideoOpen();
 
-  runApp(
-    const ProviderScope(
-      child: VideoPlayerApp(),
-    ),
+  // 用 zone 包住 runApp：这样 App 运行期未处理的异步异常也会进日志。
+  //
+  // 必须在**这里**做而不是在 LogService.install() 里 —— zone 的生命周期
+  // 等于回调体执行的时间，只有在 install() 里起 zone 的话它立刻就被销毁，
+  // 什么都接不到。
+  runZonedGuarded(
+    () {
+      runApp(
+        const ProviderScope(
+          child: VideoPlayerApp(),
+        ),
+      );
+    },
+    (error, stack) {
+      LogService.instance.recordUncaught(error, stack);
+    },
   );
 }
 

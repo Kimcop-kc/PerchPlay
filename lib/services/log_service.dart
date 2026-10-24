@@ -53,6 +53,11 @@ class LogService {
   ///
   /// **必须在 runApp 之前调用**，且越早越好 —— 否则启动早期的
   /// MediaKit / 设备信息初始化日志会漏掉（那恰恰是最容易出问题的地方）。
+  ///
+  /// 注意：这里**不**做 `runZonedGuarded`。zone 必须包住 `runApp` 才能
+  /// 捕获其中未处理的异步异常；在 `install()` 里起一个只含空回调的 zone
+  /// 是无效的（它的生命周期只有那一行）。异常的收集在 main() 里
+  /// 用 `runZonedGuarded` 包住 runApp 完成。
   void install() {
     if (_installed) return;
     _installed = true;
@@ -65,15 +70,11 @@ class LogService {
         _add(message);
       }
     };
+  }
 
-    // 未捕获的异步异常也要收进来 —— 很多崩溃就发生在这里
-    // （例如原生通道 Future 没 await 抛出的错误）
-    runZonedGuarded(
-      () {},
-      (error, stack) {
-        _add('[未捕获异常] $error\n${_trimStack(stack)}');
-      },
-    );
+  /// 记录一个未捕获的异步异常（由 main() 的 runZonedGuarded 调用）。
+  void recordUncaught(Object error, StackTrace stack) {
+    _add('[未捕获异常] $error\n${_trimStack(stack)}');
   }
 
   /// 手动记一条（用于记录非 debugPrint 的关键事件，如用户操作）。
