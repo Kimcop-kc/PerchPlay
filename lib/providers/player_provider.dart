@@ -312,8 +312,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   late final VideoController _globalController;
 
   PlayerNotifier() : super(PlayerState(player: Player())) {
-    // VideoController 由 Provider 全局创建，跨页面复用
-    _globalController = VideoController(state.player);
+    // VideoController 由 Provider 全局创建，跨页面复用。
+    //
+    // ⚠ 必须显式指定 `vo: 'gpu'`：
+    // media_kit 在 Android 上默认用 `vo=libmpv`（见其 native_video_controller
+    // 的 `vo ?? 'libmpv'`），而 libmpv 后端是「通过 Flutter 纹理回传 RGB 帧」，
+    // **完全不支持 HDR 输出** —— 所有 target-colorspace-hint / tone-mapping /
+    // target-peak 设置都被它忽略。这就是之前「改了没变、HDR 不起作用」的根因。
+    //
+    // `gpu`（OpenGL）后端支持 HDR 合成，且比 gpu-next 在 Android 上稳定得多
+    // （gpu-next 需要 libplacebo，闪退风险高，留作路径 B 的实验开关）。
+    _globalController = VideoController(
+      state.player,
+      configuration: const VideoControllerConfiguration(vo: 'gpu'),
+    );
     state = state.copyWith(videoController: _globalController);
     _setupListeners();
     applyDecodingMode();
