@@ -54,6 +54,13 @@ Failed to initialize a decoder for codec 'dts'.
 整块高度约 **67px → 38px**，正好容下控件。
 （触摸命中区由 GestureDetector 覆盖整个区域，不靠撑高实现，不影响可点性。）
 
+**进一步调整（实测后继续收）**：
+- 整块再向下移动 12px（吃掉底部 padding 里多余的 8px 余量 + 负 bottom 下探），
+  更贴近屏幕下沿；`MediaQuery.padding.bottom` 安全区完整保留，不会压到手势条。
+- **横屏控制栏收紧**：原来 `buttonScale = isLarge ? 1.3 : 1.0`，手机横屏后宽度
+  超过平板阈值被误判成「大屏」，所有间距/字号/按钮放大 30%。现在横屏用
+  **0.85**，间距更小、按钮更小；时间字号加 `clamp(10,14)` 保底 10px 不糊。
+
 > 这是 Flutter 共用代码，**Android 与 iOS 同时生效**。
 
 ---
