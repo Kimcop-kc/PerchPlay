@@ -246,10 +246,14 @@ class PlayerState {
   /// 判断依据（按优先级，**实测修正后的顺序**）：
   ///  1. **真实传递函数**（videoParams 的 gamma）：pq → HDR10；hlg → HLG。
   ///     这是 mpv 解析流后给出的最可靠信号，**必须优先于文件名猜测**。
-  ///     之前把 dolbyVision 放最前，而它依赖文件名兜底 —— 一个 HLG 片源
-  ///     因为文件名带 "DOLBY" 就被误判成杜比视界（日志实测：tf=hlg 判成杜比）。
   ///  2. **codec 前缀 dv**（dvhe/dvh1/dav1）：mpv 明确给出的杜比编码。
-  ///  3. 文件名兜底：最后才用。
+  ///  3. 色域兜底（bt.2020 通常伴随 HDR）。
+  ///  4. 文件名兜底：**只有 codec 明确是杜比时才用**，纯 tf=null 时不用。
+  ///
+  /// ⚠ 关键：tf 为 null 时（元数据还没到）**绝不**靠文件名猜。
+  /// 实测日志：视频打开瞬间 tf=null，文件名带 "DOLBY" 就被误判成杜比视界
+  /// 触发直通设置；0.3 秒后真实 tf=hlg 到来，又判成 HLG 重新设置一遍。
+  /// 这不仅刷屏，还会让 mpv 在「杜比直通 → HLG」之间来回切换渲染上下文。
   String? get hdrType {
     final tf = (transferFunction ?? '').toLowerCase();
     final cp = (colorPrimaries ?? '').toLowerCase();
@@ -261,16 +265,18 @@ class PlayerState {
     }
     if (tf.contains('hlg')) return 'HLG';
 
-    // 2) 传递函数还没到，但有杜比 codec 信号
+    // 2) 传递函数还没到，但有杜比 codec 信号（codec 来自 tracks 流，
+    //    可能早于 videoParams 到达）
     if (_codecIsDolby) return '杜比视界';
 
     // 3) 都没有 → 看色域兜底（bt.2020 通常伴随 HDR）
     if (cp.contains('2020')) return 'HDR10';
 
-    // 4) 文件名兜底（仅在没有真实参数时）
-    if (dolbyVision) return '杜比视界';
-
-    return null; // SDR 或未知
+    // 4) 文件名兜底：**不用**。codec 是 mpv 解析出来的硬证据，文件名是软猜测。
+    //    实测 HLG 片源因文件名带 "DOLBY" 被误判成杜比视界，导致 mpv 在
+    //    「杜比直通 → HLG」之间来回切换渲染上下文。所以这里只认 codec。
+    //    （_codecIsDolby 已经在第 2 步判断过了，走到这里说明 codec 也不是杜比）
+    return null; // SDR 或未知（含「元数据还没到」）
   }
 
   /// codec 是否为杜比视界封装（dvhe/dvh1 = HEVC 封装，dav1 = AV1 封装）。
