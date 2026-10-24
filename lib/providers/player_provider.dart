@@ -609,6 +609,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (platform is! NativePlayer) return;
       final isHdr = state.hdrType != null;
 
+      // ── 去重：同一「模式 + HDR 类型」只应用一次 ──
+      //
+      // 用户反馈「一直在检测」的根源：videoParams 触发多次 +
+      // open 后 applyRobustPlayback 又调一次，每次都打日志 + setProperty。
+      // 设备检测本身只做一次，这里把「应用 HDR 属性」也收敛成
+      // 状态真正变化时才做，避免重复。
+      final passthrough = AppSettingsService.instance.hdrPassthrough;
+      final sig = '${passthrough ? "pt" : "map"}|${state.hdrType ?? "sdr"}';
+      if (sig == _lastHdrAppliedSig) return;
+      _lastHdrAppliedSig = sig;
+
       // ── HDR 直通模式（用户手动开启）──
       //
       // 关键三个属性，缺一不可：
@@ -624,7 +635,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // ⚠ 这三项在「屏幕/系统/渲染链任一环不支持」时会导致
       // 画面过曝发白或严重偏色。所以必须由用户在设置里手动开启，
       // 不能默认打开。
-      final passthrough = AppSettingsService.instance.hdrPassthrough;
       if (isHdr && passthrough) {
         debugPrint('[HDR] 直通模式：${state.hdrType} '
             'tf=${state.transferFunction} cp=${state.colorPrimaries} '
@@ -718,6 +728,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 上次 videoParams 的参数签名（去重用，避免同批元数据反复触发色调映射）。
   String? _lastVideoParamsSig;
+
+  /// 上次应用的 HDR 状态签名（"模式|hdrType"），相同则跳过整个 setProperty 序列。
+  ///
+  /// 用户反馈「一直在检测」：虽然设备检测只在启动做一次，但播放器
+  /// 每次播片都会 applyHdrToneMapping 打一堆日志 + setProperty。
+  /// 用签名去重，同一模式同一片源只应用一次，日志也降到 1 行。
+  String? _lastHdrAppliedSig;
 
   /// 后台播放前台服务是否已启动（避免重复调用）
   ///
@@ -1166,6 +1183,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastSaveAt = DateTime.now();
     _lastPosEmitAt = null; // 重置节流，新视频位置立即生效
     _lastVideoParamsSig = null; // 重置参数签名，新视频的元数据必须重新应用
+    _lastHdrAppliedSig = null; // 重置 HDR 应用签名，新视频要重新判断
     _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'native_bridge_service.dart';
 
@@ -184,13 +185,38 @@ class DeviceInfoService {
 
   /// 用原生 API 检测设备真实 HDR 显示能力。
   ///
+  /// **只检测一次**：首次启动调 `Display.getHdrCapabilities()`，把结果
+  /// 缓存进 SharedPreferences；之后每次冷启动直接读缓存，不再调原生。
+  /// 设备硬件能力不会变，重复检测纯属浪费（用户明确要求"检测一次就够了"）。
+  ///
   /// 之前 [DeviceCapabilities.supportHDR] 是按品牌硬编码（任何小米都 true），
-  /// 低端机也会被误判成 HDR 屏。现在用 `Display.getHdrCapabilities()`
-  /// 拿真实支持的类型与峰值亮度：
+  /// 低端机也会被误判成 HDR 屏。现在用真实 API 覆盖：
   ///  - 支持 HDR10/HDR10+/杜比/HLG 的任一种 → 真正支持 HDR
   ///  - 拿不到（非 Android / API<24 / 异常）→ 回退到品牌猜测值
   Future<void> _detectHdrCapabilities() async {
     if (!Platform.isAndroid) return;
+
+    // 先读缓存：检测过一次就不再调原生
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('hdr.detected') == true) {
+        _hdrDetected = true;
+        _hdr10 = prefs.getBool('hdr.hdr10') ?? false;
+        _hdr10Plus = prefs.getBool('hdr.hdr10Plus') ?? false;
+        _dolbyVision = prefs.getBool('hdr.dolbyVision') ?? false;
+        _hlg = prefs.getBool('hdr.hlg') ?? false;
+        _hdrTypes = prefs.getStringList('hdr.types') ?? const [];
+        _maxLuminance = prefs.getDouble('hdr.maxLuminance') ?? -1;
+        final anyHdr = _hdr10 || _hdr10Plus || _dolbyVision || _hlg;
+        _capabilities = _capabilities.copyWithSupportHDR(anyHdr);
+        debugPrint('[Device] HDR 能力（缓存）: '
+            '${_hdrTypes.isEmpty ? "无" : _hdrTypes.join("/")} '
+            '峰值=${_maxLuminance > 0 ? "${_maxLuminance.toInt()}nit" : "未知"}');
+        return;
+      }
+    } catch (_) {}
+
+    // 首次检测：调原生，成功后写缓存
     try {
       final caps = await NativeBridgeService.instance.getHdrCapabilities();
       if (caps == null) return;
@@ -210,6 +236,18 @@ class DeviceInfoService {
       // 用真实检测覆盖 capabilities.supportHDR
       final anyHdr = _hdr10 || _hdr10Plus || _dolbyVision || _hlg;
       _capabilities = _capabilities.copyWithSupportHDR(anyHdr);
+
+      // 写缓存：下次冷启动直接读，不再调原生
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hdr.detected', true);
+        await prefs.setBool('hdr.hdr10', _hdr10);
+        await prefs.setBool('hdr.hdr10Plus', _hdr10Plus);
+        await prefs.setBool('hdr.dolbyVision', _dolbyVision);
+        await prefs.setBool('hdr.hlg', _hlg);
+        await prefs.setStringList('hdr.types', _hdrTypes);
+        await prefs.setDouble('hdr.maxLuminance', _maxLuminance);
+      } catch (_) {}
 
       debugPrint('[Device] HDR 检测: ${_hdrTypes.isEmpty ? "无" : _hdrTypes.join("/")}'
           ' 峰值=${_maxLuminance > 0 ? "${_maxLuminance.toInt()}nit" : "未知"}'
