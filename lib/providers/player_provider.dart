@@ -699,6 +699,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  /// 打开新文件前把 HDR 相关属性复位到 SDR 安全状态。
+  ///
+  /// 为什么要显式复位：mpv 的 `target-colorspace-hint` / `tone-mapping`
+  /// 是**播放器全局**属性，不会随 `stop()` 自动清空。上一个 HDR 片源
+  /// 把它们设成直通（hint=yes），如果直接 open 下一个片源，mpv 会在
+  /// 残留的 HDR 合成上下文上重建渲染管线，部分设备 native 崩溃。
+  ///
+  /// 复位后由新片源的 videoParams → applyHdrToneMapping 按需重开。
+  Future<void> _resetHdrBeforeOpen() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+      // 关掉 HDR 合成，回到标准 SDR 输出路径
+      await platform.setProperty('target-colorspace-hint', 'no');
+      await platform.setProperty('tone-mapping', 'clip');
+      await platform.setProperty('hdr-compute-peak', 'no');
+      await platform.setProperty('hdr10plus', 'no');
+      await platform.setProperty('dolbyvision', 'no');
+      // 复位 target-peak 到一个中性值（1000），避免残留极值影响新文件探测
+      await platform.setProperty('target-peak', '1000');
+    } catch (e) {
+      // 复位失败不阻塞播放：最坏情况是下一个视频沿用旧 HDR 状态
+      debugPrint('[Player] 复位 HDR 状态失败（忽略）: $e');
+    }
+  }
+
   /// 当前 media_kit Player 实例（播放页用它创建 VideoController）
   Player get player => state.player;
 
@@ -1095,6 +1121,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (e) {
       debugPrint('[Player] stop 上一个文件失败（忽略）: $e');
     }
+    if (token != _loadToken) return;
+
+    // ── 打开新文件前复位 HDR 直通状态 ──
+    //
+    // 闪退根因：上一个 HDR 片源开启了 target-colorspace-hint=yes，
+    // 让 SurfaceFlinger 进入 HDR 合成。如果直接 open 新片源，mpv 会在
+    // 残留的 HDR 合成上下文上重建渲染管线 —— 部分设备直接 native 崩溃
+    // （症状：有时能播、有时闪退，切换片源后必现）。
+    //
+    // 所以 stop 之后、open 之前，把 HDR 相关属性全部复位到 SDR 安全状态。
+    // 新片源的 videoParams 到达后，applyHdrToneMapping 会按需重新开启。
+    await _resetHdrBeforeOpen();
     if (token != _loadToken) return;
 
     // 解码设置必须在 open **之前**应用：hwdec / vd-lavc-threads 是
