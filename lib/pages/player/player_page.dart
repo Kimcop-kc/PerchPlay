@@ -1480,7 +1480,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     double scale = 1.0,
   }) {
     return Positioned(
-      bottom: 0,
+      // 整块再往下挪一点（用户反馈「还是太高」）。
+      //
+      // 这里只吃掉原来底部 padding 里的 +8 余量：把 padding 的 +8 去掉，
+      // 同时用负 bottom 让容器向下探 12px，净下移 12px。
+      //
+      // 安全区仍是 MediaQuery.padding.bottom（全面屏约 34px），
+      // 内容不会压到 Home Indicator / 手势条上。
+      bottom: -12,
       left: 0,
       right: 0,
       child: ClipRect(
@@ -1488,7 +1495,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           blurSigma: 18,
           child: Container(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 8,
+              // 原来的 +8 余量让位给上面的 -12 下移
+              bottom: MediaQuery.of(context).padding.bottom,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
