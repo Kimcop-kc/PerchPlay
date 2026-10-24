@@ -1510,119 +1510,158 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
 
     if (!mounted) return;
+    // 底部安全边距：取「原生实测导航栏高度」与「一个按钮高度」的较大值。
+    //
+    // 为什么要取 max：实测发现部分设备上报的导航栏高度偏小
+    // （用户日志里手势导航只报 20dp），而手势条本身会盖住按钮下沿
+    // 12~16dp；加上手指点按需要余量，只按 inset 留白仍会被挡。
+    // 48 是「手指能舒适点到的下限」，宁可多留白也不能点不到。
+    final mq = MediaQuery.of(context);
+    final navInset = SystemUiPolicy.bottomSheetInset(mq);
+    final safeBottom = navInset > 48 ? navInset : 48.0;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.8,
+        height: MediaQuery.of(ctx).size.height * 0.82,
         decoration: const BoxDecoration(
           color: Color(0xFFF7F7FA),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: EdgeInsets.fromLTRB(
-          16,
-          12,
-          16,
-          16 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
-        ),
+        // 注意：padding 不放在这一层。
+        // Container 的 padding 会挤压内部 Column，配合 Expanded 会让
+        // 底部按钮紧贴 padding 边缘、没有可呼吸的余量。改为下面
+        // 用 Column 末尾的固定高度 SizedBox 来保证安全区。
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.bug_report_rounded,
-                    color: GlassTheme.accentTeal, size: 20),
-                const SizedBox(width: 8),
-                const Text('诊断日志',
-                    style: TextStyle(
-                        color: GlassTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700)),
-                const Spacer(),
-                Text('${svc.count} 条',
-                    style: const TextStyle(
-                        color: GlassTheme.textTertiary, fontSize: 12)),
-              ],
+            // 标题 + 说明（带水平边距）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.bug_report_rounded,
+                      color: GlassTheme.accentTeal, size: 20),
+                  const SizedBox(width: 8),
+                  const Text('诊断日志',
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  Text('${svc.count} 条',
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 12)),
+                ],
+              ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              '遇到问题时点「复制全部」发给我，能快速定位原因。'
-              '日志只在本机保存，不会上传。',
-              style: TextStyle(
-                  color: GlassTheme.textTertiary, fontSize: 11, height: 1.4),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '遇到问题时点「复制全部」发给我，能快速定位原因。'
+                '日志只在本机保存，不会上传。',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 11, height: 1.4),
+              ),
             ),
             const SizedBox(height: 12),
             // 日志正文
             Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    report,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 10,
-                      height: 1.45,
-                      color: Color(0xFF2C2C2E),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border:
+                        Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      report,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        height: 1.45,
+                        color: Color(0xFF2C2C2E),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: GlassButton.filled(
-                    icon: Icons.copy_rounded,
-                    label: '复制全部',
-                    height: 42,
-                    onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: report));
-                      if (ctx.mounted) {
+            // 按钮行（带水平边距）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: GlassButton.filled(
+                      icon: Icons.copy_rounded,
+                      label: '复制全部',
+                      height: 46,
+                      onTap: () async {
+                        await Clipboard.setData(ClipboardData(text: report));
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          _showSnack('已复制，直接粘贴发给我即可');
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // 清空：复现问题前先清空，日志只保留本次操作
+                  Expanded(
+                    child: GlassButton.outlined(
+                      icon: Icons.delete_sweep_rounded,
+                      label: '清空',
+                      height: 46,
+                      foregroundColor: GlassTheme.textTertiary,
+                      onTap: () {
+                        svc.clear();
+                        svc.log('[日志] 已由用户清空');
                         Navigator.pop(ctx);
-                        _showSnack('已复制，直接粘贴发给我即可');
-                      }
-                    },
+                        _showSnack('已清空，请复现问题后再来看');
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // 清空：方便用户复现「只记录本次操作」，避免旧日志淹没关键信息
-                Expanded(
-                  child: GlassButton.outlined(
-                    icon: Icons.delete_sweep_rounded,
-                    label: '清空',
-                    height: 42,
-                    foregroundColor: GlassTheme.textTertiary,
-                    onTap: () {
-                      svc.clear();
-                      svc.log('[日志] 已由用户清空');
-                      Navigator.pop(ctx);
-                      _showSnack('已清空，请复现问题后再来看');
-                    },
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
+            // 底部安全区：**固定高度**占位，不依赖 padding。
+            //
+            // 原来把安全区算进 Container 的 padding，但 Container 高度是
+            // 屏高的百分比，减去 padding 后 Expanded 仍会吃满，按钮就贴在
+            // padding 下沿 —— 视觉上还是被导航栏压住（用户反馈 20dp 的
+            // 导航栏高度也确实太小）。改成这里显式留一个 SizedBox，
+            // 高度取 max(实测导航栏, 48)，保证按钮上下都有余量。
+            SizedBox(height: safeBottom),
           ],
         ),
       ),
