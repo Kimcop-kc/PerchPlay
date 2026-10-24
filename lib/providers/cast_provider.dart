@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/cast_device_model.dart';
 import '../services/cast_discovery_service.dart';
 import '../services/cast_control_service.dart';
+import '../services/local_media_import_service.dart';
 import '../services/local_media_server.dart';
 
 /// 投屏设备列表状态
@@ -153,7 +154,22 @@ class CastNotifier extends StateNotifier<CastState> {
   /// 先用手机会话内的 HTTP 服务把文件暴露到局域网（电视读不到
   /// /storage/... 路径），再把该 URL 交给设备播放。
   Future<bool> castLocalFile(String filePath, {String title = ''}) async {
-    final url = await LocalMediaServer.instance.urlFor(filePath, title: title);
+    // 照片库资产是虚拟路径（phasset://<id>），磁盘上没有文件。
+    // 投屏前先按需导出成真实文件（走同一个临时缓存 + LRU），否则局域网
+    // HTTP 服务找不到文件，电视端会直接报错。
+    var localPath = filePath;
+    final assetId = LocalMediaImportService.assetIdFromPath(filePath);
+    if (assetId != null) {
+      final resolved = await LocalMediaImportService.instance
+          .resolveAssetForPlayback(assetId);
+      if (resolved == null) {
+        _safeUpdate((s) => s.copyWith(errorMessage: '无法读取该相册视频'));
+        return false;
+      }
+      localPath = resolved;
+    }
+
+    final url = await LocalMediaServer.instance.urlFor(localPath, title: title);
     
     if (url == null) {
       _safeUpdate((s) => s.copyWith(errorMessage: '无法启动本地投屏服务（检查网络）'));

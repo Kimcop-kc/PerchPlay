@@ -14,6 +14,7 @@ import '../services/subtitle_auto_service.dart';
 import '../services/subtitle_matcher.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/local_media_import_service.dart';
 import '../services/cloud/cloud_drive_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
@@ -986,6 +987,27 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await applyDecodingMode();
     if (token != _loadToken) return;
 
+    // ── 照片库资产：先把虚拟路径解析成本地文件 ──
+    //
+    // 影库里存的是 `phasset://<id>`，磁盘上没有对应文件。这里按需把
+    // **这一个** 资产导出到临时缓存（带 LRU 淘汰），再交给 mpv 播放。
+    // 早期实现是扫描时就把整个相册复制进 Documents，等于用户视频库翻倍。
+    var playbackPath = video.path;
+    final photoAssetId =
+        LocalMediaImportService.assetIdFromPath(video.path);
+    if (photoAssetId != null) {
+      state = state.copyWith(isBuffering: true);
+      final resolved = await LocalMediaImportService.instance
+          .resolveAssetForPlayback(photoAssetId);
+      if (token != _loadToken) return;
+      if (resolved == null) {
+        debugPrint('[Player] 照片库资产解析失败: $photoAssetId');
+        state = state.copyWith(isBuffering: false);
+        return;
+      }
+      playbackPath = resolved;
+    }
+
     try {
       // 网盘播放需要自定义请求头（Cookie / User-Agent / Referer / Authorization）。
       //
@@ -997,7 +1019,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // media_kit 的 Media 原生支持 httpHeaders，由它统一转义和下发。
       await state.player.open(
         Media(
-          video.path,
+          playbackPath,
           httpHeaders: (headers != null && headers.isNotEmpty) ? headers : null,
         ),
       );
@@ -1247,6 +1269,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (_) {}
     // 停止播放后不再需要前台服务（无条件关，就算状态不对也关到位）
     _forceShutdownBackgroundService();
+    // 相册视频的临时副本只在播放期间有用，停了就删（不占用户存储）
+    try {
+      await LocalMediaImportService.instance.clearPlaybackCache();
+    } catch (_) {}
     // 恢复后台任务（缩略图/刮削）
     PlaybackBusy.playing = false;
     state = state.copyWith(

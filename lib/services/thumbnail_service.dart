@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart' show sha1;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'frame_scorer.dart';
+import 'local_media_import_service.dart';
 
 /// 视频缩略图生成 + 存放位置 + 智能选帧
 ///
@@ -38,6 +41,13 @@ class ThumbnailService {
   /// 或被裁剪过的极短视频）。
   Future<String?> generate(String videoPath, {int durationMs = 0}) async {
     try {
+      // 照片库资产是虚拟路径（phasset://<id>），磁盘上没有视频文件。
+      // 直接用系统缩略图，既不用导出视频、也不用解码，快得多。
+      final assetId = LocalMediaImportService.assetIdFromPath(videoPath);
+      if (assetId != null) {
+        return await _generateFromPhotoAsset(assetId);
+      }
+
       final dir = await _outputDirectory();
       if (durationMs >= 10000) {
         return await _generateWithScore(videoPath, durationMs, dir);
@@ -45,6 +55,24 @@ class ThumbnailService {
       return await _generateSingle(videoPath, dir);
     } catch (e) {
       debugPrint('[Thumbnail] 生成失败 $videoPath: $e');
+      return null;
+    }
+  }
+
+  /// 照片库资产缩略图：取系统生成的图，落盘成 jpg。
+  Future<String?> _generateFromPhotoAsset(String assetId) async {
+    try {
+      final bytes = await LocalMediaImportService.instance
+          .photoAssetThumbnail(assetId, width: _size, height: _size);
+      if (bytes == null || bytes.isEmpty) return null;
+      final dir = await _outputDirectory();
+      final digest =
+          sha1.convert(utf8.encode(assetId)).toString().substring(0, 12);
+      final path = p.join(dir, 'ph_$digest.jpg');
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    } catch (e) {
+      debugPrint('[Thumbnail] 相册缩略图失败 $assetId: $e');
       return null;
     }
   }

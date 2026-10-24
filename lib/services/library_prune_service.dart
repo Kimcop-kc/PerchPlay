@@ -31,6 +31,9 @@ class LibraryPruneService {
     'rtsp://',
     // Android 的 content:// 也是「系统托管」，本地 stat 不可信
     'content://',
+    // iOS 照片库资产的虚拟路径：磁盘上没有对应文件，
+    // 是否存在要和相册扫描结果对齐（见 DatabaseService.removeVideosByPathPrefix）
+    'phasset://',
   ];
 
   /// 是否可能是网络/远程地址（这类地址不能用本地文件存在性判断）

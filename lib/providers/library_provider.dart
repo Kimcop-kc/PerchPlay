@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 import '../models/video_model.dart';
 import '../services/app_settings_service.dart';
 import '../services/database_service.dart';
@@ -121,23 +120,31 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       // 注意：状态要从 provider 读，不能读 notifier 的 .state
       // （那是 StateNotifier 的 protected 成员，analyze 会报 warning → CI 挂）
       if (ref.read(scrapeProvider).isEnabled) {
-        final paths = videos.map((v) => v.path).toList();
-        // 不 await：刮削在后台慢慢跑
-        ref.read(scrapeProvider.notifier).scrapeBatch(paths);
+        // 照片库资产（phasset://）不参与刮削：它们是用户自己拍的视频，
+        // 送去 TMDB 匹配纯属浪费网络，也匹配不出结果。
+        final paths = [
+          for (final v in videos)
+            if (!LocalMediaImportService.isPhotoAssetPath(v.path)) v.path,
+        ];
+        if (paths.isNotEmpty) {
+          // 不 await：刮削在后台慢慢跑
+          ref.read(scrapeProvider.notifier).scrapeBatch(paths);
+        }
       }
     } catch (e, st) {
       state = AsyncError(e, st);
     }
   }
 
-  /// iOS：同步导出照片库视频并返回扫描到的视频列表。
+  /// iOS：扫描照片库视频并写入影库，返回这些条目。
   ///
-  /// 为什么是同步（而不是后台）：1.1.2 曾把这段放后台，Documents 为空时
-  /// 列表立刻显示「未扫描到视频」，照片库在后台无提示地导，用户以为扫描
-  /// 失败。现在由 [scan] 同步等待，期间首页保持 loading 转圈。
+  /// **不再复制文件**：只读资产元数据（标题/时长/日期），路径存
+  /// `phasset://<id>` 虚拟路径，播放时才按需导出到临时缓存。
+  /// 早期实现把整个相册 copy 进 Documents，等于用户视频库翻倍。
   ///
-  /// 导出服务内部用「资产 ID → 文件名」索引去重，已导过的资产不重复 copy，
-  /// 第二次以后几乎瞬时，所以同步等待的代价只在首次。
+  /// 为什么同步（而不是后台）：1.1.2 曾把这段放后台，Documents 为空时
+  /// 列表立刻显示「未扫描到视频」，照片库在后台无提示地跑，用户以为
+  /// 扫描失败。现在由 [scan] 同步等待，期间首页保持 loading 转圈。
   Future<List<VideoModel>> _scanPhotoLibraryNow() async {
     try {
       final hasPerm =
@@ -145,16 +152,34 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
       debugPrint('[Library] 照片库权限: $hasPerm');
       if (!hasPerm) return const [];
 
-      final exported =
-          await LocalMediaImportService.instance.exportPhotoLibraryVideos();
-      debugPrint('[Library] 照片库导出 ${exported.length} 个文件');
-      if (exported.isEmpty) return const [];
+      // 顺手清掉旧版本遗留的整库副本（只删 Imported/PhotoLibrary）
+      try {
+        await LocalMediaImportService.instance.cleanupLegacyPhotoExports();
+      } catch (_) {}
 
-      // 导出完成：把新文件并入影库（按所在目录扫描）
-      final dirs = exported.map((e) => p.dirname(e)).toSet().toList();
-      final more = await _scanner.scanDirectories(dirs, removeMissing: false);
-      debugPrint('[Library] 照片库扫描入库 ${more.length} 个视频');
-      return more;
+      final assets =
+          await LocalMediaImportService.instance.scanPhotoLibraryAssets();
+      debugPrint('[Library] 照片库扫描到 ${assets.length} 个资产');
+      if (assets.isEmpty) {
+        // 相册里确实没有视频：把库里遗留的 phasset 记录也清掉
+        await _db.removeVideosByPathPrefix(
+          LocalMediaImportService.photoAssetScheme,
+          keepPaths: const {},
+        );
+        return const [];
+      }
+
+      await _db.upsertScannedVideos(assets);
+
+      // 清理「相册里已删除」的资产记录：
+      // 虚拟路径没法用 File.exists 判断，只能按本次扫描结果对齐。
+      await _db.removeVideosByPathPrefix(
+        LocalMediaImportService.photoAssetScheme,
+        keepPaths: {for (final v in assets) v.path},
+      );
+
+      debugPrint('[Library] 照片库入库 ${assets.length} 个视频（未复制文件）');
+      return assets;
     } catch (e, st) {
       debugPrint('[Library] 照片库扫描失败: $e\n$st');
       return const [];
@@ -309,6 +334,12 @@ class VideoListNotifier extends AsyncNotifier<List<VideoModel>> {
   Future<String?> deleteVideoWithFile(String videoId) async {
     final target = await _locate(videoId);
     if (target == null) return null;
+
+    // 照片库资产：真实文件在系统相册里，App 不去删（也不该删）。
+    // 想让它消失请用「仅从影库移除」，或在系统相册里删除后重新扫描。
+    if (LocalMediaImportService.isPhotoAssetPath(target.path)) {
+      return '相册视频请在系统相册中删除；这里可用「仅从影库移除」';
+    }
 
     if (LibraryPruneService.isRemotePath(target.path)) {
       return '网络来源的视频不支持删除文件，请用「仅从影库移除（保留文件）」';

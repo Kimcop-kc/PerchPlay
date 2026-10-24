@@ -9,6 +9,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/constants/app_constants.dart';
+import '../models/video_model.dart';
 
 /// iOS/跨平台「本地文件来源」服务。
 ///
@@ -21,11 +22,12 @@ import '../core/constants/app_constants.dart';
 /// 2. **文件选择器导入**：`file_picker` 打开系统「文件」App（UIDocumentPicker），
 ///    用户多选视频后复制进 Documents/Imported（picker 返回的是临时路径，
 ///    系统随时可能清理，必须复制才能持久播放）。
-/// 3. **照片库扫描**：`photo_manager` 枚举相册视频（需照片库权限），
-///    把资产导出为 Documents/Imported/PhotoLibrary 下的文件后加入影库
-///    （photo_manager 的 file getter 返回的是应用缓存临时文件，且
-///    media_kit 在 iOS 上有「仅音频无画面」的已知问题 media-kit#1192，
-///    复制到 Documents 再播最稳）。
+/// 3. **照片库**：`photo_manager` 枚举相册视频（需照片库权限）。
+///    **只读元数据建库，绝不复制视频文件** —— 早期实现为了绕开
+///    media_kit 的渲染问题，把整个相册都 copy 进 Documents，
+///    等于把用户视频库翻倍，存储直接爆炸。现在影库里存的是
+///    `phasset://<资产ID>` 这样的虚拟路径，只有**真正播放时**才把
+///    那一个资产导出到临时缓存目录，并做 LRU 淘汰（只留最近 1~2 个）。
 ///
 /// 这些方法在 Android/桌面平台上调用时返回空或走原本的 MediaStore/文件系统
 /// 扫描，不影响既有逻辑。
@@ -37,7 +39,40 @@ class LocalMediaImportService {
 
   /// 导入文件存放的子目录名（Documents 下）。
   static const _importDirName = 'Imported';
-  static const _photoDirName = 'PhotoLibrary';
+
+  /// 照片库资产的虚拟路径协议。
+  ///
+  /// 形如 `phasset://A1B2C3...`。影库里只存这个，不落地文件。
+  static const photoAssetScheme = 'phasset://';
+
+  /// 播放时按需导出的缓存目录名（在系统临时目录下，不进 Documents）。
+  static const _playbackCacheDirName = 'phplayback';
+
+  /// 播放缓存最多保留几个文件。
+  ///
+  /// 固定为 1：只留「当前正在播的那一个」，切下一个视频时立刻删掉旧的。
+  /// 相册视频在 iOS 上必须导出才能播（PHAsset 没有可读路径），这一份是
+  /// 平台下限、省不掉；那至少让它**只在播放期间存在**，不额外积累。
+  static const int _playbackCacheMaxFiles = 1;
+
+  /// 播放缓存总大小上限（超过就按最久未访问淘汰）。
+  /// 单个超大文件因为要用来播放，会被保留（淘汰逻辑永远不删 keep）。
+  static const int _playbackCacheMaxBytes = 800 * 1024 * 1024; // 800MB
+
+  /// 是否是照片库资产的虚拟路径。
+  static bool isPhotoAssetPath(String path) =>
+      path.startsWith(photoAssetScheme);
+
+  /// 由资产 ID 构造影库里的虚拟路径。
+  static String photoAssetPath(String assetId) =>
+      '$photoAssetScheme$assetId';
+
+  /// 从虚拟路径取回资产 ID；不是照片库路径则返回 null。
+  static String? assetIdFromPath(String path) {
+    if (!isPhotoAssetPath(path)) return null;
+    final id = path.substring(photoAssetScheme.length);
+    return id.isEmpty ? null : id;
+  }
 
   /// 本机沙盒 Documents 目录（iOS/Android 通用；Android 上也是应用私有目录）。
   Future<Directory> documentsDirectory() async {
@@ -53,10 +88,18 @@ class LocalMediaImportService {
     return dir;
   }
 
-  /// 照片库导出目录：Documents/Imported/PhotoLibrary（自动创建）。
-  Future<Directory> _photoDir() async {
-    final root = await _importRoot();
-    final dir = Directory(p.join(root.path, _photoDirName));
+  /// 播放缓存目录：系统临时目录/phplayback（自动创建）。
+  ///
+  /// 用临时目录而非 Documents：① 不占用户可见空间、不进 iCloud 备份；
+  /// ② 系统空间紧张时可以自己回收，最多只是下次重导一个文件。
+  Future<Directory> _playbackCacheDir() async {
+    Directory base;
+    try {
+      base = await getTemporaryDirectory();
+    } catch (_) {
+      base = Directory.systemTemp;
+    }
+    final dir = Directory(p.join(base.path, _playbackCacheDirName));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -66,7 +109,7 @@ class LocalMediaImportService {
 
   /// 是否是照片库扫描得到的文件（用于清理时避免误删用户自己放的文件）。
   static bool isPhotoExportPath(String path) =>
-      path.contains('/$_importDirName/$_photoDirName/');
+      path.contains('/$_importDirName/PhotoLibrary/');
 
   /// 是否是导入的文件（文件选择器导入或照片库导出）。
   static bool isImportedPath(String path) =>
@@ -210,36 +253,36 @@ class LocalMediaImportService {
     }
   }
 
-  /// 扫描照片库视频资产，导出到 Documents/Imported/PhotoLibrary/，
-  /// 返回导出后的本地文件路径列表。
+  /// 扫描照片库视频资产，**只读元数据、不复制任何文件**。
   ///
-  /// 只在 iOS 生效（Android 走 MediaStore）。导出为真实文件：
-  /// - 规避 photo_manager 临时文件被系统清理的问题；
-  /// - 规避 media_kit 播 photo_manager 缓存路径「仅音频无画面」的已知
-  ///   bug（media-kit#1192）。
+  /// 返回的路径是 `phasset://<资产ID>` 虚拟路径，真正播放时才按需导出
+  /// （见 [resolveAssetForPlayback]）。
   ///
-  /// 性能要点：用「资产 ID → 已导出文件名」的持久化索引做去重，已导出过的
-  /// 资产**不再重新 copy**（早期实现用「文件名冲突就加 _1/_2」的方式，导致
-  /// 每次刷新都把整个相册重导一遍，越刷越慢、磁盘无限膨胀）。
+  /// 为什么改：早期为了绕开 media_kit 的渲染问题，把整个相册 copy 进
+  /// Documents/Imported/PhotoLibrary，等于把用户视频库翻倍 —— 相册几十 GB
+  /// 的用户存储直接爆炸。现在影库里只存虚拟路径，磁盘占用与相册大小无关。
   ///
   /// [progress] 可选回调（已处理数, 总数），用于 UI 显示进度。
-  Future<List<String>> exportPhotoLibraryVideos({
+  Future<List<VideoModel>> scanPhotoLibraryAssets({
     void Function(int done, int total)? progress,
   }) async {
     if (!_isIOS) return const [];
     final hasPerm = await hasPhotoLibraryPermission();
-    if (!hasPerm) return const [];
+    if (!hasPerm) {
+      debugPrint('[LocalImport] 无照片库权限，跳过');
+      return const [];
+    }
 
     try {
-      final paths = await PhotoManager.getAssetPathList(
+      final pathList = await PhotoManager.getAssetPathList(
         type: RequestType.video,
         onlyAll: true,
       );
-      if (paths.isEmpty) return const [];
+      if (pathList.isEmpty) return const [];
 
-      // 统计视频总数（分页遍历所有资产）
+      // 分页遍历全部视频资产（只为拿元数据，开销很小）
       final allAssets = <AssetEntity>[];
-      for (final path in paths) {
+      for (final path in pathList) {
         final count = await path.assetCountAsync;
         const pageSize = 200;
         for (var start = 0; start < count; start += pageSize) {
@@ -249,145 +292,246 @@ class LocalMediaImportService {
         }
       }
 
-      final destDir = await _photoDir();
-      // 读索引：资产 id -> 文件名
-      final index = await _loadPhotoIndex();
-      final out = <String>[];
+      final out = <VideoModel>[];
       var done = 0;
-      var indexDirty = false;
-
-      // 兼容旧数据：把同目录里「文件名以资产 id 前缀开头」的孤儿文件也认回来，
-      // 避免旧版本中断留下的副本被当成新资产重复导出。
-      // （旧实现导出成功才写索引，中途退出就会漏索引 → 下次生成 _1 副本。）
-
       for (final asset in allAssets) {
         done++;
         progress?.call(done, allAssets.length);
+        if (asset.type != AssetType.video) continue;
+
+        final virtualPath = photoAssetPath(asset.id);
+        final title = asset.title?.trim() ?? '';
+        final name = title.isNotEmpty
+            ? p.basenameWithoutExtension(title)
+            : '相册视频_${_shortId(asset.id)}';
+
+        out.add(VideoModel(
+          id: _uuid.v5(Namespace.url.value, virtualPath),
+          path: virtualPath,
+          name: name,
+          // 统一归到「照片库」，来源分类会识别成个人视频
+          folderPath: '照片库',
+          // 相册接口拿不到精确字节数，置 0（详情页显示未知）
+          size: 0,
+          durationMs: asset.duration * 1000,
+          dateAdded: asset.createDateTime,
+          dateModified: asset.modifiedDateTime,
+          thumbnailPath: '',
+        ));
+      }
+      debugPrint('[LocalImport] 照片库扫描到 ${out.length} 个视频（未复制文件）');
+      return out;
+    } catch (e, st) {
+      debugPrint('[LocalImport] 照片库扫描失败: $e\n$st');
+      return const [];
+    }
+  }
+
+  /// 把照片库资产按需导出到**临时缓存**，返回可播放的本地文件路径。
+  ///
+  /// 只在真正要播放时调用。缓存做了双重上限（文件数 + 总字节）的 LRU 淘汰，
+  /// 所以磁盘上最多只有正在播的那 1~2 个文件，不会随相册大小增长。
+  ///
+  /// 返回 null 表示拿不到文件（资产已删 / iCloud 未下载 / 无权限）。
+  Future<String?> resolveAssetForPlayback(String assetId) async {
+    if (!_isIOS) return null;
+    try {
+      final cacheDir = await _playbackCacheDir();
+      final prefix = _assetFilePrefix(assetId);
+
+      // 1) 缓存命中：文件名以资产哈希前缀开头
+      final entries = await cacheDir.list().toList();
+      final cached = entries
+          .whereType<File>()
+          .where((f) => p.basename(f.path).startsWith(prefix))
+          .toList();
+      if (cached.isNotEmpty) {
+        final f = cached.first;
+        // 触碰 mtime，标记「最近使用」，避免被 LRU 淘汰
         try {
-          if (asset.type != AssetType.video) continue;
-          final assetId = asset.id;
+          await f.setLastModified(DateTime.now());
+        } catch (_) {}
+        return f.path;
+      }
 
-          // 已导出且文件还在 -> 直接用，跳过昂贵的导出
-          final known = index[assetId];
-          if (known != null) {
-            final knownPath = p.join(destDir.path, known);
-            if (await File(knownPath).exists()) {
-              out.add(knownPath);
-              continue;
-            }
-            // 索引有但文件没了（用户清了 App 数据/被系统清理）：
-            // 删掉这一条，下面按同一稳定文件名重新导出。
-            index.remove(assetId);
-            indexDirty = true;
-          }
+      // 2) 未命中：导出这一个资产
+      final asset = await AssetEntity.fromId(assetId);
+      if (asset == null) {
+        debugPrint('[LocalImport] 资产不存在: $assetId');
+        return null;
+      }
 
-          final title = asset.title;
-          final base = (title != null && title.trim().isNotEmpty)
-              ? title.trim()
-              : 'video_${_uuid.v4().substring(0, 8)}';
-          final safeBase = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-          final ext = _videoExtOf(asset) ?? 'mp4';
+      try {
+        final available = await asset.isLocallyAvailable();
+        if (!available) {
+          debugPrint('[LocalImport] 资产在 iCloud 未下载: $assetId');
+        }
+      } catch (_) {}
 
-          // 用资产 ID 派生**稳定**文件名，保证同一个资产永远落到同一个路径。
-          //
-          // 旧实现用 _uniqueFileName：中断一次没写索引，下次就生成 xxx_1.mp4，
-          // 同一视频变成两条不同 path 的记录 → 界面上重复显示。
-          // 现在文件名只由资产 ID 决定，重扫是幂等的。
-          final stableName = '${_assetFilePrefix(assetId)}$safeBase.$ext';
-          final destPath = p.join(destDir.path, stableName);
+      final file = await asset.file;
+      if (file == null || !await file.exists()) {
+        debugPrint('[LocalImport] 取不到资产文件（可能 iCloud 未下载）: $assetId');
+        return null;
+      }
 
-          // 稳定文件已存在（上次导出成功但没来得及写索引）→ 直接认领
-          if (await File(destPath).exists()) {
-            final len = await File(destPath).length();
-            if (len > 20 * 1024) {
-              out.add(destPath);
-              index[assetId] = stableName;
-              indexDirty = true;
-              continue;
-            }
-            // 太小：上次可能只写了一部分，删掉重来
-            try {
-              await File(destPath).delete();
-            } catch (_) {}
-          }
+      final ext = _videoExtOf(asset) ?? 'mp4';
+      final dest = File(p.join(cacheDir.path, '$prefix$ext'));
 
-          // iCloud 未下载到本地的资产：asset.file 会返回 null 或抛异常。
+      // 优先 rename 而不是 copy：
+      //  asset.file 返回的是 photo_manager 自己导出的临时文件，和我们的缓存
+      //  目录都在 App 容器内、同一文件系统，所以 rename 是原子改名（不搬数据）。
+      //  好处：① 播放期间不会出现「两份副本」（原来 copy 会让占用翻倍）；
+      //        ② 首次播放不用读写整片，大文件几乎瞬时就位。
+      //  失败（跨卷等极端情况）再退回 copy。
+      var moved = false;
+      try {
+        await file.rename(dest.path);
+        moved = true;
+        debugPrint('[LocalImport] 缓存就位(rename): ${p.basename(dest.path)}');
+      } catch (e) {
+        debugPrint('[LocalImport] rename 失败，退回 copy: $e');
+      }
+      if (!moved) {
+        await file.copy(dest.path);
+        // copy 成功后再删掉 photo_manager 那份，避免两份并存占双倍空间
+        try {
+          await file.delete();
+        } catch (_) {}
+        debugPrint('[LocalImport] 缓存就位(copy): ${p.basename(dest.path)}');
+      }
+
+      // 3) 导出成功后再淘汰（keep 保证不删刚写的这个）
+      await _evictPlaybackCache(keep: dest.path);
+      return dest.path;
+    } catch (e, st) {
+      debugPrint('[LocalImport] 资产导出失败 $assetId: $e\n$st');
+      return null;
+    }
+  }
+
+  /// 照片库资产的缩略图字节。
+  ///
+  /// 直接让系统生成，不用解码视频，比 flutter_video_thumbnail_plus 快得多，
+  /// 也不需要在磁盘上留视频副本。
+  Future<Uint8List?> photoAssetThumbnail(
+    String assetId, {
+    int width = 360,
+    int height = 360,
+  }) async {
+    if (!_isIOS) return null;
+    try {
+      final asset = await AssetEntity.fromId(assetId);
+      if (asset == null) return null;
+      return await asset.thumbnailDataWithSize(
+        ThumbnailSize(width, height),
+        quality: 85,
+      );
+    } catch (e) {
+      debugPrint('[LocalImport] 缩略图失败 $assetId: $e');
+      return null;
+    }
+  }
+
+  /// 清理旧版本遗留的「照片库整库副本」（Documents/Imported/PhotoLibrary）。
+  ///
+  /// 升级到新方案后必须删掉，否则那些重复文件会一直占着用户存储。
+  /// 只删这个子目录，不动 Imported 根下用户自己通过「文件」App 导入的视频。
+  Future<int> cleanupLegacyPhotoExports() async {
+    try {
+      final docs = await documentsDirectory();
+      final dir = Directory(p.join(docs.path, _importDirName, 'PhotoLibrary'));
+      if (!await dir.exists()) return 0;
+      var count = 0;
+      await for (final e in dir.list(followLinks: false)) {
+        try {
+          await e.delete(recursive: true);
+          count++;
+        } catch (_) {}
+      }
+      try {
+        await dir.delete(recursive: true);
+      } catch (_) {}
+      debugPrint('[LocalImport] 已清理旧版照片库副本 $count 项');
+      return count;
+    } catch (e) {
+      debugPrint('[LocalImport] 清理旧版照片库副本失败: $e');
+      return 0;
+    }
+  }
+
+  /// 清空播放缓存（关闭播放 / 退出小窗时调用）。
+  ///
+  /// 相册视频的临时副本只在播放期间有用，停止播放就删，
+  /// 这样「不播相册视频时」临时目录是空的。
+  Future<void> clearPlaybackCache() async {
+    try {
+      final dir = await _playbackCacheDir();
+      if (!await dir.exists()) return;
+      var count = 0;
+      await for (final e in dir.list(followLinks: false)) {
+        try {
+          if (e is File) await e.delete();
+          count++;
+        } catch (_) {}
+      }
+      if (count > 0) {
+        debugPrint('[LocalImport] 播放缓存已清空 $count 项');
+      }
+    } catch (e) {
+      debugPrint('[LocalImport] 清空播放缓存失败: $e');
+    }
+  }
+
+  /// 按「最久未修改」淘汰播放缓存，保证不超过文件数与总字节上限。
+  Future<void> _evictPlaybackCache({required String keep}) async {
+    try {
+      final dir = await _playbackCacheDir();
+      final files =
+          (await dir.list().toList()).whereType<File>().toList();
+      if (files.isEmpty) return;
+
+      final stats = <({File file, DateTime mtime, int size})>[];
+      for (final f in files) {
+        try {
+          final st = await f.stat();
+          stats.add((file: f, mtime: st.modified, size: st.size));
+        } catch (_) {}
+      }
+      // 新的在前
+      stats.sort((a, b) => b.mtime.compareTo(a.mtime));
+
+      var kept = 0;
+      var total = 0;
+      for (final s in stats) {
+        final isKeep = s.file.path == keep;
+        final overCount = kept >= _playbackCacheMaxFiles;
+        final overBytes = (total + s.size) > _playbackCacheMaxBytes;
+        if (!isKeep && (overCount || overBytes)) {
           try {
-            final available = await asset.isLocallyAvailable();
-            if (!available) {
-              debugPrint('[LocalImport] 资产在 iCloud 未下载，尝试获取: $base');
-            }
+            await s.file.delete();
+            debugPrint('[LocalImport] 淘汰播放缓存: ${p.basename(s.file.path)}');
           } catch (_) {}
-
-          final file = await asset.file; // iOS: 导出到应用缓存
-          if (file == null) {
-            debugPrint('[LocalImport] 取不到文件（可能 iCloud 未下载）: $base');
-            continue;
-          }
-          if (!await file.exists()) {
-            debugPrint('[LocalImport] 导出文件不存在: $base');
-            continue;
-          }
-          await file.copy(destPath);
-          out.add(destPath);
-          index[assetId] = stableName;
-          indexDirty = true;
-          // 每个文件导出后立刻落盘索引：中途被杀也不会丢掉已完成的进度
-          if (indexDirty && done % 5 == 0) {
-            await _savePhotoIndex(index);
-            indexDirty = false;
-          }
-          debugPrint('[LocalImport] 照片库导出: $base -> $stableName');
-        } catch (e) {
-          debugPrint('[LocalImport] 照片库导出失败 (${asset.title}): $e');
+        } else {
+          kept++;
+          total += s.size;
         }
       }
-      if (indexDirty) await _savePhotoIndex(index);
-      return out;
     } catch (e) {
-      debugPrint('[LocalImport] 照片库扫描失败: $e');
-      return const [];
+      debugPrint('[LocalImport] 清理播放缓存失败: $e');
     }
   }
 
   /// 由照片库资产 ID 派生一个稳定的文件名前缀。
   ///
-  /// 目的：让「同一个资产」永远落到同一个文件名，重扫幂等。
-  /// 取 ID 的稳定哈希（不用原始 ID：里面可能带 `/`、`:` 等文件名非法字符，
-  /// 而且长度可能很长）。
+  /// 用哈希而不是原始 ID：ID 里可能带 `/`、`:` 等文件名非法字符，长度也不可控。
   String _assetFilePrefix(String assetId) {
     final digest = sha1.convert(utf8.encode(assetId)).toString();
     return 'ph_${digest.substring(0, 12)}_';
   }
 
-  /// 照片库导出索引文件（Documents/Imported/.photo_index.json）。
-  static const _photoIndexName = '.photo_index.json';
-
-  Future<Map<String, String>> _loadPhotoIndex() async {
-    try {
-      final root = await _importRoot();
-      final f = File(p.join(root.path, _photoIndexName));
-      if (!await f.exists()) return {};
-      final raw = await f.readAsString();
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
-      }
-    } catch (e) {
-      debugPrint('[LocalImport] 读取照片索引失败: $e');
-    }
-    return {};
-  }
-
-  Future<void> _savePhotoIndex(Map<String, String> index) async {
-    try {
-      final root = await _importRoot();
-      final f = File(p.join(root.path, _photoIndexName));
-      await f.writeAsString(jsonEncode(index), flush: true);
-    } catch (e) {
-      debugPrint('[LocalImport] 写入照片索引失败: $e');
-    }
-  }
+  /// 取 ID 末尾几位做兜底显示名。
+  String _shortId(String id) =>
+      id.length <= 6 ? id : id.substring(id.length - 6);
 
   String? _videoExtOf(AssetEntity asset) {
     try {
@@ -405,6 +549,9 @@ class LocalMediaImportService {
   }
 
   /// 目标目录下不冲突的**文件名**（不是完整路径）：同名则加 _1/_2…
+  ///
+  /// 只给「文件 App 导入」用：用户可能真的选了同名但内容不同的两个文件。
+  /// 照片库走资产哈希命名，不需要它。
   Future<String> _uniqueFileName(Directory dir, String name) async {
     if (!await File(p.join(dir.path, name)).exists()) return name;
     final base = p.basenameWithoutExtension(name);

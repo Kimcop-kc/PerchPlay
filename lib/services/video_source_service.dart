@@ -70,6 +70,11 @@ class VideoSourceService {
   // ═══════════════════════════════════════════════════════════════
 
   static VideoSource classify(String path) {
+    // iOS 照片库资产：phasset://<id>，没有真实目录结构。
+    // 相册里的视频基本都是用户自己拍的，归到「相机/个人视频」，
+    // 否则会被当成未知来源丢进「其他」，分组会乱。
+    if (path.startsWith('phasset://')) return VideoSource.camera;
+
     final folder = p.dirname(path).replaceAll('/', '\\').toLowerCase();
 
     // ── 剪辑/图片美化软件（必须在相机之前判断，防止"无他相机"被"相机"误命中）──

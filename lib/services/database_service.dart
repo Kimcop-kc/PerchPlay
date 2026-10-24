@@ -451,6 +451,32 @@ class DatabaseService {
 
   // ---------- 清理 ----------
 
+  /// 删除「路径以 [prefix] 开头、且不在 [keepPaths] 里」的记录。
+  ///
+  /// 专给照片库虚拟路径（`phasset://`）用：这类记录没法用
+  /// `File.existsSync` 判断是否还存在，只能和本次扫描到的资产列表对齐。
+  Future<int> removeVideosByPathPrefix(
+    String prefix, {
+    required Set<String> keepPaths,
+  }) async {
+    final db = await database;
+    final allVideos = await getAllVideos();
+    final toDelete = <String>[];
+    for (final video in allVideos) {
+      if (!video.path.startsWith(prefix)) continue;
+      if (keepPaths.contains(video.path)) continue;
+      toDelete.add(video.id);
+    }
+    if (toDelete.isEmpty) return 0;
+    final batch = db.batch();
+    for (final id in toDelete) {
+      batch.delete('videos', where: 'id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+    debugPrint('[DB] 清理 $prefix 失效记录 ${toDelete.length} 条');
+    return toDelete.length;
+  }
+
   Future<void> removeVideosNotInPaths(List<String> existingPaths) async {
     final db = await database;
     final allVideos = await getAllVideos();

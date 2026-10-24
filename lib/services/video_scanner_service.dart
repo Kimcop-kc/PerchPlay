@@ -267,32 +267,4 @@ class VideoScannerService {
     ];
     return scanDirectories(dirs, removeMissing: false);
   }
-
-  /// iOS 综合本地扫描：扫描 Documents + 照片库导出。
-  ///
-  /// [exportPhotos] 为 true 时，若已授权照片库权限，会把相册视频导出到
-  /// Documents/Imported/PhotoLibrary 一并入影库。Android/桌面返回空。
-  Future<List<VideoModel>> scanIosLocalSources({
-    bool exportPhotos = false,
-    void Function(int done, int total)? photoProgress,
-  }) async {
-    if (kIsWeb || !Platform.isIOS) return const [];
-
-    final found = <VideoModel>[];
-    // 1) Documents（含文件共享放入 + 已导入/导出的文件）
-    final docsVideos = await scanCommonDirectories();
-    found.addAll(docsVideos);
-
-    // 2) 照片库导出（可选）
-    if (exportPhotos) {
-      final exported = await LocalMediaImportService.instance
-          .exportPhotoLibraryVideos(progress: photoProgress);
-      if (exported.isNotEmpty) {
-        final more = await scanDirectories(exported.map((e) => p.dirname(e)).toSet().toList(),
-            removeMissing: false);
-        found.addAll(more);
-      }
-    }
-    return found;
-  }
 }

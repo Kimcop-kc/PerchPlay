@@ -27,6 +27,7 @@ import '../../services/app_settings_service.dart';
 import '../../services/media_namer_service.dart';
 import '../../services/subtitle_service.dart';
 import '../../services/native_bridge_service.dart';
+import '../../services/library_prune_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
@@ -359,8 +360,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   Future<void> _loadVideo() async {
     final path = widget.videoPath;
-    // 本地文件不存在 → 弹 toast 返回，不闪退
-    if (!path.startsWith('http') && !File(path).existsSync()) {
+    // 本地文件不存在 → 弹 toast 返回，不闪退。
+    //
+    // 注意：照片库资产是 phasset://<id> 虚拟路径（磁盘上没有文件）、
+    // 网盘/NAS 是远程地址，都不能用 File.existsSync 判断，否则一进播放页
+    // 就被误判成「文件已不存在」直接弹回去。
+    if (!LibraryPruneService.isRemotePath(path) && !File(path).existsSync()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('视频文件已不存在，可能已被删除或移动')),
