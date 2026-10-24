@@ -596,6 +596,44 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
       final isHdr = state.hdrType != null;
+
+      // ── HDR 直通模式（用户手动开启）──
+      //
+      // 关键三个属性，缺一不可：
+      //  1. target-colorspace-hint=yes：告诉系统「本窗口要输出 HDR」。
+      //     Android 上 mpv 通过这个让 SurfaceFlinger 切换到 HDR 合成路径。
+      //     不设它，即使屏幕支持 HDR，输出也会被按 SDR 处理。
+      //  2. tone-mapping=clip：**不做**动态范围压缩。
+      //     之前用 bt.2390 是把 HDR 压成 SDR，等于主动放弃 HDR。
+      //     clip 只做超范围截断，保持原始亮度映射。
+      //  3. target-peak：直通模式下要告诉 mpv 屏幕真实峰值亮度，
+      //     否则它仍按默认值做预处理。
+      //
+      // ⚠ 这三项在「屏幕/系统/渲染链任一环不支持」时会导致
+      // 画面过曝发白或严重偏色。所以必须由用户在设置里手动开启，
+      // 不能默认打开。
+      final passthrough = AppSettingsService.instance.hdrPassthrough;
+      if (isHdr && passthrough) {
+        debugPrint('[HDR] 直通模式：${state.hdrType} '
+            'tf=${state.transferFunction} cp=${state.colorPrimaries} '
+            'peak=${state.sigPeak}');
+        // 允许 HDR 输出
+        await platform.setProperty('target-colorspace-hint', 'yes');
+        // 不压缩动态范围
+        await platform.setProperty('tone-mapping', 'clip');
+        await platform.setProperty('hdr-compute-peak', 'no');
+        // 目标亮度按屏幕真实峰值给；拿不到时用一个 HDR 屏的通用值
+        final peak = (state.sigPeak ?? 0) > 1.0
+            ? state.sigPeak!.toStringAsFixed(0)
+            : '1000';
+        await platform.setProperty('target-peak', peak);
+        // HDR10+ / 杜比视界：直通时都交给下游
+        await platform.setProperty('hdr10plus', 'auto');
+        await platform.setProperty('dolbyvision', 'yes');
+        return;
+      }
+
+      // ── 色调映射模式（默认，安全）──
       if (isHdr) {
         // bt.2390（业界标准 EETF），最接近片源色彩意图
         await platform.setProperty('tone-mapping', 'bt.2390');
@@ -607,12 +645,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await platform.setProperty('hdr10plus', 'auto');
         // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
         await platform.setProperty('dolbyvision', 'yes');
+        // 非直通模式下明确关掉 colorspace hint，避免系统尝试 HDR 合成
+        await platform.setProperty('target-colorspace-hint', 'no');
       } else {
         // SDR：关掉全部色调映射开销，让渲染管线走最轻路径
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
         await platform.setProperty('hdr10plus', 'no');
         await platform.setProperty('dolbyvision', 'no');
+        await platform.setProperty('target-colorspace-hint', 'no');
       }
     } catch (e) {
       debugPrint('[Player] 应用 HDR 色调映射失败: $e');

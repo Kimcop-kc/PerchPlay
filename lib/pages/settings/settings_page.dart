@@ -228,6 +228,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           _divider(),
+          // HDR 输出方式
+          _settingRow(
+            Icons.hdr_on_rounded,
+            'HDR 输出',
+            trailing: Text(
+                _settings.hdrPassthrough ? '直通（实验）' : '映射到 SDR',
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontWeight: FontWeight.w600)),
+            onTap: _showHdrModePicker,
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'HDR 直通会把片源的 HDR/杜比信号原样交给系统，'
+              '需要屏幕与系统都支持；若开启后画面发白/偏色，请改回「映射到 SDR」。',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+          ),
+          _divider(),
           _settingRow(
             Icons.screen_rotation_rounded,
             '打开视频方向',
@@ -238,6 +258,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onTap: () => _showPlayerOrientationPicker(),
           ),
         ],
+      ),
+    );
+  }
+
+  /// HDR 输出方式选择。
+  ///
+  /// 只给两档而非三档：「自动」在 HDR 场景下语义模糊（自动选直通还是映射？），
+  /// 让用户明确二选一更清楚。
+  void _showHdrModePicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _pickerSheet(
+        title: 'HDR 输出方式',
+        subtitle: '仅在播放 HDR / 杜比视界片源时生效',
+        items: const [0, 1],
+        current: _settings.hdrPassthrough ? 1 : 0,
+        format: (v) => v == 1 ? '直通（原样输出 HDR）' : '映射到 SDR（推荐）',
+        onSelect: (v) async {
+          await _settings.setHdrMode(v == 1 ? 'passthrough' : 'tonemap');
+          // 立即对当前播放器生效
+          try {
+            ref.read(playerProvider.notifier).applyHdrToneMapping();
+          } catch (_) {}
+          if (mounted) setState(() {});
+        },
       ),
     );
   }
