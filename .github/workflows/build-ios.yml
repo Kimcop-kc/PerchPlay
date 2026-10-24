@@ -73,6 +73,28 @@ jobs:
             echo "ℹ️ 未发现需修正的脚本（可能已修复或无处可修）"
           fi
 
+      # media_kit 默认用 libmpv 的 *default*（精简版）变体，去掉了 DTS / PGS 字幕
+      # 等解码器（media-kit#359）。iPad 播放含 DTS / 杜比全景声（TrueHD/EAC3）音轨
+      # 的 mkv 会「有画面没声音」。这里把 Makefile 从 *default* 切到 *full* 完整版：
+      #   - 下载 URL：-video-default.tar.gz -> -video-full.tar.gz
+      #   - SHA256：default 的换成 full 的（本地下载后计算所得）
+      - name: 切换 libmpv 到 full 版（含 DTS/杜比音轨解码，media-kit#359）
+        run: |
+          set -euo pipefail
+          FULL_SHA="652047297624170BFD172EF25A99E49603C032D189A1761335EDCB36DB55B7EE"
+          while IFS= read -r mf; do
+            if grep -q -- '-video-default.tar.gz' "$mf"; then
+              sed -i '' 's/-video-default\.tar\.gz/-video-full.tar.gz/g' "$mf"
+              # 把 SHA256 那行整行替换成 full 的（default 与 full 的 SHA 不同）
+              sed -i '' "s/^MPV_XCFRAMEWORKS_SHA256SUM=.*/MPV_XCFRAMEWORKS_SHA256SUM=${FULL_SHA}/" "$mf"
+              echo "patched Makefile -> full: $mf"
+            fi
+          done < <(find "$HOME/.pub-cache/hosted" -path '*media_kit_libs_ios_video*/ios/Makefile' 2>/dev/null || true)
+          # 校验替换结果
+          grep -l -- '-video-full.tar.gz' "$HOME/.pub-cache/hosted"/media_kit_libs_ios_video-*/ios/Makefile 2>/dev/null \
+            && echo "✅ libmpv 已切换到 full 版" \
+            || echo "⚠️ 未找到 Makefile，libmpv 仍用 default 版"
+
       - name: 安装 CocoaPods（含 CDN 限流重试）
         run: |
           set -o pipefail
