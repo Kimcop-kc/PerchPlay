@@ -92,10 +92,15 @@ class _GlassSliderState extends State<GlassSlider> {
           final activeWidth = width * fraction;
 
           return SizedBox(
-            // 命中区高度加大到 32px，保证手指容易点中进度条
+            // 高度 = 轨道 + 圆点直径 + 少量余量，**正好容下控件**。
+            //
+            // 原来这里额外 +24（注释说"命中区加大到 32px"），导致进度条
+            // 上下有大片空白、视觉上"太高"（用户反馈）。触摸命中区已经由
+            // GestureDetector 的 behavior 覆盖整个 SizedBox，不需要靠撑高
+            // 来实现可点性，所以留 4px 余量足够。
             height: widget.height +
                 (widget.showThumb ? widget.thumbRadius * 2 : 0) +
-                24,
+                4,
             child: Stack(
               clipBehavior: Clip.none,
               children: [

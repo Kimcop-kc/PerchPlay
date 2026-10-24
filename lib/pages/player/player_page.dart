@@ -1535,7 +1535,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       },
                     ),
                   ),
-                  SizedBox(height: 4 * scale),
+                  SizedBox(height: 2 * scale),
                   // 时间行：从 _LivePosition 实时取，不用 ValueListenableBuilder
                   // 否则非拖动时位置文字冻结在最后一次 rebuild 的值上
                   if (live.duration > Duration.zero)
@@ -1560,6 +1560,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                       ? GlassTheme.accentPink
                                       : Colors.white70,
                                   fontSize: 11 * scale,
+                                  // 行高压到 1.0：默认字体行高约 1.2~1.4，
+                                  // 会额外撑出 3~5px 空白，让时间行显得"太高"
+                                  height: 1.0,
                                   fontWeight: pv != null
                                       ? FontWeight.w700
                                       : FontWeight.w400,
@@ -1572,12 +1575,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             style: TextStyle(
                               color: Colors.white54,
                               fontSize: 11 * scale,
+                              height: 1.0,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  SizedBox(height: 6 * scale),
+                  SizedBox(height: 4 * scale),
                   // 按钮行
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12 * scale),
