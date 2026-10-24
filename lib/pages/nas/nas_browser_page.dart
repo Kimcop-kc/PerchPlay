@@ -126,6 +126,23 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   bool _hasMiniPlayer() => _miniVisible;
 
+  /// bottomSheet 底部要留的安全高度。
+  ///
+  /// 取「原生实测导航栏高度」与 56dp 中较大者。
+  ///
+  /// ## 为什么必须有 56dp 这个下限
+  ///
+  /// 用户实测日志里，小米手势导航上报的导航栏高度只有 **20.1dp**。
+  /// 但手势条（那条小白线）本身加上下留白约 24~32dp，再加上手指点按
+  /// 需要的余量，20dp 的留白等于没留 —— 按钮仍会被压住一半。
+  ///
+  /// 三键导航实测约 48dp，再加一点呼吸空间就是 56dp。
+  /// 视觉上多出十几个 dp 完全可以接受，但按钮点不到是硬伤。
+  static double _sheetSafeBottom(BuildContext ctx) {
+    final inset = SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx));
+    return inset > 56 ? inset : 56.0;
+  }
+
   /// 是否值得显示状态提示。
   ///
   /// 只在「已经连上但文件列表为空」这种可疑状态下提示 ——
@@ -825,28 +842,39 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Container(
-          height: MediaQuery.of(context).size.height * 0.55,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.92),
-                Colors.white.withValues(alpha: 0.82),
-              ],
+        builder: (ctx, setDialogState) {
+          return Container(
+            // 高度 = min(内容自适应上限, 屏高 - 安全区)。
+            //
+            // 为什么必须减安全区：`showModalBottomSheet` 贴屏幕物理底边，
+            // 面板底边就在导航栏下面，按钮必然被压住。
+            // 减掉安全区让整个面板上移，按钮自然落在导航栏之上。
+            // 这比「在面板内加 padding」可靠得多 —— padding 只把内容往上推，
+            // 面板本身底边仍在导航栏区域里。
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.88 -
+                  _sheetSafeBottom(ctx),
             ),
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(GlassTheme.radiusXl)),
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(GlassTheme.radiusXl)),
-            child: SafeBackdropFilter(
-              blurSigma: 18,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.92),
+                  Colors.white.withValues(alpha: 0.82),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(GlassTheme.radiusXl)),
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(GlassTheme.radiusXl)),
+              child: SafeBackdropFilter(
+                blurSigma: 18,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   Center(
                     child: Container(
                       margin: const EdgeInsets.only(top: 8, bottom: 4),
@@ -860,19 +888,15 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                   ),
                   Expanded(
                     child: SingleChildScrollView(
-                      // 底部 padding 必须叠加系统安全区。
-                      //
-                      // 这个 bottomSheet 贴屏幕底，且外层 SafeArea 被设成
-                      // bottom:false（tab 页为了内容铺满而关掉），所以
-                      // MediaQuery.padding.bottom 不会自动生效。
-                      // 而且 Android 8/9 是 manual 模式，padding.bottom 直接是 0
-                      // —— 必须用 bottomSheetInset 才能拿到真实导航栏占位。
-                      // 不加这段，「连接 / 取消」按钮会被系统导航栏压住。
+                      // 底部 padding 用 _sheetSafeBottom：叠加实测导航栏
+                      // 与 48dp 下限。这个 bottomSheet 贴屏幕底，外层
+                      // SafeArea 是 bottom:false，MediaQuery.padding 不生效；
+                      // 低版本 manual 模式下连 viewPadding 都是 0。
                       padding: EdgeInsets.fromLTRB(
                         24,
                         8,
                         24,
-                        24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+                        24 + _sheetSafeBottom(ctx),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1087,9 +1111,10 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           ),
         ),
       ),
-    ),
-  ),
-);
+    );
+        },
+      ),
+    );
   }
 
   Widget _dialogField(String label, TextEditingController ctrl,

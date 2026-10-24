@@ -1510,22 +1510,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
 
     if (!mounted) return;
-    // 底部安全边距：取「原生实测导航栏高度」与「一个按钮高度」的较大值。
+    // 底部安全边距。
     //
-    // 为什么要取 max：实测发现部分设备上报的导航栏高度偏小
-    // （用户日志里手势导航只报 20dp），而手势条本身会盖住按钮下沿
-    // 12~16dp；加上手指点按需要余量，只按 inset 留白仍会被挡。
-    // 48 是「手指能舒适点到的下限」，宁可多留白也不能点不到。
+    // 用「实测导航栏高度」与 48dp 的较大值作为**保底**；
+    // 外层再套 SafeArea(bottom:true) 做**二次保险** —— 两处都做不是浪费：
+    //  - SafeArea 依赖 MediaQuery.padding，低版本 manual 模式下可能是 0
+    //  - 我们自己的实测值在个别 ROM 上也可能偏小（用户小米报 20dp）
+    // 取两者中生效的那个，比赌单一来源可靠。
     final mq = MediaQuery.of(context);
     final navInset = SystemUiPolicy.bottomSheetInset(mq);
-    final safeBottom = navInset > 48 ? navInset : 48.0;
+    final safeBottom = navInset > 56 ? navInset : 56.0;
 
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        height: MediaQuery.of(ctx).size.height * 0.82,
+        // 高度 = min(屏高 * 0.82, 屏高 - 安全区)。
+        //
+        // 为什么减安全区：`showModalBottomSheet` 贴屏幕物理底边，
+        // 如果高度取 82%，面板底边就在最底部，按钮必然落进导航栏区域。
+        // 减掉安全区后，整个面板上移，按钮自然在导航栏之上。
+        // 这是比「在面板内加 padding」更稳的解法 —— padding 只是把内容
+        // 往上推，面板本身的底边仍在导航栏下面。
+        height: (MediaQuery.of(ctx).size.height * 0.82)
+            .clamp(0.0, MediaQuery.of(ctx).size.height - safeBottom - 24),
         decoration: const BoxDecoration(
           color: Color(0xFFF7F7FA),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
