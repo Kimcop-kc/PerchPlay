@@ -23,8 +23,16 @@ class _NasConnection {
   Future<bool> connect() async {
     // SMB 不走 HttpClient
     if (config.protocol != NasProtocol.smb) {
+      // 先关掉可能存在的旧客户端，避免每次重连都泄漏一个连接池。
+      // 反复「返回主页 → 再点连接」时，旧 HttpClient 不关会累积，
+      // 每个都持有到 NAS 的 keep-alive 连接。
+      try {
+        httpClient?.close(force: true);
+      } catch (_) {}
       httpClient = HttpClient();
       httpClient!.connectionTimeout = const Duration(seconds: 10);
+      // 避免空闲连接被 NAS 单方面断掉后仍留在池里被复用
+      httpClient!.idleTimeout = const Duration(seconds: 5);
     }
     try {
       switch (config.protocol) {
@@ -51,6 +59,51 @@ class _NasConnection {
     } catch (_) {}
     smbPool = null;
     connected = false;
+  }
+
+  /// 轻量探测当前连接是否真的还能用。
+  ///
+  /// 只发一个 OPTIONS（WebDAV/FTP/HTTP 都支持），超时 3 秒。
+  /// 任何异常/超时都判定为「已失效」，让上层重建连接。
+  ///
+  /// 为什么不能只看 [connected]：那只是「上次成功过」的历史标志。
+  /// 播放器拉流、系统睡眠、NAS 空闲断连都会让底层 socket 悄悄失效，
+  /// 而标志位不会自己变 false。
+  Future<bool> ping() async {
+    if (!connected) return false;
+    // SMB 用连接池，ping 代价高，交给它的重连机制
+    if (config.protocol == NasProtocol.smb) return true;
+    final c = httpClient;
+    if (c == null) return false;
+    try {
+      final uri = Uri(
+        scheme: config.useHttps ? 'https' : 'http',
+        host: config.host,
+        port: config.port,
+        path: config.remotePath.isNotEmpty ? config.remotePath : '/',
+      );
+      // 用 Future.any 做硬超时：HttpClient 的 connectionTimeout 只管
+      // 「建立连接」，连接已建立但对端不回包时会一直等下去。
+      final probe = () async {
+        final req = await c.openUrl('OPTIONS', uri);
+        final resp = await req.close();
+        await resp.drain<void>();
+        return resp.statusCode;
+      }();
+      final code = await Future.any<int?>([
+        probe,
+        Future<int?>.delayed(const Duration(seconds: 3), () => null),
+      ]);
+      if (code == null) {
+        debugPrint('[NAS] ping 超时，判定连接失效');
+        return false;
+      }
+      // 只要拿到响应就算活着（OPTIONS 可能返回 405/501）
+      return code > 0;
+    } catch (e) {
+      debugPrint('[NAS] ping 失败: $e');
+      return false;
+    }
   }
 
   // ──────────── WebDAV ────────────
@@ -547,13 +600,35 @@ class NasClientService {
   final Map<String, _NasConnection> _conns = {};
 
   /// 建立连接（返回 true/false）。
+  ///
+  /// ## 为什么要「验证复用」而不是无脑复用
+  ///
+  /// 之前的写法是：
+  /// ```dart
+  /// if (c != null && c.connected) return true;   // 直接信任 connected 标志
+  /// ```
+  ///
+  /// `connected` 只表示「上次 connect 成功过」，**不代表底层连接还活着**。
+  /// 典型失效场景：用户浏览目录 → 点开视频播放 → 播放器（media_kit）
+  /// 用同一台 NAS 的 URL 拉流，这个过程可能把 HttpClient 里那条 keep-alive
+  /// 连接用掉/半关闭。播放结束返回 NAS 主页再点连接时：
+  ///   - `connected` 仍是 true → 直接 return true
+  ///   - 但底层连接已废 → 紧接着的 PROPFIND 卡住或立刻失败
+  ///   - UI 上就是「点了没反应」，只能杀掉 App 重来
+  ///
+  /// 所以复用前必须真发一次轻量请求验证。失败就重建连接。
   Future<bool> connect(NasConnection config) async {
-    // 同 id 已有连接则复用
-    var c = _conns[config.id];
-    if (c != null && c.connected) return true;
+    final existing = _conns[config.id];
+    if (existing != null && existing.connected) {
+      // 轻量探测：OPTIONS 打到配置路径。超时很短，不拖慢正常流程。
+      final alive = await existing.ping();
+      if (alive) return true;
+      debugPrint('[NAS] 复用连接已失效，重建');
+      await existing.disconnect();
+      _conns.remove(config.id);
+    }
 
-    c?.disconnect();
-    c = _NasConnection(config);
+    final c = _NasConnection(config);
     final ok = await c.connect();
     _conns[config.id] = c;
     return ok;

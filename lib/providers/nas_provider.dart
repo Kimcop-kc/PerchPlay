@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/nas_connection_model.dart';
@@ -205,6 +206,17 @@ class NasNotifier extends StateNotifier<NasState> {
         clearError: true,
       );
       await navigateTo(config.remotePath);
+      // 连接成功但读不到目录：多半是复用的底层连接其实是坏的
+      // （ping 也可能被中间设备伪装成功）。这里强制重建一次再试，
+      // 让「返回主页后再点连接」不再需要杀 App 才能恢复。
+      if (state.currentFiles.isEmpty && state.errorMessage != null) {
+        debugPrint('[NAS] 首次读取失败，重建连接后重试');
+        await _service.disconnect(config.id);
+        final retry = await _service.connect(config);
+        if (retry) {
+          await navigateTo(config.remotePath);
+        }
+      }
     } else {
       state = state.copyWith(
         isLoading: false,
