@@ -457,6 +457,51 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                 else if (isActive)
                   const Icon(Icons.check_circle_rounded,
                       color: GlassTheme.accentTeal, size: 20),
+                // 编辑 / 删除入口。
+                //
+                // 之前卡片只有「点一下去连接」，添加完就再也改不了 ——
+                // 密码错了、路径填错都只能删了重加，而删除入口也不存在，
+                // 等于配置一次就锁死。这里补一个溢出菜单。
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  tooltip: '更多操作',
+                  icon: const Icon(Icons.more_vert_rounded,
+                      size: 20, color: GlassTheme.textTertiary),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  onSelected: (v) {
+                    if (v == 'edit') {
+                      _showAddConnectionDialog(context, editing: conn);
+                    } else if (v == 'delete') {
+                      _confirmDeleteConnection(conn);
+                    }
+                  },
+                  itemBuilder: (ctx) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_rounded,
+                              size: 18, color: GlassTheme.textSecondary),
+                          SizedBox(width: 10),
+                          Text('修改连接'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded,
+                              size: 18, color: GlassTheme.accentPink),
+                          SizedBox(width: 10),
+                          Text('删除连接',
+                              style: TextStyle(color: GlassTheme.accentPink)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -632,33 +677,81 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     );
   }
 
-  // ═══════════════ 添加连接对话框 ═══════════════
+  /// 删除连接前的确认。
+  ///
+  /// 必须二次确认：删掉后配置（含密码）就没了，得重新填写。
+  Future<void> _confirmDeleteConnection(NasConnection conn) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFFF2F2F7),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('删除连接',
+            style: TextStyle(color: Color(0xFF1C1C1E), fontSize: 18)),
+        content: Text(
+          '确定删除「${conn.name}」吗？\n\n'
+          '只会移除本机保存的连接配置，不会影响 NAS 上的文件。',
+          style: const TextStyle(
+              color: Color(0xFF3A3A3C), fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: Color(0xFF8E8E93))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除',
+                style: TextStyle(
+                    color: GlassTheme.accentPink,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await ref.read(nasProvider.notifier).removeConnection(conn.id);
+    }
+  }
 
+  // ═══════════════ 添加 / 编辑连接对话框 ═══════════════
+  /// 添加或编辑一个 NAS 连接。
+  ///
+  /// [editing] 非空时为**编辑模式**：各字段用现有配置预填，
+  /// 保存时走 `updateConnection`（保留原 id，覆盖配置）。
   void _showAddConnectionDialog(
     BuildContext context, {
     String? presetHost,
     int? presetPort,
     NasProtocol? presetProtocol,
+    NasConnection? editing,
   }) {
+    final isEdit = editing != null;
     final nameCtrl = TextEditingController(
-        text: presetHost != null
-            ? 'NAS ${presetHost.split('.').last}'
-            : '我的 NAS');
-    final hostCtrl = TextEditingController(text: presetHost ?? '');
+        text: isEdit
+            ? editing.name
+            : (presetHost != null
+                ? 'NAS ${presetHost.split('.').last}'
+                : '我的 NAS'));
+    final hostCtrl = TextEditingController(text: editing?.host ?? presetHost ?? '');
     // 默认仍选 WebDAV：群晖/威联通默认就开，且不需要填共享名；
     // SMB 也支持了（dart_smb2 / libsmb2，SMB2/3），用户可自行切换。
-    final portCtrl =
-        TextEditingController(text: presetPort?.toString() ?? '5005');
-    final usernameCtrl = TextEditingController();
-    final passwordCtrl = TextEditingController();
-    final shareCtrl = TextEditingController();
+    final portCtrl = TextEditingController(
+        text: (editing?.port ?? presetPort)?.toString() ?? '5005');
+    final usernameCtrl =
+        TextEditingController(text: editing?.username ?? '');
+    final passwordCtrl =
+        TextEditingController(text: editing?.password ?? '');
+    final shareCtrl = TextEditingController(text: editing?.shareName ?? '');
     // WebDAV / FTP 的远程路径：WebDAV 必须知道具体路径（如群晖
     // /dav、Nextcloud /remote.php/dav/files/用户名），否则只能连到根目录，
     // 很多服务在根目录会返回 404/405。留空时按 `/` 处理。
-    final pathCtrl = TextEditingController();
-    var protocol = presetProtocol ?? NasProtocol.webdav;
-    // HTTPS 开关：默认根据端口猜测（443 开 HTTPS，其余开 HTTP）
-    var useHttps = (presetPort ?? 5005) == 443;
+    final pathCtrl = TextEditingController(text: editing?.remotePath ?? '');
+    var protocol = editing?.protocol ?? presetProtocol ?? NasProtocol.webdav;
+    // HTTPS 开关：编辑时沿用原值，新增时按端口猜（443 开 HTTPS）
+    var useHttps = editing?.useHttps ?? ((presetPort ?? 5005) == 443);
 
     showModalBottomSheet(
       context: context,
@@ -718,8 +811,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      const Text('添加 NAS 连接',
-                          style: TextStyle(
+                      Text(isEdit ? '修改 NAS 连接' : '添加 NAS 连接',
+                          style: const TextStyle(
                               color: GlassTheme.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.w700)),
@@ -872,14 +965,18 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: GlassButton.filled(
-                              label: '连接',
+                              label: isEdit ? '保存' : '连接',
                               height: 46,
                               onTap: () {
                                 if (hostCtrl.text.trim().isEmpty) return;
                                 final conn = NasConnection(
-                                  id: DateTime.now()
-                                      .millisecondsSinceEpoch
-                                      .toRadixString(16),
+                                  // 编辑时保留原 id（updateConnection 靠它匹配）；
+                                  // 新增时生成一个新 id
+                                  id: isEdit
+                                      ? editing.id
+                                      : DateTime.now()
+                                          .millisecondsSinceEpoch
+                                          .toRadixString(16),
                                   name: nameCtrl.text.trim(),
                                   protocol: protocol,
                                   host: hostCtrl.text.trim(),
@@ -895,11 +992,21 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                                   savePassword: true,
                                   useHttps: useHttps,
                                 );
-                                ref
-                                    .read(nasProvider.notifier)
-                                    .addConnection(conn);
                                 Navigator.pop(ctx);
-                                ref.read(nasProvider.notifier).connect(conn);
+                                if (isEdit) {
+                                  // 编辑：覆盖配置；若原连接是活跃的，
+                                  // updateConnection 内部会断开旧连接并重连
+                                  ref
+                                      .read(nasProvider.notifier)
+                                      .updateConnection(conn);
+                                } else {
+                                  ref
+                                      .read(nasProvider.notifier)
+                                      .addConnection(conn);
+                                  ref
+                                      .read(nasProvider.notifier)
+                                      .connect(conn);
+                                }
                               },
                             ),
                           ),

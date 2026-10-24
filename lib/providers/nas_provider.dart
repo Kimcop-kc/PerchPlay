@@ -159,6 +159,39 @@ class NasNotifier extends StateNotifier<NasState> {
     await _persistConnections();
   }
 
+  /// 修改已有连接的配置（地址 / 账号 / 路径等）。
+  ///
+  /// 三个必须做的动作：
+  ///  1. 换掉列表里那一项（按 id 匹配）
+  ///  2. **断开旧连接**：`_NasConnection` 里缓存着 HttpClient / FTP socket /
+  ///     SMB pool，都还拿着旧的主机与凭据。不先断开的话，改完密码再连接
+  ///     仍会走旧连接，表现为「改了没用」。
+  ///  3. 如果改的是当前活跃连接，重新连一次并回到配置的路径
+  Future<bool> updateConnection(NasConnection config) async {
+    final idx = state.connections.indexWhere((c) => c.id == config.id);
+    if (idx < 0) return false;
+
+    final wasActive = state.activeConnection?.id == config.id;
+
+    // 先断开旧连接，避免复用带旧凭据的连接对象
+    await _service.disconnect(config.id);
+
+    final connections = List<NasConnection>.from(state.connections);
+    connections[idx] = config;
+    state = state.copyWith(
+      connections: connections,
+      // 活跃连接同步换成新配置（否则界面上显示的仍是旧地址）
+      activeConnection: wasActive ? config : state.activeConnection,
+    );
+    await _persistConnections();
+
+    if (wasActive) {
+      // 重连：拿新凭据建立连接并回到配置路径
+      return connect(config);
+    }
+    return true;
+  }
+
   Future<bool> connect(NasConnection config) async {
     state = state.copyWith(isLoading: true, clearError: true);
 
