@@ -82,18 +82,28 @@ jobs:
         run: |
           set -euo pipefail
           FULL_SHA="652047297624170BFD172EF25A99E49603C032D189A1761335EDCB36DB55B7EE"
-          while IFS= read -r mf; do
-            if grep -q -- '-video-default.tar.gz' "$mf"; then
-              sed -i '' 's/-video-default\.tar\.gz/-video-full.tar.gz/g' "$mf"
-              # 把 SHA256 那行整行替换成 full 的（default 与 full 的 SHA 不同）
-              sed -i '' "s/^MPV_XCFRAMEWORKS_SHA256SUM=.*/MPV_XCFRAMEWORKS_SHA256SUM=${FULL_SHA}/" "$mf"
-              echo "patched Makefile -> full: $mf"
-            fi
-          done < <(find "$HOME/.pub-cache/hosted" -path '*media_kit_libs_ios_video*/ios/Makefile' 2>/dev/null || true)
-          # 校验替换结果
-          grep -l -- '-video-full.tar.gz' "$HOME/.pub-cache/hosted"/media_kit_libs_ios_video-*/ios/Makefile 2>/dev/null \
-            && echo "✅ libmpv 已切换到 full 版" \
-            || echo "⚠️ 未找到 Makefile，libmpv 仍用 default 版"
+          PKG_DIR=$(find "$HOME/.pub-cache/hosted" -maxdepth 2 -type d -name 'media_kit_libs_ios_video-*' 2>/dev/null | head -1)
+          if [ -z "$PKG_DIR" ]; then
+            echo "❌ 未找到 media_kit_libs_ios_video，无法切换 full 版"
+            exit 1
+          fi
+          MF="$PKG_DIR/ios/Makefile"
+          sed -i '' 's/-video-default\.tar\.gz/-video-full.tar.gz/g' "$MF"
+          sed -i '' "s/^MPV_XCFRAMEWORKS_SHA256SUM=.*/MPV_XCFRAMEWORKS_SHA256SUM=${FULL_SHA}/" "$MF"
+          echo "✅ Makefile 已切换 full: $MF"
+
+          # ── 关键：清掉旧缓存，强制 make 重新下载 ──
+          #
+          # make 的目标文件名（.cache/...-ios-universal.tar.gz 和 Frameworks/*.xcframework）
+          # 都不区分 default/full。只改 URL 不够：.cache 或 Frameworks 里残留 default
+          # 版产物时，make 判定 'Nothing to be done for all' 直接跳过下载，
+          # Mpv.framework 仍是 default 版（DTS 解码器缺失、IPA 体积不变）。
+          rm -rf "$PKG_DIR/ios/.cache" "$PKG_DIR/ios/Frameworks"
+          echo "✅ 已清空 .cache 与 Frameworks，强制重新下载 full 版"
+
+          grep -q -- '-video-full.tar.gz' "$MF" \
+            && echo "✅ libmpv 已切换到 full 版（SHA=${FULL_SHA:0:8}…）" \
+            || { echo "❌ 替换失败"; exit 1; }
 
       - name: 安装 CocoaPods（含 CDN 限流重试）
         run: |
