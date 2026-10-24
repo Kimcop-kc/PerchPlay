@@ -68,6 +68,65 @@ class PlayerGestureLayer extends StatefulWidget {
 
 enum _GestureAxis { none, vertical, horizontal }
 
+// ────────────────────────────────────────────────────────────────
+// 横向手势 → 进度跳转的分段映射
+//
+// 历史教训（两次都调歪过，别再改回去）：
+//  1. 「12% 时长 + 30s~4min 夹取」：短片划满屏只走几秒、长片划不动；
+//  2. 「整屏 = 整个时长」：短片正常，但长片**完全无法精调**——
+//     2 小时的片子 1px ≈ 18s，手一抖就跳几分钟，用户反馈「只能一分钟起步」。
+//
+// 现在：
+//  - 短片（≤ 10 分钟）：整屏 = 全长。10 分钟时 1px ≈ 1.5s，精度够，直达更爽。
+//  - 长片：前 50% 屏宽是**严格线性精细段**（整屏 90s → 1px ≈ 0.22s，可按秒调）；
+//    超过后按二次曲线加速，再滑 1.5 屏即可覆盖剩余全部时长。
+// ────────────────────────────────────────────────────────────────
+
+/// 精细段：滑满一整屏对应的秒数。
+const double _kSeekFineSecondsPerScreen = 90.0;
+
+/// 短片阈值：不超过该时长就直接「整屏 = 全长」映射。
+const double _kSeekShortVideoMaxSec = 600.0;
+
+/// 精细段占屏宽的比例（前 50% 严格精细）。
+const double _kSeekFineZoneRatio = 0.5;
+
+/// 加速段跨度：从精细段末尾再滑这么多屏，覆盖剩余全部时长。
+const double _kSeekAccelSpanRatio = 1.5;
+
+/// 把横向位移换算成「跳转多少秒」（带符号，正=快进，负=快退）。
+///
+/// [dx] 相对按下点的水平位移（px），[screenWidth] 屏宽（px），
+/// [durationMs] 当前视频总时长（ms）。
+///
+/// 抽成顶层纯函数是为了能直接单测（见 test/seek_gesture_test.dart）。
+double seekDeltaSeconds(double dx, double screenWidth, int durationMs) {
+  if (screenWidth <= 0 || durationMs <= 0) return 0;
+  final durationSec = durationMs / 1000.0;
+  final r = dx / screenWidth; // 拖了几屏（带符号）
+  final absR = r.abs();
+
+  // 短片：整屏 = 全长
+  if (durationSec <= _kSeekShortVideoMaxSec) {
+    return r * durationSec;
+  }
+
+  const fineSeconds = _kSeekFineSecondsPerScreen * _kSeekFineZoneRatio;
+
+  double seconds;
+  if (absR <= _kSeekFineZoneRatio) {
+    // 精细段：线性，斜率 = 90s/屏
+    seconds = _kSeekFineSecondsPerScreen * absR;
+  } else {
+    // 加速段：精细段走完后再按二次曲线铺开剩余时长
+    final t = ((absR - _kSeekFineZoneRatio) / _kSeekAccelSpanRatio)
+        .clamp(0.0, 1.0);
+    final remaining = (durationSec - fineSeconds).clamp(0.0, durationSec);
+    seconds = fineSeconds + remaining * t * t;
+  }
+  return r.sign * seconds;
+}
+
 class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   Offset? _startPosition;
   _GestureAxis _axis = _GestureAxis.none;
@@ -88,12 +147,8 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
   /// 纵向：需要滑动「屏幕高度 × 该系数」才走完 100%，避免过于灵敏
   static const double _verticalDamping = 1.25;
 
-  /// 横向：滑过整屏宽度 = 整个时长（1:1 映射，快速定位）。
-  ///
-  /// 之前用 12% 时长 + 30s~4min 夹取，短片子划全屏只能前进几秒、
-  /// 长片子又划不动，体验很差。现在改成全时长映射，用户划多少就到多少，
-  /// 精确快进慢退都顺手。
-  static const double _seekWindowRatio = 1.0;
+  // 横向 seek 的分段映射参数与换算函数在文件顶层（见 [seekDeltaSeconds]），
+  // 抽成纯函数是为了能直接单测，避免以后又被改回「整屏 = 全长」。
 
   /// 横向拖动的最小位移，避免误触就跳进度
   static const double _seekMinDrag = 12.0;
@@ -234,9 +289,9 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
     // 位移太小不响应，避免误触
     if (dx.abs() < _seekMinDrag) return;
 
-    // 全时长映射：滑满整屏 = 从头到尾
-    final windowMs = duration * _seekWindowRatio;
-    final target = (_startPositionMs + dx / screenWidth * windowMs)
+    // 换算逻辑见顶层的 [seekDeltaSeconds]（分段精细/加速映射）
+    final deltaMs = seekDeltaSeconds(dx, screenWidth, duration) * 1000;
+    final target = (_startPositionMs + deltaMs)
         .clamp(0.0, duration.toDouble())
         .round();
 
