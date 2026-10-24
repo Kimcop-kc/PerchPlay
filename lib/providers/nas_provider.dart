@@ -370,6 +370,16 @@ class NasNotifier extends StateNotifier<NasState> {
     return _service.getPlayableUrl(connId, path);
   }
 
+  /// 播放该文件时需要的请求头（目前只有 Basic 认证）。
+  ///
+  /// 需要认证的 NAS 上，播放是 mpv 直接连，不知道账号密码 ——
+  /// 不传这个头会 401，表现为「目录能看、视频打不开」。
+  Map<String, String> playHeaders() {
+    final connId = state.activeConnection?.id;
+    if (connId == null) return const {};
+    return _service.playHeaders(connId);
+  }
+
   /// 检测 URL 是否可被 media_kit 播放
   bool isStreamable(NasFileItem file) {
     return file.isVideo;

@@ -718,10 +718,15 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
           } else if (item.isVideo) {
             final url =
                 ref.read(nasProvider.notifier).getPlayableUrl(item.path);
-            debugPrint('[NAS-UI] 播放 URL = $url');
+            // 带认证头：需要登录的 NAS 上，播放是 mpv 直接连，
+            // 不带 Authorization 会 401（目录能看、视频打不开）
+            final headers = ref.read(nasProvider.notifier).playHeaders();
+            debugPrint('[NAS-UI] 播放 URL = $url '
+                '认证=${headers.isNotEmpty}');
             context.pushNamed('player', extra: {
               'videoPath': url,
               'videoTitle': item.name,
+              if (headers.isNotEmpty) 'headers': headers,
             });
           }
         },
@@ -765,9 +770,11 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
                 onTap: () {
                   final url =
                       ref.read(nasProvider.notifier).getPlayableUrl(item.path);
+                  final headers = ref.read(nasProvider.notifier).playHeaders();
                   context.pushNamed('player', extra: {
                     'videoPath': url,
                     'videoTitle': item.name,
+                    if (headers.isNotEmpty) 'headers': headers,
                   });
                 },
               )

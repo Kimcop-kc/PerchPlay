@@ -464,9 +464,26 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 单次读 1MB，减少请求次数又不至于让首包等待过久
       platform.setProperty('demuxer-lavf-buffersize', '1048576')
           .catchError((_) {});
-      // 关闭 demuxer 层面的激进探测，直链不需要
-      platform.setProperty('demuxer-lavf-probe-info', 'nostreams')
-          .catchError((_) {});
+
+      // ⚠ 不要对 NAS/SMB 设 `demuxer-lavf-probe-info=nostreams`。
+      //
+      // 那个选项让 ffmpeg 跳过「流信息探测」，只在网盘直链这种
+      // 「文件头一定规范」的场景下安全。而 NAS 上的视频来源杂
+      // （手机录的 mov、监控导出的 mp4、转码工具产出的 mkv），
+      // 跳过探测会让 mpv 认不出轨道，转而反复重试 —— 表现为
+      // 「NAS 视频加载特别慢」。
+      //
+      // 这里按是否 SMB 分开：SMB 用 libsmb2 走自己的读写，探测代价更高，
+      // 给它更宽松的探测预算；HTTP/WebDAV 保持默认探测。
+      final isSmb = path.startsWith('smb://');
+      if (isSmb) {
+        // SMB 单次读放大：libsmb2 的往返比 HTTP 贵，读大块更划算
+        platform.setProperty('demuxer-lavf-buffersize', '2097152')
+            .catchError((_) {});
+        // 允许更多重试：局域网偶尔抖动，不要立刻放弃
+        platform.setProperty('http-max-request-retries', '5')
+            .catchError((_) {});
+      }
     } else {
       // ── 本地文件起播优化 ──
       //

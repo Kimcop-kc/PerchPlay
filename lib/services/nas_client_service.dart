@@ -331,7 +331,27 @@ class _NasConnection {
       return 'smb://${c.host}/${c.shareName}$path';
     }
     final scheme = c.useHttps ? 'https' : 'http';
+    // 注意：URL 里**不能**带账号密码（mpv 会把它当路径的一部分，
+    // 而且明文密码会进日志）。认证交给调用方通过 headers 传。
     return '$scheme://${c.host}:${c.port}$path';
+  }
+
+  /// 播放该文件时需要的 HTTP 请求头。
+  ///
+  /// 之前 `getPlayableUrl` 只拼了裸 URL，**没有带认证**：
+  /// 列目录走 `_request` 会加 `Authorization: Basic ...`，
+  /// 但播放是 mpv 直接连 NAS，它不知道账号密码 —— 于是需要认证的
+  /// NAS 上会出现「目录能看、视频打不开（401）」。
+  ///
+  /// 这里把认证头暴露出来，由播放页传给播放器。
+  Map<String, String> playHeaders() {
+    final c = config;
+    if (c.protocol == NasProtocol.smb) return const {};
+    if (c.username.isEmpty) return const {};
+    final raw = '${c.username}:${c.password}';
+    return {
+      'Authorization': 'Basic ${base64Encode(utf8.encode(raw))}',
+    };
   }
 
   // ──────────── HTTP helpers ────────────
@@ -711,6 +731,16 @@ class NasClientService {
     final url = c.getPlayableUrl(path);
     debugPrint('[NAS] getPlayableUrl: $url');
     return url;
+  }
+
+  /// 播放该文件时需要的请求头（Basic 认证）。
+  ///
+  /// 与 [getPlayableUrl] 配对使用：URL 里不带密码（会进日志），
+  /// 认证通过 headers 传给播放器。
+  Map<String, String> playHeaders(String connectionId) {
+    final c = _conns[connectionId];
+    if (c == null) return const {};
+    return c.playHeaders();
   }
 
   /// 规范化远程路径：补上前导 `/`，去掉末尾多余 `/`，去首尾空格。
