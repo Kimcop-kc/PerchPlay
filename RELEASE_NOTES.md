@@ -142,6 +142,84 @@ iOS 是沙盒系统，之前扫描本地文件完全不可用——扫描逻辑�
 
 ---
 
+## 七、Android 8 / 9：二级菜单被导航栏遮挡（修复）
+
+**现象**：Android 8 设备上，多个二级菜单的下半部分被系统导航栏盖住，
+**被挡住的地方既滑不到也点不到**。
+
+### 根因（两层叠加）
+
+**第一层：主题让导航栏透明，内容实际压在它下面**
+
+`values/styles.xml` 里：
+
+```xml
+<item name="android:navigationBarColor">@android:color/transparent</item>
+<item name="android:windowDrawsSystemBarBackgrounds">true</item>
+```
+
+这是为 Android 10+ 的 `edgeToEdge` 准备的。但 Android 8 只支持 `manual`
+模式，而 Flutter 的 `setSystemUIOverlayStyle` 在 Android 8.0 上设置
+`navigationBarColor` 有已知缺陷，经常静默失效。于是形成矛盾：
+
+- 系统认为「内容不延伸」→ `MediaQuery.padding.bottom` = 0
+- 主题里导航栏仍是 transparent → 内容确实画到了导航栏底下
+
+**第二层：Dart 侧拿不到真实高度**
+
+`showModalBottomSheet` 是浮在最上层、**覆盖整个物理屏幕**的浮层，
+它不参与「扣掉导航栏」的布局计算。但代码里判断要留多少空白时用的
+`viewPadding.bottom` / `SafeArea`，在低版本的 manual 模式下都返回 **0**。
+
+两者叠加：算出「不需要留白」，浮层却压在导航栏上。
+
+### 修复
+
+**① 主题层**：新增 `values-v26/styles.xml`，在 API 26/27 上让系统画
+不透明导航栏（`#F2F2F7`）并关掉 `windowDrawsSystemBarBackgrounds`，
+系统会真正把导航栏区域从布局里扣掉。
+
+**② 原生实测高度**：新增 `getNavigationBarHeightDp()` 方法，三级降级：
+
+| 优先级 | 方法 | 适用 |
+|---|---|---|
+| 1 | `WindowInsets.getInsets(navigationBars)` | API 30+ |
+| 2 | `getRealMetrics` 高度差 − 状态栏 | API 17+ |
+| 3 | 系统资源 `navigation_bar_height` | 兜底 |
+
+**③ Dart 侧统一入口**：新增 `SystemUiPolicy.bottomSheetInset(mq)`，
+优先级为 **原生实测 > viewPadding > padding > 常量兜底（48dp）**。
+启动时读一次缓存，`bottomSheetInset` 同步取用。
+
+### 修复覆盖的全部浮层（8 处）
+
+第一版只改了设置页，实际排查后发现全项目有 8 处底部浮层都有这个问题：
+
+| 位置 | 弹窗 |
+|---|---|
+| `widgets/glass/glass_sheet.dart` | **通用封装**，全项目底部弹窗统一入口 |
+| 播放页 | 视频详情面板 |
+| 播放页 | 字幕选择面板 |
+| 播放页 | 音轨选择面板 |
+| 播放页 | 倍速选择面板 |
+| 播放页 | 投屏设备面板 |
+| 刮削 | 「手动匹配」弹窗 |
+| 云盘 | 「选择云盘」弹窗 |
+| iPad | 「iPad Pro 已就绪」提示 |
+
+### 已确认无需修改
+
+- `showDialog` / `AlertDialog` 类：居中显示，不贴屏幕底，不受导航栏影响
+- `adaptive_scaffold` 的 mini player：用 `viewPadding` 定位是正确的
+- `glass_nav_bar`：manual 模式下系统已扣掉导航栏，导航栏自身不需要再补
+
+### 顺带修复
+
+`_pickerSheet` 原来是无滚动的 `Column`，选项多时（如 7 个速度档）
+在矮屏上会直接溢出。已套 `SingleChildScrollView`。
+
+---
+
 ## 已知限制
 
 - **iOS 画中画**仍未实现（按钮不显示）
