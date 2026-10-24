@@ -46,11 +46,23 @@ class NasState {
     bool? isDiscovering,
     List<NasCandidate>? candidates,
     double? discoverProgress,
+    /// 显式清空 [activeConnection]。
+    ///
+    /// 必须单独给一个标志：`activeConnection ?? this.activeConnection`
+    /// 这种写法下，传 null 等于「不修改」——于是 backToList() 里
+    /// 写的 `activeConnection: null` 完全无效，列表上的卡片
+    /// 一直是 isActive=true，点击被 `if (!isActive)` 跳过，
+    /// 表现为「点了完全没反应」。这是本次 bug 的真正根因。
+    bool clearActiveConnection = false,
+    /// 显式清空 [currentFiles]（同上，空数组能生效但语义更清楚）。
+    bool clearFiles = false,
   }) {
     return NasState(
       connections: connections ?? this.connections,
-      activeConnection: activeConnection ?? this.activeConnection,
-      currentFiles: currentFiles ?? this.currentFiles,
+      activeConnection: clearActiveConnection
+          ? null
+          : (activeConnection ?? this.activeConnection),
+      currentFiles: clearFiles ? const [] : (currentFiles ?? this.currentFiles),
       currentPath: currentPath ?? this.currentPath,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -250,8 +262,8 @@ class NasNotifier extends StateNotifier<NasState> {
     if (state.activeConnection?.id == id) {
       state = state.copyWith(
         isConnected: false,
-        activeConnection: null,
-        currentFiles: [],
+        clearActiveConnection: true,
+        clearFiles: true,
         currentPath: '/',
       );
     }
@@ -281,11 +293,17 @@ class NasNotifier extends StateNotifier<NasState> {
   }
 
   /// 回到连接列表（不断开当前连接，允许再切回）
+  ///
+  /// ⚠ 必须用 `clearActiveConnection: true`，不能写 `activeConnection: null`：
+  /// copyWith 内部是 `activeConnection ?? this.activeConnection`，
+  /// 传 null 表示「不修改」，于是 activeConnection 保留原值，
+  /// 列表上那张卡片一直是 isActive=true，点击被跳过 ——
+  /// 表现为「返回主页后再点连接毫无反应」。
   void backToList() {
     state = state.copyWith(
       isConnected: false,
-      activeConnection: null,
-      currentFiles: [],
+      clearActiveConnection: true,
+      clearFiles: true,
       currentPath: '/',
     );
   }

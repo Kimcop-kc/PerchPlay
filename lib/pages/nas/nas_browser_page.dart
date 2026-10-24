@@ -472,12 +472,31 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
               // 用户操作也记进日志：排查「点了没反应」时，先要确认点击事件
               // 到底有没有到达这里 —— 没有就是 UI 层问题，有就是连接层问题。
               debugPrint('[NAS-UI] 点击连接「${conn.name}」'
-                  ' isActive=$isActive loading=${state.isLoading}');
-              if (!isActive) {
-                final ok =
-                    await ref.read(nasProvider.notifier).connect(conn);
-                debugPrint('[NAS-UI] connect 返回 $ok');
+                  ' isActive=$isActive loading=${state.isLoading} '
+                  'connected=${state.isConnected} '
+                  'active=${state.activeConnection?.id ?? "null"} '
+                  'connId=${conn.id}');
+
+              // 已激活的连接：**进入文件浏览**，而不是什么都不做。
+              //
+              // 之前这里是 `if (!isActive) connect(...)`，于是点击当前
+              // 已选中的连接完全没反应 —— 用户明明看到一张卡片可点，
+              // 点下去却像死了一样（日志里连续 4 次 isActive=true 无动作）。
+              //
+              // 正确语义：
+              //  - 未激活 -> 建立连接
+              //  - 已激活 -> 回到该连接的文件列表（重新读一次目录）
+              if (isActive) {
+                if (state.isConnected && state.currentFiles.isNotEmpty) {
+                  // 已经在浏览中：不该出现在列表页，但防御性处理
+                  return;
+                }
+                debugPrint('[NAS-UI] 已激活 -> 重新进入文件浏览');
+                await ref.read(nasProvider.notifier).connect(conn);
+                return;
               }
+              final ok = await ref.read(nasProvider.notifier).connect(conn);
+              debugPrint('[NAS-UI] connect 返回 $ok');
             },
             child: Row(
               children: [
