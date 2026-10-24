@@ -9,6 +9,13 @@ import PencilKit
 @objc class AppDelegate: FlutterAppDelegate {
     private var pipController: AVPictureInPictureController?
 
+    /// 远程控制（锁屏 / 控制中心）事件通道。
+    ///
+    /// 之前这里只往 NotificationCenter 发通知，但 Dart 侧没有任何监听者，
+    /// 等于锁屏和控制中心的播放/暂停/快进按钮**点了完全没反应**。
+    /// 现在改为通过这个 MethodChannel 直接调用 Dart 的 remoteCommand 方法。
+    static var remoteCommandChannel: FlutterMethodChannel?
+
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -74,50 +81,86 @@ import PencilKit
 
         // 暂停/播放
         commandCenter.togglePlayPauseCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_toggle_play"), object: nil)
+            Self.sendRemoteCommand("togglePlayPause")
             return .success
         }
         commandCenter.playCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_play"), object: nil)
+            Self.sendRemoteCommand("play")
             return .success
         }
         commandCenter.pauseCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_pause"), object: nil)
+            Self.sendRemoteCommand("pause")
             return .success
         }
 
         // 快进快退
         commandCenter.skipForwardCommand.preferredIntervals = [10]
         commandCenter.skipForwardCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_forward"), object: nil)
+            Self.sendRemoteCommand("skipForward", argument: 10)
             return .success
         }
         commandCenter.skipBackwardCommand.preferredIntervals = [10]
         commandCenter.skipBackwardCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_backward"), object: nil)
+            Self.sendRemoteCommand("skipBackward", argument: 10)
             return .success
         }
 
         // 下一集/上一集
         commandCenter.nextTrackCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_next"), object: nil)
+            Self.sendRemoteCommand("next")
             return .success
         }
         commandCenter.previousTrackCommand.addTarget { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("vidflow_previous"), object: nil)
+            Self.sendRemoteCommand("previous")
             return .success
         }
 
         // 进度拖拽
         commandCenter.changePlaybackPositionCommand.addTarget { event in
             if let positionEvent = event as? MPChangePlaybackPositionCommandEvent {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("vidflow_seek"),
-                    object: positionEvent.positionTime
-                )
+                Self.sendRemoteCommand("seek", argument: positionEvent.positionTime)
             }
             return .success
         }
+    }
+
+    /// 把远程控制事件推给 Dart（Flutter 侧监听 remoteCommand 方法）。
+    ///
+    /// 同时保留 NotificationCenter 通知，便于将来原生侧自己消费。
+    static func sendRemoteCommand(_ command: String, argument: Any? = nil) {
+        NotificationCenter.default.post(
+            name: NSNotification.Name("vidflow_\(command)"), object: argument)
+        guard let channel = remoteCommandChannel else { return }
+        var args: [String: Any] = ["command": command]
+        if let a = argument { args["argument"] = a }
+        // 必须切主线程：MPRemoteCommand 的回调可能在非主线程
+        DispatchQueue.main.async {
+            channel.invokeMethod("remoteCommand", arguments: args)
+        }
+    }
+
+    /// 更新锁屏 / 控制中心的「正在播放」信息。
+    ///
+    /// 不设这个的话，iOS 锁屏上不会出现标题/进度，控制中心里的播放控制
+    /// 甚至可能不展示（系统只在有 Now Playing Info 时才呈现完整控制）。
+    static func updateNowPlaying(
+        title: String?,
+        artist: String?,
+        durationSec: Double,
+        positionSec: Double,
+        isPlaying: Bool
+    ) {
+        var info: [String: Any] = [
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        if let t = title, !t.isEmpty { info[MPMediaItemPropertyTitle] = t }
+        if let a = artist, !a.isEmpty { info[MPMediaItemPropertyArtist] = a }
+        if durationSec > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = durationSec
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, positionSec)
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     // ──────────────────────────────
@@ -129,6 +172,11 @@ import PencilKit
             name: "com.vidflow/native",
             binaryMessenger: controller.binaryMessenger
         )
+
+        // 远程控制通道：把锁屏 / 控制中心的按键事件推给 Dart。
+        // 沿用 com.vidflow/native 通道名，用 remoteCommand 方法下发，
+        // 这样 Dart 侧 NativeBridgeService 直接复用现有通道即可。
+        AppDelegate.remoteCommandChannel = nativeChannel
 
         nativeChannel.setMethodCallHandler { [weak self] (call, result) in
             guard let self = self else {
@@ -152,6 +200,19 @@ import PencilKit
                 } else {
                     result(nil)
                 }
+
+            case "updateNowPlaying":
+                // Dart 侧推送「正在播放」信息，让锁屏/控制中心显示标题与进度
+                if let args = call.arguments as? [String: Any] {
+                    AppDelegate.updateNowPlaying(
+                        title: args["title"] as? String,
+                        artist: args["artist"] as? String,
+                        durationSec: (args["durationSec"] as? NSNumber)?.doubleValue ?? 0,
+                        positionSec: (args["positionSec"] as? NSNumber)?.doubleValue ?? 0,
+                        isPlaying: args["isPlaying"] as? Bool ?? false
+                    )
+                }
+                result(nil)
 
             case "readyForLaunchUri":
                 // Dart 侧已注册好 openVideoUri 监听，热启动时直接推送

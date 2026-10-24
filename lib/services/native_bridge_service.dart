@@ -26,21 +26,81 @@ class NativeBridgeService {
     }
   }
 
+  /// 远程控制（锁屏 / 控制中心）事件回调。
+  static void Function(String command, Object? argument)? _onRemoteCommand;
+
+  /// 注册远程控制事件回调（iOS 锁屏界面 / 控制中心的播放、暂停、快进等）。
+  ///
+  /// 原生侧 AppDelegate 的 MPRemoteCommandCenter 会把事件通过
+  /// `remoteCommand` 方法发过来。之前 iOS 只往 NotificationCenter 发通知、
+  /// Dart 侧无人监听，导致**锁屏和控制中心的按钮点了完全没反应**。
+  void registerRemoteCommandHandler(
+    void Function(String command, Object? argument) onCommand,
+  ) {
+    _onRemoteCommand = onCommand;
+    _installChannelHandler();
+  }
+
+  /// 统一安装通道方法处理器（openVideoUri / remoteCommand）。
+  ///
+  /// 之前 registerLaunchUriHandler 里直接 setMethodCallHandler，会覆盖掉
+  /// 其它监听者。现在收敛成一个分发入口。
+  void _installChannelHandler() {
+    _channel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'openVideoUri':
+          final uri = call.arguments as String?;
+          if (uri != null && uri.isNotEmpty) {
+            _onLaunchUri?.call(uri);
+          }
+        case 'remoteCommand':
+          final args = call.arguments;
+          if (args is Map) {
+            final cmd = args['command']?.toString() ?? '';
+            if (cmd.isNotEmpty) {
+              _onRemoteCommand?.call(cmd, args['argument']);
+            }
+          }
+      }
+      return null;
+    });
+  }
+
+  static void Function(String uri)? _onLaunchUri;
+
   /// 注册热启动回调：App 在后台时被外部 App 再次唤起。
   ///
   /// 必须在 Dart 侧尽早调用（main() 里），否则热启动的 URI 会丢。
   Future<void> registerLaunchUriHandler(
     void Function(String uri) onOpen,
   ) async {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'openVideoUri') {
-        final uri = call.arguments as String?;
-        if (uri != null && uri.isNotEmpty) onOpen(uri);
-      }
-      return null;
-    });
+    _onLaunchUri = onOpen;
+    _installChannelHandler();
     try {
       await _channel.invokeMethod('readyForLaunchUri');
+    } catch (_) {}
+  }
+
+  /// 更新 iOS 锁屏 / 控制中心的「正在播放」信息。
+  ///
+  /// 不设置的话锁屏不显示标题和进度，控制中心的播放控制也可能不出现。
+  /// 非 iOS 平台直接跳过。
+  Future<void> updateNowPlaying({
+    required String title,
+    String? artist,
+    required Duration duration,
+    required Duration position,
+    required bool isPlaying,
+  }) async {
+    if (kIsWeb || !Platform.isIOS) return;
+    try {
+      await _channel.invokeMethod('updateNowPlaying', {
+        'title': title,
+        'artist': artist ?? '',
+        'durationSec': duration.inMilliseconds / 1000.0,
+        'positionSec': position.inMilliseconds / 1000.0,
+        'isPlaying': isPlaying,
+      });
     } catch (_) {}
   }
 

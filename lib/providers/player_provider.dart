@@ -298,6 +298,71 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(videoController: _globalController);
     _setupListeners();
     applyDecodingMode();
+    // iOS 锁屏 / 控制中心的远程控制（播放、暂停、快进、下一集等）
+    _registerRemoteControls();
+  }
+
+  /// 注册锁屏 / 控制中心的远程控制回调（iOS）。
+  ///
+  /// 原生侧（AppDelegate 的 MPRemoteCommandCenter）把按键事件通过
+  /// `remoteCommand` 方法发过来；这里映射到播放器的实际操作。
+  /// 之前原生只往 NotificationCenter 发通知、Dart 侧无人监听，
+  /// 导致锁屏上点播放/暂停完全没有反应。
+  void _registerRemoteControls() {
+    NativeBridgeService.instance.registerRemoteCommandHandler((cmd, arg) {
+      debugPrint('[Player] 远程控制: $cmd ${arg ?? ""}');
+      switch (cmd) {
+        case 'togglePlayPause':
+          togglePlayPause();
+        case 'play':
+          state.player.play();
+        case 'pause':
+          state.player.pause();
+        case 'skipForward':
+          _seekRelative(const Duration(seconds: 10));
+        case 'skipBackward':
+          _seekRelative(const Duration(seconds: -10));
+        case 'next':
+          _playNext();
+        case 'previous':
+          playPrevious();
+        case 'seek':
+          // arg 是秒（double）
+          final secs = (arg as num?)?.toDouble();
+          if (secs != null) {
+            state.player.seek(Duration(milliseconds: (secs * 1000).round()));
+          }
+      }
+    });
+  }
+
+  /// 相对当前位置跳转（远程控制的快进/快退用）。
+  Future<void> _seekRelative(Duration delta) async {
+    try {
+      final dur = state.duration;
+      var target = state.position + delta;
+      if (target < Duration.zero) target = Duration.zero;
+      if (dur > Duration.zero && target > dur) target = dur;
+      await state.player.seek(target);
+    } catch (e) {
+      debugPrint('[Player] 相对跳转失败: $e');
+    }
+  }
+
+  /// 把当前播放状态同步给 iOS 锁屏 / 控制中心。
+  ///
+  /// 只在 iOS 生效（内部已判断平台）。位置变化不需要每帧推，
+  /// 由调用方在「换片 / 播放暂停切换 / 定期」时机调用即可。
+  void _syncNowPlaying() {
+    final v = state.currentVideo;
+    if (v == null) return;
+    NativeBridgeService.instance.updateNowPlaying(
+      title: v.name,
+      artist: 'PerchPlay',
+      duration: state.duration,
+      position: state.position,
+      isPlaying: state.isPlaying,
+    );
   }
 
   /// 应用硬解/软解设置（mpv hwdec）+ 配套播放引擎参数。
@@ -668,6 +733,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     state.player.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
+      // iOS：时长到达后补一次锁屏信息（锁屏进度条需要总时长）
+      _syncNowPlaying();
       // 时长就绪后补一次 seek（首次 seek 可能早于媒体加载完成而被忽略）
       final pending = _pendingResume;
       final loadId = _pendingResumeLoadId;
@@ -696,6 +763,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 「后台播放」开关原来是个空转设置：Dart 侧从未启动过前台服务。
       // 现在按设置真正启停，才能在息屏/内存回收下继续播。
       _syncBackgroundService(playing);
+      // iOS：同步锁屏/控制中心的播放状态（播放中 ↔ 暂停）
+      _syncNowPlaying();
     });
 
     state.player.stream.buffering.listen((buffering) {
@@ -986,6 +1055,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await setSpeed(state.speed > 0
         ? state.speed
         : AppSettingsService.instance.defaultSpeed);
+
+    // iOS：换片后立刻更新锁屏/控制中心的标题（时长要等 duration 事件）
+    _syncNowPlaying();
 
     // 恢复上次播放位置（<1s 视为从头开始）
     final resumeMs = effective.lastPosition;

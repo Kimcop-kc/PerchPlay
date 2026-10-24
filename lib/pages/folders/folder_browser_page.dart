@@ -694,8 +694,21 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
   }
 
   Widget _buildBreadcrumb() {
-    final parts = _currentPath.split('/').where((p) => p.isNotEmpty).toList();
+    // 只展示相对「根目录」的层级。
+    //
+    // iOS 沙盒路径是 /var/mobile/Containers/Data/Application/<UUID>/Documents/...
+    // 直接按 '/' 切分会把一长串 UUID、Containers 之类全显示出来，
+    // 用户完全看不懂。这里统一裁到 _rootPath 之后的相对部分。
+    var displayPath = _currentPath;
+    final root = _rootPath;
+    if (root.isNotEmpty && displayPath.startsWith(root)) {
+      displayPath = displayPath.substring(root.length);
+    }
+    final parts = displayPath.split('/').where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return const SizedBox.shrink();
+
+    final isIOS = !kIsWeb && Platform.isIOS;
+    final rootLabel = isIOS ? 'PerchPlay' : '存储根目录';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -705,11 +718,21 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
           children: [
             GestureDetector(
               onTap: _loadRoots,
-              child: const Icon(Icons.folder_rounded,
-                  size: 14, color: GlassTheme.textTertiary),
+              child: Row(
+                children: [
+                  const Icon(Icons.folder_rounded,
+                      size: 14, color: GlassTheme.textTertiary),
+                  const SizedBox(width: 4),
+                  Text(rootLabel,
+                      style: const TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 12)),
+                ],
+              ),
             ),
             ...parts.asMap().entries.map((e) {
-              final path = '/' + parts.sublist(0, e.key + 1).join('/');
+              // 拼接回真实绝对路径用于跳转
+              final path =
+                  '$root/${parts.sublist(0, e.key + 1).join('/')}';
               return Row(
                 children: [
                   const Icon(Icons.chevron_right_rounded,
