@@ -644,7 +644,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (isHdr && passthrough) {
         debugPrint('[HDR] 直通模式：${state.hdrType} '
             'tf=${state.transferFunction} cp=${state.colorPrimaries} '
-            'sigPeak=${state.sigPeak}');
+            'sigPeak=${state.sigPeak} codec=${state.videoCodec}');
         // 允许 HDR 输出
         await platform.setProperty('target-colorspace-hint', 'yes');
         // 不压缩动态范围
@@ -680,12 +680,33 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // ── 色调映射模式（默认，安全）──
       if (isHdr) {
-        // bt.2390（业界标准 EETF），最接近片源色彩意图
-        await platform.setProperty('tone-mapping', 'bt.2390');
-        // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
-        await platform.setProperty('target-peak', '250');
-        // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
-        await platform.setProperty('hdr-compute-peak', 'yes');
+        // HLG 和 HDR10(PQ) 的映射策略不同：
+        //
+        //  - HDR10(PQ)：绝对亮度系统，片源标注了明确的峰值（1000/4000 nit），
+        //    映射到 SDR 屏用 bt.2390 + 250nit 保守值，避免过曝。
+        //  - HLG（你的杜比 8.4 基础层就是 HLG / arib-std-b67）：**相对亮度**
+        //    系统，设计上就自适应不同亮度的屏幕。用 bt.2390 + 250 会把
+        //    画面压得发灰发暗。HLG 应该用更高的目标峰值（按设备真实能力），
+        //    观感才接近系统相册。
+        final isHlg = (state.hdrType ?? '') == 'HLG';
+        if (isHlg) {
+          // HLG：用设备真实峰值，tone-mapping 用 clip（相对亮度不需要
+          // 像 PQ 那样做复杂的 EETF 映射，clip 直通最准）
+          final device = DeviceInfoService.instance;
+          final devicePeak = device.hdrDetected ? device.maxLuminance : -1.0;
+          final peak = devicePeak > 0 ? devicePeak.toStringAsFixed(0) : '1000';
+          await platform.setProperty('tone-mapping', 'clip');
+          await platform.setProperty('target-peak', peak);
+          await platform.setProperty('hdr-compute-peak', 'no');
+          debugPrint('[HDR] HLG 映射: clip target-peak=$peak');
+        } else {
+          // HDR10 / 杜比 PQ：bt.2390（业界标准 EETF），最接近片源色彩意图
+          await platform.setProperty('tone-mapping', 'bt.2390');
+          // 目标显示亮度：手机屏一般在 200~1200 nit，用 250 保守值避免过曝
+          await platform.setProperty('target-peak', '250');
+          // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
+          await platform.setProperty('hdr-compute-peak', 'yes');
+        }
         // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
         await platform.setProperty('hdr10plus', 'auto');
         // 杜比视界：mpv 的 vo 若能解 profile 5 单层则解，否则回退 HDR10 基础层
