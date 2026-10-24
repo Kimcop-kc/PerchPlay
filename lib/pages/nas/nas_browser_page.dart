@@ -60,8 +60,12 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
     // 小窗出现/消失时页面要重建，否则列表底部留白算错：
     // 小窗浮在导航栏之上，不占布局空间，留白不够就会压住最后几行。
     // 只取布尔值，播放位置每秒变化不会引起本页重建。
+    //
+    // 注意：这个值要传给下面的列表（通过 _miniVisible 缓存），
+    // 不能只声明不用 —— 那样订阅就白建了，列表拿到的仍是旧值。
     final hasMini = ref.watch(playerProvider.select(
         (p) => p.currentVideo != null && p.videoController != null));
+    _miniVisible = hasMini;
 
     // 云盘模式：整块换成云盘页（它自带完整 header 与列表），
     // 这里只负责把顶部分段切换器叠上去，避免两套 header 叠加。
@@ -94,6 +98,14 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
             if (!isLarge) _buildTabletTitle(),
             if (nasState.errorMessage != null)
               _buildErrorBanner(nasState.errorMessage!),
+            // 状态指示：只在「点连接后卡住」的可疑状态下显示，
+            // 正常使用时不干扰界面。
+            //
+            // 排查「点了没反应」时，这一条能直接告诉用户/开发者
+            // 卡在哪一步：loading 一直为 true 说明请求发出去了但没回来；
+            // connected 为 true 但文件为空说明连上了但读不到目录。
+            if (nasState.isLoading || _shouldShowStateHint(nasState))
+              _buildStateHint(nasState),
             _buildDiscoverySection(nasState),
             Expanded(
               child: isLarge
@@ -108,11 +120,57 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
   /// 当前是否显示着后台播放小窗。
   ///
-  /// 用 read 而非 watch：外层 build 已经 watch 了 select 后的布尔量，
-  /// 这里只需要读当前值参与布局计算。
-  bool _hasMiniPlayer() {
-    final p = ref.read(playerProvider);
-    return p.currentVideo != null && p.videoController != null;
+  /// 缓存自 build 里的 watch 结果：列表 builder 内部拿不到 ref.watch 的
+  /// 订阅（用 ref.read 不会触发重建），所以必须由外层算好、这里只读。
+  bool _miniVisible = false;
+
+  bool _hasMiniPlayer() => _miniVisible;
+
+  /// 是否值得显示状态提示。
+  ///
+  /// 只在「已经连上但文件列表为空」这种可疑状态下提示 ——
+  /// 正常浏览时不显示，避免干扰。
+  bool _shouldShowStateHint(NasState s) =>
+      s.isConnected && s.currentFiles.isEmpty && s.errorMessage == null;
+
+  /// 一条轻量的状态提示，帮助定位「点了没反应」卡在哪一层。
+  Widget _buildStateHint(NasState s) {
+    final text = s.isLoading
+        ? '正在连接 / 读取目录…（若长时间停在这里，说明请求发出去了但没有响应）'
+        : '已连接，但没有读到任何文件（可能是路径不对，或该目录确实为空）';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: GlassTheme.accentTeal.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(GlassTheme.radiusXs),
+        border: Border.all(
+            color: GlassTheme.accentTeal.withValues(alpha: 0.25), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          if (s.isLoading)
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                  strokeWidth: 1.8, color: GlassTheme.accentTeal),
+            )
+          else
+            const Icon(Icons.info_outline_rounded,
+                size: 14, color: GlassTheme.accentTeal),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    color: GlassTheme.textSecondary,
+                    fontSize: 11,
+                    height: 1.4)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 连接/读取失败的错误横幅
