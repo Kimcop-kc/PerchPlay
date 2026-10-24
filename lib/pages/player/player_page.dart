@@ -488,7 +488,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   Widget _buildFullScreenLayout(BuildContext context, PlayerState state) {
     final isLarge = AppBreakpoints.isLargeScreen(context);
-    final buttonScale = isLarge ? 1.3 : 1.0;
+    // 横屏/大屏下控制栏要**更紧凑**，不是放大。
+    //
+    // 原来 isLarge ? 1.3 : 1.0：手机横屏后宽度 > 平板阈值，误判成"大屏"，
+    // 所有间距/字号/按钮都放大 30%，导致横屏控制栏很占地方（用户反馈）。
+    // 横屏本来垂直空间就紧张（视频上下有黑边），控制栏越紧凑越好。
+    final buttonScale = isLarge ? 0.85 : 1.0;
 
     return KeyboardShortcutHandler(
       onPlayPause: () => ref.read(playerProvider.notifier).togglePlayPause(),
@@ -1567,7 +1572,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                                   color: pv != null
                                       ? GlassTheme.accentPink
                                       : Colors.white70,
-                                  fontSize: 11 * scale,
+                                  // 字号设下限 10px：横屏 scale=0.85 时
+                                  // 11*0.85=9.35 偏小，钳到 10 保证可读
+                                  fontSize: (11 * scale).clamp(10.0, 14.0),
                                   // 行高压到 1.0：默认字体行高约 1.2~1.4，
                                   // 会额外撑出 3~5px 空白，让时间行显得"太高"
                                   height: 1.0,
@@ -1582,7 +1589,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             _fmtDuration(live.duration),
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 11 * scale,
+                              fontSize: (11 * scale).clamp(10.0, 14.0),
                               height: 1.0,
                             ),
                           ),
