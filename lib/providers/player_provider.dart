@@ -241,25 +241,44 @@ class PlayerState {
     );
   }
 
-  /// 推断 HDR 类型（供 UI 展示）。
+  /// 推断 HDR 类型（供 UI 展示与色调映射）。
   ///
-  /// 判断依据（按优先级）：
-  ///  1. **杜比视界**：视频编码 codec 以 `dv` 开头（dvhe / dvh1 / dav1），
-  ///     这是 mpv 能给的、最可靠的杜比信号；文件名兜底（见 [dolbyVision]）
-  ///  2. 传递函数 pq + 色域 bt.2020 → HDR10（也可能是杜比回退的 HDR10 基础层）
-  ///  3. 传递函数 hlg → HLG（广播 HDR）
-  ///  4. 否则 → null（SDR 或未知）
+  /// 判断依据（按优先级，**实测修正后的顺序**）：
+  ///  1. **真实传递函数**（videoParams 的 gamma）：pq → HDR10；hlg → HLG。
+  ///     这是 mpv 解析流后给出的最可靠信号，**必须优先于文件名猜测**。
+  ///     之前把 dolbyVision 放最前，而它依赖文件名兜底 —— 一个 HLG 片源
+  ///     因为文件名带 "DOLBY" 就被误判成杜比视界（日志实测：tf=hlg 判成杜比）。
+  ///  2. **codec 前缀 dv**（dvhe/dvh1/dav1）：mpv 明确给出的杜比编码。
+  ///  3. 文件名兜底：最后才用。
   String? get hdrType {
-    if (dolbyVision) return '杜比视界';
     final tf = (transferFunction ?? '').toLowerCase();
     final cp = (colorPrimaries ?? '').toLowerCase();
-    if (tf.contains('pq') || cp.contains('2020')) {
-      if (sigPeak != null && sigPeak! > 1.0) return 'HDR10';
-      // 有 pq 传递函数但没读出峰值，仍按 HDR10 处理（元数据可能缺失）
-      if (tf.contains('pq')) return 'HDR10';
+
+    // 1) 真实传递函数优先（这是解码器解析出来的，最可信）
+    if (tf.contains('pq')) {
+      // PQ 传递函数：HDR10。杜比的回退基础层也是 pq，但 codec 会告诉我们
+      return _codecIsDolby ? '杜比视界' : 'HDR10';
     }
     if (tf.contains('hlg')) return 'HLG';
+
+    // 2) 传递函数还没到，但有杜比 codec 信号
+    if (_codecIsDolby) return '杜比视界';
+
+    // 3) 都没有 → 看色域兜底（bt.2020 通常伴随 HDR）
+    if (cp.contains('2020')) return 'HDR10';
+
+    // 4) 文件名兜底（仅在没有真实参数时）
+    if (dolbyVision) return '杜比视界';
+
     return null; // SDR 或未知
+  }
+
+  /// codec 是否为杜比视界封装（dvhe/dvh1 = HEVC 封装，dav1 = AV1 封装）。
+  bool get _codecIsDolby {
+    final codec = (videoCodec ?? '').toLowerCase();
+    return codec.startsWith('dvhe') ||
+        codec.startsWith('dvh1') ||
+        codec.startsWith('dav1');
   }
 
   /// 是否为杜比视界。
@@ -267,16 +286,9 @@ class PlayerState {
   /// 两层判断：
   ///  1. **codec**：videoCodec 以 `dv` 开头（dvhe / dvh1 / dav1）——最可靠
   ///  2. **文件名**：含 "dolby" / "vision" / "dovi" / "杜比" / "dv" 等关键字
-  ///     （对齐 NovaPlayer 的 `_detectInitialHdrFromName`，libmpv 拿不到
-  ///     完整杜比元数据时的兜底）
+  ///     （libmpv 拿不到完整杜比元数据时的兜底，**只在无真实参数时用**）
   bool get dolbyVision {
-    final codec = (videoCodec ?? '').toLowerCase();
-    // dvhe / dvh1 是 HEVC 封装的杜比视界，dav1 是 AV1 封装的杜比视界
-    if (codec.startsWith('dvhe') ||
-        codec.startsWith('dvh1') ||
-        codec.startsWith('dav1')) {
-      return true;
-    }
+    if (_codecIsDolby) return true;
     final name = (currentVideo?.name ?? currentVideo?.path ?? '').toLowerCase();
     if (name.contains('dolby vision') ||
         name.contains('dolbyvision') ||
@@ -616,24 +628,34 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (isHdr && passthrough) {
         debugPrint('[HDR] 直通模式：${state.hdrType} '
             'tf=${state.transferFunction} cp=${state.colorPrimaries} '
-            'peak=${state.sigPeak}');
+            'sigPeak=${state.sigPeak}');
         // 允许 HDR 输出
         await platform.setProperty('target-colorspace-hint', 'yes');
         // 不压缩动态范围
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
-        // 目标亮度优先级：片源信号峰值 > 设备真实峰值 > 通用 1000。
-        // 设备真实峰值来自 Display.getHdrCapabilities()（小米 15 Pro = 3200nit），
-        // 用它才能跑满屏幕；拿不到时退到片源峰值；再没有用 1000。
+        // ⚠ target-peak 的单位是 **nit**，必须用「设备屏幕峰值亮度」。
+        //
+        // 之前这里把 sigPeak 当 nit 用，是个致命 bug：
+        //   sigPeak=4.926（HLG 的归一化峰值，含义是「4.9 倍 SDR 参考」）
+        //   → toStringAsFixed(0) → "5"
+        //   → mpv 认为屏幕只有 5 nit，画面几乎全黑。
+        //
+        // sigPeak 是**相对于 SDR 的倍数**，永远不能直接当 nit。
+        // 正确做法：只用设备真实峰值（Display.getHdrCapabilities 的
+        // desiredMaxLuminance），拿不到再退到片源峰值换算或通用 1000。
         final device = DeviceInfoService.instance;
-        final peak = (state.sigPeak ?? 0) > 1.0
-            ? state.sigPeak!.toStringAsFixed(0)
-            : (device.hdrDetected && device.maxLuminance > 0
-                ? device.maxLuminance.toStringAsFixed(0)
-                : '1000');
-        debugPrint('[HDR] target-peak=$peak '
-            '设备峰值=${device.hdrDetected ? device.maxLuminance : "未知"}');
-        await platform.setProperty('target-peak', peak);
+        final devicePeak = device.hdrDetected ? device.maxLuminance : -1.0;
+        final double peak;
+        if (devicePeak > 0) {
+          peak = devicePeak; // 设备真实峰值（nit），最优先
+        } else {
+          // 没有设备峰值：退到通用 HDR 参考 1000 nit
+          peak = 1000;
+        }
+        debugPrint('[HDR] target-peak=${peak.toStringAsFixed(0)} '
+            '设备峰值=${device.hdrDetected ? devicePeak : "未知"}');
+        await platform.setProperty('target-peak', peak.toStringAsFixed(0));
         // HDR10+ / 杜比视界：直通时都交给下游
         await platform.setProperty('hdr10plus', 'auto');
         await platform.setProperty('dolbyvision', 'yes');
@@ -693,6 +715,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 上次位置状态发布时间（限流用，避免高频重建整页）
   DateTime? _lastPosEmitAt;
+
+  /// 上次 videoParams 的参数签名（去重用，避免同批元数据反复触发色调映射）。
+  String? _lastVideoParamsSig;
 
   /// 后台播放前台服务是否已启动（避免重复调用）
   ///
@@ -877,7 +902,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       );
       // 元数据到位后按需启用/关闭色调映射（见 applyHdrToneMapping 的说明：
       // open 后立刻调 applyRobustPlayback 时这些参数还没到，必须在这里补一次）
-      applyHdrToneMapping();
+      //
+      // ⚠ 但 videoParams 在打开一个视频时会触发多次（先 tf=null 再 tf=hlg），
+      // 每次触发都会 applyHdrToneMapping → 里面 setProperty 又可能触发新事件，
+      // 造成「同一视频刷屏多次」甚至近似循环。
+      // 用「参数签名」去重：只有 (primaries, gamma, sigPeak) 三元组真正变化
+      // 才重新应用，避免同一批元数据被处理多次。
+      final sig = '${params.primaries}|${params.gamma}|${params.sigPeak}';
+      if (sig != _lastVideoParamsSig) {
+        _lastVideoParamsSig = sig;
+        applyHdrToneMapping();
+      }
     });
 
     // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
@@ -1130,6 +1165,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     );
     _lastSaveAt = DateTime.now();
     _lastPosEmitAt = null; // 重置节流，新视频位置立即生效
+    _lastVideoParamsSig = null; // 重置参数签名，新视频的元数据必须重新应用
     _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
