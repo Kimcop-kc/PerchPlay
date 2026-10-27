@@ -435,18 +435,48 @@ class _NasConnection {
     String requestPath = '',
   }) {
     final items = <NasFileItem>[];
+    // ── XML 标签匹配：不能硬编码 `D:` 前缀 ──
+    //
+    // RFC 4918 规定 XML 命名空间前缀可以任意命名（`D:` / `d:` / `ns0:` / 无前缀），
+    // 之前这里全部写死 `<D:xxx>`，导致返回小写 `d:` 或无前缀的服务器
+    // （群晖、部分 WebDAV 网关）解析出 0 项或全部误判成文件：
+    //   - isDirectory 恒为 false → 目录点不开（日志 dir=false video=false）
+    //   - 视频也识别不出来 → 点不开
+    //
+    // 现在用「任意前缀（含无前缀）+ 不区分大小写」的写法。
+    // ns 后面紧跟标签名，用 ${ns} 明确边界，避免 $ns? 被误读。
+    const ns = r'(?:[A-Za-z0-9_.-]+:)?';
     final responsePattern = RegExp(
-      r'<D:response>.*?</D:response>',
+      '<${ns}response\\b[^>]*>.*?</${ns}response>',
       dotAll: true,
+      caseSensitive: false,
     );
-    final hrefPattern = RegExp(r'<D:href>(.*?)</D:href>', dotAll: true);
-    final displayNamePattern =
-        RegExp(r'<D:displayname>(.*?)</D:displayname>', dotAll: true);
-    final collectionPattern = RegExp(r'<D:collection/>');
-    final lengthPattern =
-        RegExp(r'<D:getcontentlength>(\d+)</D:getcontentlength>');
-    final modifiedPattern =
-        RegExp(r'<D:getlastmodified>(.*?)</D:getlastmodified>');
+    final hrefPattern = RegExp(
+      '<${ns}href\\b[^>]*>(.*?)</${ns}href>',
+      dotAll: true,
+      caseSensitive: false,
+    );
+    final displayNamePattern = RegExp(
+      '<${ns}displayname\\b[^>]*>(.*?)</${ns}displayname>',
+      dotAll: true,
+      caseSensitive: false,
+    );
+    // collection 是**空元素**：`<D:collection/>` 或 `<D:collection></D:collection>`
+    // 两种写法都要认（之前的 `<D:collection/>` 只认第一种）。
+    final collectionPattern = RegExp(
+      '<${ns}collection\\b[^>]*(?:/>|>\\s*</${ns}collection>)',
+      dotAll: true,
+      caseSensitive: false,
+    );
+    final lengthPattern = RegExp(
+      '<${ns}getcontentlength\\b[^>]*>(\\d+)</${ns}getcontentlength>',
+      caseSensitive: false,
+    );
+    final modifiedPattern = RegExp(
+      '<${ns}getlastmodified\\b[^>]*>(.*?)</${ns}getlastmodified>',
+      dotAll: true,
+      caseSensitive: false,
+    );
 
     /// 归一化：去掉完整 URL 的 scheme/host、解码、去掉末尾 `/`
     String normPath(String raw) {
