@@ -56,10 +56,20 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            meson ninja-build pkg-config \
+            ninja-build pkg-config \
             autoconf automake libtool gperf \
             nasm yasm cmake wget
-          meson --version; ninja --version
+          # ⚠ meson 必须用 pip 装新版：
+          #   Ubuntu 22.04 仓库的 meson 是 0.61.2，而 libplacebo 6.338
+          #   要求 >= 0.63，会直接报
+          #     ERROR: Meson version is 0.61.2 but project requires >=0.63
+          #   所以不走 apt，用 pip 装最新稳定版。
+          python3 -m pip install --upgrade --user "meson>=1.3,<2"
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          hash -r
+          meson --version
+          ninja --version
 
       - name: Symlink SDK（复刻官方做法，不用 download.sh）
         working-directory: ./build-repo/buildscripts
