@@ -102,12 +102,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   late VideoController _videoController;
   late AnimationController _controlsAnim;
 
+  /// 提前抓住 notifier 引用。
+  ///
+  /// `dispose()` 阶段 `ref` 已经失效，此时再 `ref.read(...)` 会抛
+  /// 「Cannot use "ref" after the widget was disposed」，导致**播放进度存不进去**
+  /// （日志里就是这条）。所以在 initState 就把 notifier 和版本号 notifier 存下来，
+  /// dispose 里直接用缓存引用。
+  PlayerNotifier? _playerNotifier;
+  StateController<int>? _playbackVersion;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // 使用全局 VideoController，页面销毁时保留引用给 mini player 复用
     _videoController = ref.read(playerProvider).videoController!;
+    // dispose 阶段 ref 不可用，提前缓存 notifier
+    _playerNotifier = ref.read(playerProvider.notifier);
+    _playbackVersion = ref.read(playbackVersionProvider.notifier);
     _controlsAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
@@ -165,15 +177,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     _seekPreviewMs.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _restoreIdleOrientation();
+    // 用 initState 缓存的引用：dispose 阶段 ref 已失效
     try {
-      ref.read(playerProvider.notifier).saveProgress();
+      _playerNotifier?.saveProgress();
     } catch (e) {
       debugPrint('[Player] dispose 保存进度失败: $e');
     }
     // 进度已落库，通知历史页刷新（不 invalidate videoListProvider——dispose
     // 阶段 invalidate 可能触发首页在 widget tree 销毁过程中重建导致闪退）
     try {
-      ref.read(playbackVersionProvider.notifier).state++;
+      _playbackVersion?.state++;
     } catch (_) {}
     super.dispose();
   }
@@ -2165,6 +2178,15 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
     messenger.showSnackBar(SnackBar(content: Text('正在投屏到 $deviceName…')));
     final ok = await castNotifier.castLocalFile(path, title: deviceName);
     if (!mounted) return;
+    // 投屏成功后必须**停掉本地播放**：
+    // 否则手机扬声器 + 电视同时出声、且两条播放进度各自走，
+    // 用户听到的是错位的双声道。
+    if (ok && ref.read(playerProvider).isPlaying) {
+      try {
+        await ref.read(playerProvider.notifier).togglePlayPause();
+      } catch (_) {}
+      if (!mounted) return;
+    }
     final after = ref.read(castProvider);
     messenger.showSnackBar(
       SnackBar(
