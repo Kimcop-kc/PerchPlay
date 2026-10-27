@@ -231,24 +231,14 @@ echo "=== 1h) 生成 vulkan.pc（NDK 只带 header，不带 pkg-config 文件）
 #   ERROR: Dependency "vulkan" not found (tried pkg-config and system)
 #
 # Android 的 libvulkan.so 是系统库（由设备/模拟器提供），链接时用
-# -lvulkan 由 NDK 的 toolchain 解析到 sysroot 的存根库。所以这里生成
-# 一个最小可用的 vulkan.pc，只声明 Cflags 和 Libs。
-for DESTDIR3 in "$prefix_dir/lib/pkgconfig" "$prefix_dir/usr/local/lib/pkgconfig"; do
-  mkdir -p "$DESTDIR3"
-  cat >"$DESTDIR3/vulkan.pc" <<VKEOF
-prefix=/usr/local
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
-
-Name: vulkan
-Description: Vulkan (Android NDK built-in loader stub)
-Version: 1.3.268
-Libs: -lvulkan
-Cflags:
-VKEOF
-done
-echo "  已生成 vulkan.pc（lib + usr/local/lib 两份）"
+# -lvulkan 由 NDK 的 toolchain 解析到 sysroot 的存根库。
+#
+# ⚠ 这里**只往构建仓库里装一份生成脚本**，不在 patch 阶段直接生成
+# vulkan.pc —— patch 执行时 build.sh 还没跑，$prefix_dir 还不存在
+# （会报 "prefix_dir: unbound variable"）。
+# 由 libplacebo.sh 在真正编译前生成（那时 prefix 已就绪）。
+echo "=== 1h) 登记 vulkan.pc 的生成逻辑（实际生成在 libplacebo.sh 里）==="
+echo "  说明：patch 阶段 prefix_dir 不存在，改为在 libplacebo.sh 编译前生成"
 
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 if ! grep -q '^v_libplacebo=' "$DEP"; then

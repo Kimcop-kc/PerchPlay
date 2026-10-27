@@ -59,6 +59,32 @@ for f in "$PLIB/libshaderc_combined.a" \
 done
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 echo "  PKG_CONFIG_SYSROOT_DIR=$PKG_CONFIG_SYSROOT_DIR"
+
+# ── 生成 vulkan.pc ──
+# mpv 的 meson.build 用 dependency('vulkan', version: '>= 1.1.70')，
+# 但 Android NDK 只提供 vulkan/vulkan.h（sysroot 内），**不带 vulkan.pc**。
+# 缺了它 mpv 会报：
+#   ld.lld: error: unable to find library -lvulkan
+#   ERROR: Dependency "vulkan" not found (tried pkg-config and system)
+# Android 的 libvulkan.so 由系统提供，-lvulkan 由 NDK toolchain 解析到
+# sysroot 的存根库，所以这里只需补一个最小的 pkg-config 描述。
+echo "=== 生成 vulkan.pc ==="
+for VKDIR in "$prefix_dir/usr/local/lib/pkgconfig" "$prefix_dir/lib/pkgconfig"; do
+	mkdir -p "$VKDIR"
+	cat >"$VKDIR/vulkan.pc" <<VKEOF
+prefix=/usr/local
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+
+Name: vulkan
+Description: Vulkan (Android NDK built-in loader stub)
+Version: 1.3.268
+Libs: -lvulkan
+Cflags:
+VKEOF
+	echo "  ✓ $VKDIR/vulkan.pc"
+done
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 
 # ⚠ 不要传 --prefix=$prefix_dir！
