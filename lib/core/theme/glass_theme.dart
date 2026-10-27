@@ -186,21 +186,21 @@ class GlassCurves {
   GlassCurves._();
 
   /// iOS 27 默认弹性动画: 有阻尼的弹簧
-  static final SpringDescription springSmooth = const SpringDescription(
+  static const SpringDescription springSmooth = SpringDescription(
     mass: 1,
     stiffness: 200,
     damping: 22,
   );
 
   /// 回弹明显的弹性
-  static final SpringDescription springBouncy = const SpringDescription(
+  static const SpringDescription springBouncy = SpringDescription(
     mass: 1,
     stiffness: 180,
     damping: 14,
   );
 
   /// 轻微弹性（卡片悬浮）
-  static final SpringDescription springSubtle = const SpringDescription(
+  static const SpringDescription springSubtle = SpringDescription(
     mass: 1,
     stiffness: 300,
     damping: 26,

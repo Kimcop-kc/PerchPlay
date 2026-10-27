@@ -183,7 +183,7 @@ class UpdateService {
   static List<int> _parseVersion(String v) {
     final parts = v.split('.');
     return [
-      parts.length > 0 ? int.tryParse(parts[0]) ?? 0 : 0,
+      parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0,
       parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
       parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0,
     ];

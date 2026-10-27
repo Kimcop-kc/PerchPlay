@@ -234,7 +234,7 @@ class _CastPageState extends ConsumerState<CastPage>
                     strokeWidth: 3, color: GlassTheme.accentPurple),
               )
             else
-              Icon(Icons.cast_rounded,
+              const Icon(Icons.cast_rounded,
                   size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 14),
             Text(
@@ -267,12 +267,12 @@ class _CastPageState extends ConsumerState<CastPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.cast_rounded,
+              const Icon(Icons.cast_rounded,
                   size: 48, color: GlassTheme.textTertiary),
               const SizedBox(height: 12),
               Text(
                 state.isDiscovering ? '搜索中...' : '未发现投屏设备',
-                style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
+                style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: 6),
               const Text('请确保设备在同一 Wi-Fi 网络',
@@ -517,13 +517,13 @@ class _CastPageState extends ConsumerState<CastPage>
   }
 
   Widget _buildEmptyDetail() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.cast_connected_rounded,
               size: 48, color: GlassTheme.textTertiary),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Text('选择左侧设备开始投屏',
               style: TextStyle(color: GlassTheme.textSecondary, fontSize: 15)),
         ],

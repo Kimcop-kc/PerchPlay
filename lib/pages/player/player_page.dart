@@ -1,6 +1,7 @@
 /// 视频播放器页面 — iOS 27 玻璃质感
 ///
 /// 手机 / 平板统一：全屏视频 + 玻璃控制栏（浮层自动隐藏）
+library;
 import 'dart:async';
 import 'dart:io';
 
@@ -753,7 +754,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
               ),
             ),
             child: Row(
@@ -883,14 +884,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       [
         '帧率',
         (state.videoFps != null && state.videoFps! > 0)
-            ? '${_fmtFps(state.videoFps!)}'
+            ? _fmtFps(state.videoFps!)
             : '未知',
       ],
       [
         'HDR',
         state.hdrType ??
             ((state.colorPrimaries?.isNotEmpty == true)
-                ? '${_hdrLabel(state.colorPrimaries!, state.transferFunction)}'
+                ? _hdrLabel(state.colorPrimaries!, state.transferFunction)
                 : 'SDR'),
       ],
       [
@@ -1064,7 +1065,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               Text(
                 '点右侧 ⇅ 可把字幕设为「第二字幕」，与主字幕同屏显示（如中英对照）',
                 style: TextStyle(
-                  color: GlassTheme.textTertiary.withOpacity(0.95),
+                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
                   fontSize: 11.5,
                   height: 1.4,
                 ),
@@ -1571,7 +1572,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
               ),
             ),
             child: _LivePosition(
@@ -1771,10 +1772,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.75),
+                    color: Colors.black.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       width: 1,
                     ),
                   ),
@@ -1827,13 +1828,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: isActive
-                                    ? GlassTheme.accentTeal.withOpacity(0.85)
-                                    : Colors.white.withOpacity(0.08),
+                                    ? GlassTheme.accentTeal.withValues(alpha: 0.85)
+                                    : Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
                                 border: isActive
                                     ? null
                                     : Border.all(
-                                        color: Colors.white.withOpacity(0.2),
+                                        color: Colors.white.withValues(alpha: 0.2),
                                         width: 1,
                                       ),
                               ),

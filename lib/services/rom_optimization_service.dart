@@ -149,7 +149,7 @@ class RomOptimizationService {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '${_brandDisplayName} 手机优化',
+                '$_brandDisplayName 手机优化',
                 style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 18),
               ),
             ),

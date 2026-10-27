@@ -36,10 +36,10 @@ void main() {
 
   testWidgets('双语模式：固定两行，原文在上译文在下', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '译文内容',
       ),
     ];
@@ -85,10 +85,10 @@ void main() {
 
   testWidgets('只有译文没有原文时：译文作为唯一字幕正常显示', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '译文',
       ),
     ];
@@ -126,9 +126,9 @@ void main() {
     const longText = '这是一段非常非常长的中文字幕内容，用于测试单行省略号行为，确保不会因为固定字符数规则而意外拆成多行显示。';
     await tester.pumpWidget(
       wrap(
-        SizedBox(
+        const SizedBox(
           width: 200,
-          child: const SubtitleOverlay(
+          child: SubtitleOverlay(
             lines: [longText],
             fontSize: 16,
           ),
@@ -160,10 +160,10 @@ void main() {
 
   testWidgets('双语原文空但译文存在：只显示译文一行', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '译文内容',
       ),
     ];
@@ -185,10 +185,10 @@ void main() {
 
   testWidgets('lineSpacing 控制两行间距', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '译文',
       ),
     ];
@@ -347,10 +347,10 @@ void main() {
 
   testWidgets('ASS 对齐映射：numpad 8（顶中）→ 居中', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '主字幕',
         alignment: 8,
       ),
@@ -373,10 +373,10 @@ void main() {
 
   testWidgets('ASS 对齐映射：numpad 7（中左）→ 左对齐', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '主字幕',
         alignment: 7,
       ),
@@ -398,10 +398,10 @@ void main() {
 
   testWidgets('关闭 ASS 定位时用设置的对齐', (tester) async {
     final entries = [
-      SubtitleEntry(
+      const SubtitleEntry(
         index: 0,
         start: Duration.zero,
-        end: const Duration(seconds: 1),
+        end: Duration(seconds: 1),
         text: '主字幕',
         alignment: 7, // 左对齐，但被 useAssPosition=false 忽略
       ),

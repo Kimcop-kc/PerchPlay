@@ -228,7 +228,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
     }
     // 筛选
     if (_filter == 'dir') {
-      list = list.where((e) => e is Directory).toList();
+      list = list.whereType<Directory>().toList();
     } else if (_filter == 'video') {
       list = list.where((e) => e is File && _isVideoFile(e.path)).toList();
     }
@@ -597,10 +597,10 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
   }
 
   Widget _buildNoMatchState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: const [
+        children: [
           Icon(Icons.search_off_rounded,
               size: 40, color: GlassTheme.textTertiary),
           SizedBox(height: 8),
@@ -619,7 +619,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline_rounded,
+            const Icon(Icons.error_outline_rounded,
                 size: 48, color: GlassTheme.accentPink),
             const SizedBox(height: 12),
             Text(_errorMessage!,
@@ -666,7 +666,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.folder_open_rounded,
+            const Icon(Icons.folder_open_rounded,
                 size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             Text(isIOS ? '文件夹为空' : '未发现可访问的存储目录',

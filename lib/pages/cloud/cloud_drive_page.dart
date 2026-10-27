@@ -193,7 +193,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_outlined,
+                const Icon(Icons.cloud_outlined,
                     size: 48, color: GlassTheme.textTertiary),
                 const SizedBox(height: 14),
                 const Text('还没有添加云盘',
@@ -391,7 +391,7 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         margin: const EdgeInsets.all(12),
-        padding: EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: GlassTheme.bg,
           borderRadius: BorderRadius.circular(GlassTheme.radiusLg),

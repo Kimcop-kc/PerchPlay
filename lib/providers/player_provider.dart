@@ -263,16 +263,41 @@ class PlayerState {
       // PQ 传递函数：HDR10。杜比的回退基础层也是 pq，但 codec 会告诉我们
       return _codecIsDolby ? '杜比视界' : 'HDR10';
     }
-    if (tf.contains('hlg')) return 'HLG';
+    // HLG 的两个名字都要认：
+    //  * "hlg"             —— 简称（部分 mpv 版本/封装用）
+    //  * "arib-std-b67"    —— **HLG 的标准技术名**（mpv video-params 的
+    //    gamma 实际返回值大多是这个，它**不含 "hlg" 字样**）。
+    //    之前只判 'hlg'，导致 HLG 片源被漏判 → 落入下面 bt.2020 兜底
+    //    被当成 HDR10 → 套 bt.2390 映射 → 画面发灰发暗。
+    //    这是「有的视频色彩不对」的主要根因之一。
+    if (tf.contains('hlg') || tf.contains('arib-std-b67')) return 'HLG';
 
     // 2) 传递函数还没到，但有杜比 codec 信号（codec 来自 tracks 流，
     //    可能早于 videoParams 到达）
     if (_codecIsDolby) return '杜比视界';
 
-    // 3) 都没有 → 看色域兜底（bt.2020 通常伴随 HDR）
+    // 3) 传递函数明确是 SDR（bt.1886 / bt.709 / smpte170m 等）→ 直接判定 SDR。
+    //
+    //    ⚠ 这个分支必须放在「色域兜底」**之前**。
+    //    之前缺少这一步，导致「bt.2020 色域 + SDR 传递函数」的片源
+    //    （部分 Web 版、转码过的视频）被下面的 cp.contains('2020')
+    //    误判成 HDR10，进而套上 bt.2390 色调映射 ——
+    //    画面明显发灰、对比度变低。这是「有的视频色彩不对」的根因之一。
+    if (tf.contains('1886') ||
+        tf.contains('709') ||
+        tf.contains('170m') ||
+        tf.contains('240m') ||
+        tf.contains('srgb') ||
+        tf.contains('linear')) {
+      return null; // 明确是 SDR
+    }
+
+    // 4) 色域兜底：只有「没有传递函数信息」时才用 bt.2020 猜 HDR。
+    //    bt.2020 色域确实常在 HDR 片源里出现，但它本身不等于 HDR
+    //    （UHD 广播的 SDR 内容也允许 bt.2020），所以只作为弱兜底。
     if (cp.contains('2020')) return 'HDR10';
 
-    // 4) 文件名兜底：**不用**。codec 是 mpv 解析出来的硬证据，文件名是软猜测。
+    // 5) 文件名兜底：**不用**。codec 是 mpv 解析出来的硬证据，文件名是软猜测。
     //    实测 HLG 片源因文件名带 "DOLBY" 被误判成杜比视界，导致 mpv 在
     //    「杜比直通 → HLG」之间来回切换渲染上下文。所以这里只认 codec。
     //    （_codecIsDolby 已经在第 2 步判断过了，走到这里说明 codec 也不是杜比）
@@ -766,6 +791,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _lastHdrAppliedSig = sig;
 
       if (isHdr) {
+        // ── 输出色彩空间：必须显式指定 ──
+        //
+        // 这是「部分视频色彩不对」的**主要根因**：之前只设 tone-mapping 和
+        // target-peak，从不设 target-prim / target-trc。mpv 会用自己的默认
+        // 猜测值做色彩空间转换，猜错就偏色（发绿/发紫/肤色发灰/过饱和）。
+        //
+        // 我们不是真的做 HDR 输出（media_kit 的 OpenGL ES / libmpv 后端
+        // 不支持），而是「把 HDR 内容映射到 SDR 显示」，所以目标必须是
+        // 标准 SDR 色彩空间：
+        //   target-prim=bt.709  → sRGB/Rec.709 色域（几乎所有手机屏幕）
+        //   target-trc=bt.1886  → 标准 SDR 伽马
+        await platform.setProperty('target-prim', 'bt.709');
+        await platform.setProperty('target-trc', 'bt.1886');
+
         // HLG 和 HDR10(PQ) 的映射策略不同
         final isHlg = (state.hdrType ?? '') == 'HLG';
         if (isHlg) {
@@ -776,7 +815,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           await platform.setProperty('tone-mapping', 'clip');
           await platform.setProperty('target-peak', peak);
           await platform.setProperty('hdr-compute-peak', 'no');
-          debugPrint('[HDR] HLG 映射: clip target-peak=$peak');
+          debugPrint('[HDR] HLG 映射: clip target-peak=$peak '
+              'target-prim=bt.709');
         } else {
           // HDR10 / 杜比 PQ：bt.2390（业界标准 EETF），最接近片源色彩意图
           await platform.setProperty('tone-mapping', 'bt.2390');
@@ -784,7 +824,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           await platform.setProperty('target-peak', '250');
           // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
           await platform.setProperty('hdr-compute-peak', 'yes');
-          debugPrint('[HDR] HDR10 映射: bt.2390 target-peak=250');
+          debugPrint('[HDR] HDR10 映射: bt.2390 target-peak=250 '
+              'target-prim=bt.709');
         }
         // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
         await platform.setProperty('hdr10plus', 'auto');
@@ -792,10 +833,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await platform.setProperty('dolbyvision', 'yes');
       } else {
         // SDR：关掉全部色调映射开销，让渲染管线走最轻路径
+        //
+        // 但**色彩空间仍要显式指定**：SDR 片源如果是 bt.601（老 DV/电视源）
+        // 或 bt.2020（部分 Web 源），不指定 target-prim 时 mpv 的自动推断
+        // 在部分片源上会错判，表现为整体偏色。
+        await platform.setProperty('target-prim', 'bt.709');
+        await platform.setProperty('target-trc', 'bt.1886');
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
         await platform.setProperty('hdr10plus', 'no');
         await platform.setProperty('dolbyvision', 'no');
+        debugPrint('[HDR] SDR: clip target-prim=bt.709');
       }
     } catch (e) {
       debugPrint('[Player] 应用 HDR 色调映射失败: $e');
@@ -818,6 +866,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('dolbyvision', 'no');
       // 中性峰值，避免残留极值影响新文件探测
       await platform.setProperty('target-peak', '1000');
+      // 色彩空间也复位成标准 SDR：否则上一部片源设的 target-prim/target-trc
+      // 会被下一部沿用，在「片源色彩空间不同」时直接表现为偏色。
+      await platform.setProperty('target-prim', 'bt.709');
+      await platform.setProperty('target-trc', 'bt.1886');
     } catch (e) {
       // 复位失败不阻塞播放：最坏情况是下一个视频沿用旧 HDR 状态
       debugPrint('[Player] 复位 HDR 状态失败（忽略）: $e');

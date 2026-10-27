@@ -298,7 +298,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.playlist_add_rounded,
+            const Icon(Icons.playlist_add_rounded,
                 size: 48, color: GlassTheme.textTertiary),
             const SizedBox(height: 12),
             const Text('尚未创建播放列表',
@@ -336,7 +336,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             style: const TextStyle(color: GlassTheme.textPrimary),
             decoration: InputDecoration(
               hintText: '输入列表名称',
-              hintStyle: TextStyle(color: GlassTheme.textTertiary),
+              hintStyle: const TextStyle(color: GlassTheme.textTertiary),
               enabledBorder: UnderlineInputBorder(
                 borderSide:
                     BorderSide(color: Colors.black.withValues(alpha: 0.2)),
@@ -436,6 +436,6 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final h = totalSec ~/ 3600;
     final m = (totalSec % 3600) ~/ 60;
     if (h > 0) return '${h}h${m}m';
-    return '${m}分钟';
+    return '$m分钟';
   }
 }

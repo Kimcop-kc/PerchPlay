@@ -99,7 +99,7 @@ class CastControlService {
     _activeDevice = null;
     _isConnected = false;
 
-    _statusController.add(CastControlEvent(type: CastEventType.disconnected));
+    _statusController.add(const CastControlEvent(type: CastEventType.disconnected));
   }
 
   // ──────────── DLNA ────────────
@@ -307,7 +307,7 @@ class CastControlService {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
       await _sendDlnaCommand('Pause', params: {'InstanceID': '0'});
     }
-    _statusController.add(CastControlEvent(type: CastEventType.paused));
+    _statusController.add(const CastControlEvent(type: CastEventType.paused));
   }
 
   /// 继续播放
@@ -315,7 +315,7 @@ class CastControlService {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
       await _sendDlnaCommand('Play', params: {'InstanceID': '0', 'Speed': '1'});
     }
-    _statusController.add(CastControlEvent(type: CastEventType.playing));
+    _statusController.add(const CastControlEvent(type: CastEventType.playing));
   }
 
   /// 停止
@@ -323,7 +323,7 @@ class CastControlService {
     if (_activeDevice?.protocol == CastProtocol.dlna) {
       await _sendDlnaCommand('Stop', params: {'InstanceID': '0'});
     }
-    _statusController.add(CastControlEvent(type: CastEventType.stopped));
+    _statusController.add(const CastControlEvent(type: CastEventType.stopped));
   }
 
   /// 跳转到指定位置（秒）

@@ -52,7 +52,7 @@ void main() {
   });
 
   group('seekTo 钳位', () {
-    final tenMin = const Duration(minutes: 10);
+    const tenMin = Duration(minutes: 10);
 
     test('目标在范围内 → 不钳位', () {
       expect(
@@ -84,8 +84,8 @@ void main() {
   });
 
   group('seekRelative 目标计算', () {
-    final fiveMin = const Duration(minutes: 5);
-    final tenMin = const Duration(minutes: 10);
+    const fiveMin = Duration(minutes: 5);
+    const tenMin = Duration(minutes: 10);
 
     test('前进 10s', () {
       expect(

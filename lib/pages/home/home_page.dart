@@ -1123,7 +1123,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.video_library_rounded,
+            const Icon(Icons.video_library_rounded,
                 size: 56, color: GlassTheme.textTertiary),
             const SizedBox(height: 16),
             const Text('影库为空',
@@ -1135,7 +1135,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
             Text(
               hasPermission ? '未扫描到视频\n点击下方按钮重新扫描' : '需要授权读取本地视频\n授权后自动扫描',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                   color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 24),

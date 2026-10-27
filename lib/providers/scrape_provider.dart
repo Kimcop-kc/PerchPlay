@@ -145,8 +145,9 @@ class ScrapeNotifier extends StateNotifier<ScrapeState> {
         state = state.copyWith(error: e.toString());
       }
       // TMDB 免费 API 限流 ≈ 50 req/s，1 秒间隔绰绰有余
-      if (_queue.isNotEmpty)
+      if (_queue.isNotEmpty) {
         await Future<void>.delayed(const Duration(seconds: 1));
+      }
     }
     _processing = false;
     ScrapeCacheService.instance.clearSeriesInfoCache();

@@ -88,7 +88,7 @@ class HistoryPage extends ConsumerWidget {
                                           const SizedBox(height: 4),
                                           Row(
                                             children: [
-                                              Icon(Icons.schedule_rounded,
+                                              const Icon(Icons.schedule_rounded,
                                                   size: 12,
                                                   color:
                                                       GlassTheme.textTertiary),
@@ -186,16 +186,16 @@ class HistoryPage extends ConsumerWidget {
   }
 
   Widget _buildEmpty() {
-    return Center(
+    return const Center(
       child: GlassPanel(
-        padding: const EdgeInsets.all(40),
+        padding: EdgeInsets.all(40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.history_rounded,
                 size: 48, color: GlassTheme.textTertiary),
-            const SizedBox(height: 12),
-            const Text('暂无观看记录',
+            SizedBox(height: 12),
+            Text('暂无观看记录',
                 style: TextStyle(
                     color: GlassTheme.textPrimary,
                     fontSize: 18,

@@ -398,12 +398,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
                   Icon(Icons.battery_saver_rounded,
                       color: GlassTheme.accentPink, size: 18),
-                  const SizedBox(width: 8),
-                  const Text('电池优化白名单',
+                  SizedBox(width: 8),
+                  Text('电池优化白名单',
                       style: TextStyle(
                           color: GlassTheme.textPrimary,
                           fontWeight: FontWeight.w600)),
@@ -424,12 +424,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
               const SizedBox(height: 12),
               if (device.brand.isXiaomi) ...[
-                Row(
+                const Row(
                   children: [
                     Icon(Icons.auto_awesome_rounded,
                         color: GlassTheme.accentPink, size: 18),
-                    const SizedBox(width: 8),
-                    const Text('自启动管理',
+                    SizedBox(width: 8),
+                    Text('自启动管理',
                         style: TextStyle(
                             color: GlassTheme.textPrimary,
                             fontWeight: FontWeight.w600)),
@@ -1203,7 +1203,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         _sliderRow(
                           '行间距',
-                          '${lineSpacing.toStringAsFixed(0)}',
+                          lineSpacing.toStringAsFixed(0),
                           lineSpacing,
                           0,
                           12,
@@ -1413,10 +1413,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ),
         SliderTheme(
-          data: SliderThemeData(
+          data: const SliderThemeData(
             trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7),
+            overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
           ),
           child: Slider(
             value: current.clamp(min, max),

@@ -1,4 +1,5 @@
 /// 刮削元数据模型
+library;
 import 'dart:convert';
 
 class ScrapeResult {

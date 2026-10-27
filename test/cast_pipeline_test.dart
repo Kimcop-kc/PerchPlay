@@ -80,7 +80,7 @@ void main() {
     }
 
     final control = CastControlService.instance;
-    final device = CastDevice(
+    const device = CastDevice(
       id: 'test:fake',
       name: 'Fake DLNA TV',
       protocol: CastProtocol.dlna,
@@ -94,7 +94,7 @@ void main() {
     expect(connected, isTrue,
         reason: '应从描述里解析出 AVTransport controlURL（${control.lastError}）');
 
-    final mediaUrl = 'http://192.168.1.50:41234/video/movie.mp4';
+    const mediaUrl = 'http://192.168.1.50:41234/video/movie.mp4';
     final ok = await control.playUrl(mediaUrl, title: '测试影片');
     expect(ok, isTrue,
         reason: 'SetAVTransportURI + Play 应成功（${control.lastError}）');
