@@ -67,14 +67,19 @@ if 'mkdir -p "$prefix_dir/lib"' not in src:
 if 'shaderc.pc' not in src:
     extra = '''
 # 额外生成 shaderc.pc（libplacebo 的 Dependency('shaderc') 只认这个名字）
-# 注意：必须用 pkg-config 的 prefix 变量，@prefix@ 由 pkg-config 自己展开；
-# 直接写 ${libdir} 在这里是**未定义**的空值，会让 -L 变成 -L 空，
-# 最终 ld 报 unable to find library -lshaderc_combined。
+#
+# ⚠ 关键：prefix 必须写 **/usr/local 这种相对根路径**，不能写绝对路径。
+# pkg-config 会把它和 PKG_CONFIG_SYSROOT_DIR 拼起来：
+#   SYSROOT=.../prefix/arm64-v8a  +  prefix=/usr/local
+#   → .../prefix/arm64-v8a/usr/local   ✅ 正确
+# 如果 prefix 写成绝对路径，就会拼成
+#   .../prefix/arm64-v8a/.../prefix/arm64-v8a/usr/local   ❌ 重复
+# 上一轮报的 'shaderc/shaderc.h' file not found 就是这个原因。
 cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<SHADERCEOF
-prefix=$prefix_dir
+prefix=/usr/local
 exec_prefix=\\${prefix}
-libdir=\\${prefix}/usr/local/lib
-includedir=\\${prefix}/usr/local/include
+libdir=\\${prefix}/lib
+includedir=\\${prefix}/include
 
 Name: shaderc
 Description: shaderc (NDK bundled, combined static)

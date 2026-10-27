@@ -57,13 +57,16 @@ for f in "$PLIB/libshaderc_combined.a" "$PLIB/pkgconfig/shaderc.pc" \
 	fi
 done
 # 如果只缺 shaderc.pc，这里补一份（双保险，防 patch 顺序问题）
+#
+# prefix 必须写 /usr/local 这种相对根路径：pkg-config 会与
+# PKG_CONFIG_SYSROOT_DIR 拼接，写绝对路径会拼成重复的两段。
 if [ ! -f "$PLIB/pkgconfig/shaderc.pc" ] && [ -f "$PLIB/libshaderc_combined.a" ]; then
 	echo "  补生成 shaderc.pc …"
 	cat >"$PLIB/pkgconfig/shaderc.pc" <<SHADERCEOF
-prefix=$prefix_dir
+prefix=/usr/local
 exec_prefix=\${prefix}
-libdir=\${prefix}/usr/local/lib
-includedir=\${prefix}/usr/local/include
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
 
 Name: shaderc
 Description: shaderc (NDK bundled, combined static)
