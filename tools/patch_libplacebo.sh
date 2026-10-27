@@ -114,6 +114,19 @@ else
 fi
 grep -n '^v_ndk=' "$DEP" || true
 
+echo "=== 1f) 修 mbedtls 的 NEON 兼容（NDK 27 / clang 18）==="
+# NDK 27 自带 clang 18，其 arm_neon.h 对 always_inline 函数要求显式
+# target feature。mbedtls 3.4 的 aesce 代码没加，于是编译报：
+#   arm_neon.h:62502: error: always_inline function 'vget_high_p64'
+#   requires target feature 'sha3', but would be inlined into function
+# 给 mbedtls 显式补 -march=armv8-a+crypto+sha3 即可。
+MBED="$BS/scripts/mbedtls.sh"
+if [ -f "$MBED" ] && ! grep -q 'armv8-a' "$MBED"; then
+  sed -i 's/make CFLAGS=-fPIC CXXFLAGS=-fPIC/make CFLAGS="-fPIC -march=armv8-a+crypto+sha3" CXXFLAGS="-fPIC -march=armv8-a+crypto+sha3"/g' "$MBED"
+  echo "  已给 mbedtls 加 -march=armv8-a+crypto+sha3"
+fi
+grep -n 'march=' "$MBED" || true
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 if ! grep -q '^v_libplacebo=' "$DEP"; then
   sed -i "/^v_libvpx=/a v_libplacebo=${LP_VERSION}" "$DEP"
