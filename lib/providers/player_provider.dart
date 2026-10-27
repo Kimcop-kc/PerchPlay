@@ -414,25 +414,55 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
 
-      // 硬解：auto-safe（优先硬解，失败自动回退软解，避免花屏/黑屏直接卡死）
-      await platform.setProperty('hwdec', on ? 'auto-safe' : 'no');
+      // 硬解后端分平台精细化。
+      //
+      // `auto-safe` 只启用 mpv 认为「安全」的硬解后端，在移动端有两个坑：
+      //  * Android：不含 `mediacodec-copy`，10bit / 4K HDR 片源常常**退回软解**
+      //    直接卡死（软解 4K 在手机上几乎不可能实时）。
+      //  * iOS：`auto-safe` 能选到 videotoolbox，但显式指定更稳。
+      //
+      // 所以这里显式列出后端 + 保留兜底：
+      //  * Android: mediacodec,mediacodec-copy（copy 支持更多 profile，
+      //    代价是多一次 GPU→CPU 拷贝，但比软解快得多）
+      //  * iOS: videotoolbox
+      //  * 桌面/其他: auto-safe（保持原行为）
+      final String hwdecValue;
+      if (!on) {
+        hwdecValue = 'no';
+      } else if (Platform.isAndroid) {
+        hwdecValue = 'mediacodec,mediacodec-copy';
+      } else if (Platform.isIOS) {
+        hwdecValue = 'videotoolbox';
+      } else {
+        hwdecValue = 'auto-safe';
+      }
+      await platform.setProperty('hwdec', hwdecValue);
+      debugPrint('[Player] hwdec=$hwdecValue');
 
       // 直接渲染（direct rendering）：硬解时让解码器直接写 GPU 显存，
       // 少一次 CPU 拷贝，4K 高码率下明显降低 CPU 占用与功耗。
-      await platform.setProperty('vd-lavc-dr', on ? 'yes' : 'no');
-
-      // 软解线程数：硬解时解码负载在 GPU，软解靠 CPU；核心越多线程越多。
-      // 不要超过 8，否则线程切换开销反而拖慢。
       //
-      // 硬解时给 4 线程：虽然主体解码在 GPU，但 ffmpeg 仍需线程做
-      // 码流解析/送帧，2 线程在高码率下容易成为瓶颈导致掉帧。
-      final cores = DeviceInfoService.instance.capabilities.cpuCores;
-      final threads = on ? 4 : (cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
-      await platform.setProperty('vd-lavc-threads', '$threads');
+      // Android 上 mediacodec-copy 模式**不支持** direct rendering
+      // （它本身就要拷出来），由 mpv 内部处理；这里对 iOS/桌面开启。
+      await platform.setProperty(
+          'vd-lavc-dr', (on && !Platform.isAndroid) ? 'yes' : 'no');
 
-      // 硬解失败时的兜底行为：允许 mpv 在硬解出错时自动切回软解，
-      // 而不是直接黑屏/卡住（auto-safe 已含此语义，这里显式声明）。
-      await platform.setProperty('hwdec-extra-frames', on ? '6' : '0');
+      // 解码线程数。
+      //
+      // 软解（hwdec=no）时这是硬指标：4K H.264/HEVC 软解需要足够并行线程，
+      // 按核心数给到 8（不要超，线程切换开销反而拖慢）。
+      // 硬解时解码在 GPU，但 ffmpeg 仍需线程做码流解析/送帧，
+      // 高码率 4K 下 2 线程容易成为瓶颈，给 4 线程更稳。
+      final cores = DeviceInfoService.instance.capabilities.cpuCores;
+      final maxThreads = cores <= 0 ? 4 : cores;
+      final threads = on
+          ? (maxThreads >= 8 ? 6 : 4)
+          : (maxThreads >= 8 ? 8 : (maxThreads >= 4 ? 4 : 2));
+      await platform.setProperty('vd-lavc-threads', '$threads');
+      debugPrint('[Player] vd-lavc-threads=$threads (cores=$maxThreads)');
+
+      // 硬解多留几帧缓冲：4K 硬解管线吞吐波动大，缓冲太少会周期性卡顿。
+      await platform.setProperty('hwdec-extra-frames', on ? '8' : '0');
     } catch (e) {
       debugPrint('[Player] 应用解码参数失败: $e');
     }
@@ -541,11 +571,89 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  Future<void> applyRobustPlayback() async {
+  /// 4K / 8K 片源的渲染缩放优化。
+  ///
+  /// ## 为什么高分辨率会卡
+  ///
+  /// 瓶颈**不在解码**，而在**渲染填充率**：GPU 每帧要为每个输出像素做
+  /// 缩放 + 色彩转换。4K = 830 万像素/帧，8K = 3300 万像素/帧，
+  /// 60fps 下就是每秒 5 亿~20 亿像素操作。而手机屏幕物理分辨率通常只有
+  /// 2K~3K，把 4K/8K 完整渲染出来再压到屏幕，纯属浪费。
+  ///
+  /// ## 做法
+  ///
+  /// `scale` 是 mpv 输出缓冲的缩放系数（media_kit 文档原文：
+  /// "This may be used for performance reasons"）：
+  ///   * 4K → scale=0.5，输出像素减到 1/4，填充率压力骤降
+  ///   * 8K → scale=0.35，进一步降到约 1/8
+  /// 视觉上手机屏幕看不出区别，但掉帧会明显改善。
+  ///
+  /// 同时把缩小用的重采样器从 bicubic 换成 bilinear（高分辨率缩小时
+  /// 差异不可见，但开销低很多），并关掉 correct-downscaling。
+  ///
+  /// ## 去重
+  ///
+  /// 会被 `applyRobustPlayback`（open 后）和 `width` 监听（分辨率到达后）
+  /// 各调一次，所以用 `_lastScalingSig` 避免重复 setProperty。
+  Future<void> _applyResolutionScaling() async {
     try {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
-      // 允许过期/不兼容的字幕编码自动替换字符，避免 ASS 特效子幕导致崩溃
+
+      final vw = state.videoWidth;
+      // 分辨率还没探测到：先不动（等 width 监听再触发）
+      if (vw <= 0) return;
+
+      final isHighRes = vw >= 3000; // 4K 及以上
+      final isUltraRes = vw >= 7000; // 8K
+      final sig = isUltraRes ? '8k' : (isHighRes ? '4k' : 'normal');
+      if (sig == _lastScalingSig) return;
+      _lastScalingSig = sig;
+
+      if (isHighRes) {
+        final scale = isUltraRes ? '0.35' : '0.5';
+        await platform.setProperty('scale', scale);
+        await platform.setProperty('dscale', 'bilinear');
+        await platform.setProperty('cscale', 'bilinear');
+        await platform.setProperty('correct-downscaling', 'no');
+        await platform.setProperty('linear-downscaling', 'yes');
+
+        // 高码率片源加大 demuxer 前向缓冲。
+        //
+        // 4K 蓝光常见 50~100 Mbps，8K 可到 200~300 Mbps —— 单秒数据量
+        // 就超过默认本地 64MB 缓冲能覆盖的时长，缓冲见底就会周期性卡顿。
+        // 这里按档位放大（只在本地/已缓存源上安全；网络源已有 128MB 上限，
+        // 不再往上加，避免手机内存吃紧）。
+        final path = state.currentVideo?.path ?? '';
+        final remote = LibraryPruneService.isRemotePath(path);
+        if (!remote) {
+          final bytes = isUltraRes ? '268435456' : '201326592'; // 256MB / 192MB
+          await platform.setProperty('demuxer-max-bytes', bytes);
+          await platform.setProperty('demuxer-max-back-bytes', '67108864');
+          // 预读时长也放大，让解码管线有更多缓冲可调度
+          await platform.setProperty('demuxer-readahead-secs', '5');
+          await platform.setProperty('cache-secs', '5');
+        }
+
+        debugPrint('[Player] 高分辨率优化($sig): ${vw}x${state.videoHeight} '
+            'scale=$scale');
+      } else {
+        // 普通片源恢复默认，避免上一部 4K 留下的 scale 影响 1080p
+        await platform.setProperty('scale', '1.0');
+        await platform.setProperty('dscale', 'bicubic');
+        await platform.setProperty('cscale', 'bicubic');
+        await platform.setProperty('correct-downscaling', 'yes');
+        debugPrint('[Player] 普通分辨率: ${vw}x${state.videoHeight} scale=1.0');
+      }
+    } catch (e) {
+      debugPrint('[Player] 应用分辨率缩放失败: $e');
+    }
+  }
+
+  Future<void> applyRobustPlayback() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;      // 允许过期/不兼容的字幕编码自动替换字符，避免 ASS 特效子幕导致崩溃
       await platform.setProperty('sub-ass-override', 'yes');
 
       // ── 音视频同步与掉帧策略（播放流畅度的核心）──
@@ -564,6 +672,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 渲染侧「低延迟」取舍：允许 mpv 为流畅度牺牲少量精确性。
       // 对本地高码率/4K 片源，能明显减少因渲染管线排队导致的卡顿。
       await platform.setProperty('video-latency-hacks', 'yes');
+
+      // 4K / 8K 渲染优化（依赖已探测到的分辨率）
+      await _applyResolutionScaling();
 
       // ── 内核缓冲优化（本地文件）──
       //
@@ -750,6 +861,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 用签名去重，同一模式同一片源只应用一次，日志也降到 1 行。
   String? _lastHdrAppliedSig;
 
+  /// 上次应用的「分辨率缩放档位」签名（normal / 4k / 8k）。
+  ///
+  /// `_applyResolutionScaling` 会在 open 后和 width 到达后各调一次，
+  /// 用签名去重，避免重复 setProperty 造成闪屏/抖动。
+  String? _lastScalingSig;
+
   /// 后台播放前台服务是否已启动（避免重复调用）
   ///
   /// 注意：此处仅反映「主动要求服务保持运行」的意愿；
@@ -902,9 +1019,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
     });
 
-    // 画面分辨率（详情展示用）
+    // 画面分辨率（详情展示用 + 4K/8K 渲染优化触发点）
+    //
+    // width 是**异步到达**的（open 之后 mpv 解析出视频参数才推送），
+    // 而 applyRobustPlayback 在 open 之后立刻调用 —— 那时 videoWidth 还是 0，
+    // 高分辨率优化不会生效。所以这里拿到真实分辨率后**重新应用一次**，
+    // 由 _applyResolutionScaling 内部做去重，避免重复 setProperty。
     state.player.stream.width.listen((w) {
-      if (w != null && w > 0) state = state.copyWith(videoWidth: w);
+      if (w != null && w > 0) {
+        final changed = state.videoWidth != w;
+        state = state.copyWith(videoWidth: w);
+        if (changed) _applyResolutionScaling();
+      }
     });
     state.player.stream.height.listen((h) {
       if (h != null && h > 0) state = state.copyWith(videoHeight: h);
@@ -1210,6 +1336,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastPosEmitAt = null; // 重置节流，新视频位置立即生效
     _lastVideoParamsSig = null; // 重置参数签名，新视频的元数据必须重新应用
     _lastHdrAppliedSig = null; // 重置 HDR 应用签名，新视频要重新判断
+    _lastScalingSig = null; // 重置分辨率缩放签名，新视频重新判断
     _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
