@@ -618,6 +618,11 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
       final playParams = <String, dynamic>{
         'videoPath': url,
         'videoTitle': f.name,
+        // 网盘上下文：播放页据此回头列目录、找同目录外挂字幕。
+        // 网盘没有本地目录，只有账号 id + 目录 id 能定位「视频所在的目录」。
+        'cloudAccountId': acc.id,
+        'cloudDirId': _dirId,
+        'cloudVideoName': f.name,
       };
 
       // 各家的「取直链时用的请求头」。必须与实际播放一致，否则 CDN 403。

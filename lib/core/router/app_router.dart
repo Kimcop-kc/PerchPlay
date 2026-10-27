@@ -126,6 +126,11 @@ class AppRouter {
             queueIds: queue is List ? List<String>.from(queue) : null,
             startIndex: (extra?['startIndex'] as int?) ?? 0,
             headers: headers,
+            // 网盘上下文：用于「同目录外挂字幕」查找。
+            // 网盘只有 HTTP 直链、没有本地目录，必须靠账号+目录 id 回头去列目录。
+            cloudAccountId: extra?['cloudAccountId'] as String?,
+            cloudDirId: extra?['cloudDirId'] as String?,
+            cloudVideoName: extra?['cloudVideoName'] as String?,
           );
         },
       ),

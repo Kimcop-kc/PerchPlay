@@ -1730,6 +1730,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> selectSubtitle(SubtitleModel subtitle) =>
       loadExternalSubtitle(subtitle.path, language: subtitle.language);
 
+  /// 追加一批可选的「外挂字幕」到候选列表（面板里可选）。
+  ///
+  /// 给网盘用：网盘视频的字幕是播放时异步查找+下载的，晚于
+  /// loadVideo 里的本地扫描，所以需要单独往状态里补。
+  /// 已存在的同路径字幕会跳过，避免重复。
+  void addAvailableSubtitles(List<SubtitleModel> subs) {
+    if (subs.isEmpty) return;
+    final existing = {for (final s in state.availableSubtitles) s.path};
+    final merged = [
+      ...state.availableSubtitles,
+      for (final s in subs)
+        if (!existing.contains(s.path)) s,
+    ];
+    state = state.copyWith(availableSubtitles: merged);
+  }
+
   Future<void> loadSubtitle(SubtitleModel subtitle) =>
       loadExternalSubtitle(subtitle.path, language: subtitle.language);
 

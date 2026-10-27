@@ -26,6 +26,7 @@ import '../../providers/cast_provider.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/media_namer_service.dart';
 import '../../services/subtitle_service.dart';
+import '../../services/cloud_subtitle_service.dart';
 import '../../services/native_bridge_service.dart';
 import '../../services/library_prune_service.dart';
 import '../../widgets/player/player_gesture_layer.dart';
@@ -47,6 +48,16 @@ class PlayerPage extends ConsumerStatefulWidget {
   /// 自定义 HTTP 请求头（网盘播放需要带 Cookie/UA 等）
   final Map<String, String>? headers;
 
+  /// 网盘上下文（用于「同目录外挂字幕」查找）。
+  ///
+  /// 网盘视频只有 HTTP 直链、没有本地目录，播放页无法像本地视频那样
+  /// `Directory(dirname).list()` 找字幕。带上账号 id + 目录 id 后，
+  /// 播放页才能回头去列网盘目录、下载同名字幕。
+  /// 三者都为 null 表示不是网盘来源（本地/NAS）。
+  final String? cloudAccountId;
+  final String? cloudDirId;
+  final String? cloudVideoName;
+
   const PlayerPage({
     super.key,
     required this.videoPath,
@@ -54,6 +65,9 @@ class PlayerPage extends ConsumerStatefulWidget {
     this.queueIds,
     this.startIndex = 0,
     this.headers,
+    this.cloudAccountId,
+    this.cloudDirId,
+    this.cloudVideoName,
   });
 
   @override
@@ -434,6 +448,43 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               queue == null ? 0 : widget.startIndex.clamp(0, queue.length - 1),
           headers: widget.headers,
         );
+
+    // 网盘：后台查找并下载「同目录外挂字幕」。
+    //
+    // 本地视频由 SubtitleService 扫同目录，但网盘只有 HTTP 直链、没有目录，
+    // 那边会直接跳过。这里用播放时带上的账号/目录上下文回头列一次目录，
+    // 找到同名 .srt/.ass 后下载到本地缓存再挂载。
+    // 不 await：字幕是加分项，不能挡住视频开播。
+    _loadCloudSubtitlesIfNeeded();
+  }
+
+  /// 网盘同目录字幕：查找 → 下载 → 挂载（后台执行，不阻塞播放）。
+  Future<void> _loadCloudSubtitlesIfNeeded() async {
+    final accountId = widget.cloudAccountId;
+    final dirId = widget.cloudDirId;
+    if (accountId == null || dirId == null) return; // 非网盘来源
+    if (!mounted) return;
+
+    try {
+      final subs = await CloudSubtitleService.instance.findAndDownload(
+        accountId: accountId,
+        dirId: dirId,
+        videoName: widget.cloudVideoName ?? widget.videoTitle,
+      );
+      if (!mounted || subs.isEmpty) return;
+
+      // 已有字幕（用户自己选了 / 内嵌）就不要覆盖
+      final st = ref.read(playerProvider);
+      if (st.activeSubtitle != null) return;
+
+      final notifier = ref.read(playerProvider.notifier);
+      // 先把候选列表塞进状态（面板里可见），再自动挂第一个
+      notifier.addAvailableSubtitles(subs);
+      await notifier.selectSubtitle(subs.first);
+      debugPrint('[CloudSub] 已自动挂载字幕: ${subs.first.title}');
+    } catch (e) {
+      debugPrint('[CloudSub] 自动挂载失败: $e');
+    }
   }
 
   @override
