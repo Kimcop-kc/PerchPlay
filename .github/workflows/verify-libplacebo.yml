@@ -1,0 +1,136 @@
+name: 验证 — libplacebo libmpv 构建
+
+# 目的：**只做可行性验证**，不产出任何发版产物。
+#
+# 目标：确认 media-kit 的 Android libmpv 构建链能否在开启
+#       libplacebo + vulkan + shaderc 后成功编译出 libmpv.so。
+#
+# 成功 → 继续做 hdr-toys 集成（路线 A 可行）
+# 失败 → 停止，不做更多投入
+#
+# 手动触发，只在需要时跑。
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: '要构建的架构（默认只 arm64，减少耗时）'
+        required: false
+        default: 'arm64'
+        type: choice
+        options:
+          - arm64
+          - all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: 检出本仓库（拿 patch 脚本）
+        uses: actions/checkout@v4
+
+      - name: 检出 media-kit 的 libmpv 构建仓库
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/media-kit/libmpv-android-video-build.git build-repo
+          echo "构建仓库 HEAD: $(git -C build-repo rev-parse --short HEAD)"
+          ls build-repo/buildscripts
+
+      - name: 应用 libplacebo patch
+        run: |
+          set -euo pipefail
+          chmod +x tools/patch_libplacebo.sh
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools"
+
+      - name: 安装构建工具
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            meson ninja-build pkg-config python3-pip \
+            autoconf automake libtool gperf \
+            nasm yasm cmake
+          meson --version
+          ninja --version
+
+      - name: 下载 Android SDK / NDK（构建仓库需要）
+        run: |
+          set -euo pipefail
+          cd build-repo/buildscripts
+          # 构建仓库自带 download.sh 拉 sdk/ndk，先看它做什么
+          ls -la *.sh 2>/dev/null || true
+          if [ -f download.sh ]; then
+            chmod +x download.sh
+            ./download.sh 2>&1 | tail -20
+          else
+            echo "⚠️ 没有 download.sh，检查仓库结构"
+            ls -la
+          fi
+
+      - name: 构建 libplacebo（独立验证，先确认它单独能编过）
+        id: placebo
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd build-repo/buildscripts
+          chmod +x build.sh
+          ARCH="${{ inputs.arch == 'all' && '' || '--arch arm64' }}"
+          echo "构建参数: $ARCH"
+          # 只构建 libplacebo 目标
+          ./build.sh $ARCH libplacebo 2>&1 | tee /tmp/placebo.log | tail -60
+
+      - name: 构建 mpv（含 libplacebo）
+        id: mpv
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cd build-repo/buildscripts
+          ARCH="${{ inputs.arch == 'all' && '' || '--arch arm64' }}"
+          ./build.sh $ARCH mpv 2>&1 | tee /tmp/mpv.log | tail -80
+
+      - name: 检查产物
+        run: |
+          set -euo pipefail
+          echo "=== 查找 libmpv.so ==="
+          find build-repo -name 'libmpv*' -o -name '*.xcframework' 2>/dev/null | head -20
+          echo ""
+          echo "=== 检查 libmpv 是否链接了 libplacebo 符号 ==="
+          SO=$(find build-repo -name 'libmpv.so' | head -1)
+          if [ -n "$SO" ]; then
+            SIZE=$(stat -c%s "$SO")
+            echo "libmpv.so 大小: $((SIZE/1048576)) MB"
+            # 用 readelf 查符号/依赖
+            readelf -d "$SO" 2>/dev/null | head -20 || true
+            echo "--- 是否含 placebo 符号 ---"
+            (nm -D "$SO" 2>/dev/null | grep -ci placebo) || echo "0"
+            echo "--- 是否含 vk (vulkan) 符号 ---"
+            (nm -D "$SO" 2>/dev/null | grep -ci 'vk[A-Z]') || echo "0"
+          else
+            echo "❌ 没有产出 libmpv.so"
+          fi
+
+      - name: 上传日志（失败分析用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            /tmp/placebo.log
+            /tmp/mpv.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 结论
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "================================"
+          echo "libplacebo 构建: ${{ steps.placebo.outcome }}"
+          echo "mpv 构建:       ${{ steps.mpv.outcome }}"
+          echo "================================"
+          if [ "${{ steps.mpv.outcome }}" == "success" ]; then
+            echo "✅ 路线 A 可行：libmpv 能在 libplacebo 下编出来"
+          else
+            echo "❌ 路线 A 受阻：mpv 构建失败，见日志 artifact"
+          fi
