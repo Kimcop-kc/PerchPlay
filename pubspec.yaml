@@ -1,5 +1,5 @@
 name: perchplay
-description: PerchPlay �?全功能本地视频播放器，玻璃拟�?UI�?
+description: PerchPlay — 全功能本地视频播放器，玻璃拟态 UI。
 publish_to: 'none'
 version: 1.1.5+115
 homepage: https://github.com/Kimcop-kc/PerchPlay
@@ -15,30 +15,30 @@ dependencies:
   # 播放引擎
   # media_kit 本体是纯 Dart 封装
   media_kit: 1.2.6
-  # media_kit_video 2.0.1：官方已�?compileSdk 36 + AGP 8.13，移�?volume_controller 旧依�?
+  # media_kit_video 2.0.1：官方已升 compileSdk 36 + AGP 8.13，移除 volume_controller 旧依赖
   media_kit_video: 2.0.1
   media_kit_libs_video: 1.0.0
-  # 1.3.8：compileSdk 36 + AGP 8.13；构建时�?GitHub 下载 libmpv jar（需走代理）
+  # 1.3.8：compileSdk 36 + AGP 8.13；构建时从 GitHub 下载 libmpv jar（需走代理）
   media_kit_libs_android_video: 1.3.8
 
   # Windows 桌面播放
   media_kit_libs_windows_video: 1.0.9
 
-  # 状态管�?
+  # 状态管理
   flutter_riverpod: ^2.5.1
   riverpod_annotation: ^2.3.5
 
   # 路由
   go_router: ^14.8.0
 
-  # 本地存储（升 Flutter 3.47 后旧版用 v1 embedding，需升到 v2 embedding 版本�?
+  # 本地存储（升 Flutter 3.47 后旧版用 v1 embedding，需升到 v2 embedding 版本）
   sqflite: ^2.4.0
   shared_preferences: ^2.5.0
   path_provider: ^2.1.5
-  # 应用内更新：从系统读真实版本�?版本代码（避免手动同步硬编码常量�?
-  # �?10.2.2：file_picker 13.x 需�?win32 ^6，�?package_info_plus 8.x �?win32 <6
+  # 应用内更新：从系统读真实版本号/版本代码（避免手动同步硬编码常量）
+  # 锁 10.2.2：file_picker 13.x 需要 win32 ^6，而 package_info_plus 8.x 限 win32 <6
   package_info_plus: 10.2.2
-  # 升级 Flutter 3.47 �?flutter_test 要求 path ^1.9.1（原 1.9.0 版本解析冲突�?
+  # 升级 Flutter 3.47 后 flutter_test 要求 path ^1.9.1（原 1.9.0 版本解析冲突）
   path: ^1.9.1
 
   # 权限
@@ -47,12 +47,12 @@ dependencies:
   # 系统亮度控制（升新版支持 Flutter 3.47 编译链）
   screen_brightness: ^2.0.0
 
-  # 视频缩略�?
+  # 视频缩略图
   flutter_video_thumbnail_plus: ^1.0.6
 
-  # iOS 本地文件访问�?
-  # - file_picker：从系统「文件」App 导入视频（iOS UIDocumentPicker�?
-  # - photo_manager：扫描照片库视频（iOS PHPhotoLibrary�?
+  # iOS 本地文件访问：
+  # - file_picker：从系统「文件」App 导入视频（iOS UIDocumentPicker）
+  # - photo_manager：扫描照片库视频（iOS PHPhotoLibrary）
   file_picker: ^13.1.0
   photo_manager: ^3.12.0
 
@@ -60,7 +60,7 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.5.1
   crypto: ^3.0.3
-  # 注：�?SDK 时代�?collection 1.18.0，升�?Flutter 3.47 后放开�?caret �?pub 解析
+  # 注：旧 SDK 时代锁 collection 1.18.0，升级 Flutter 3.47 后放开为 caret 由 pub 解析
   collection: ^1.18.0
   # TMDB 刮削 & 海报缓存
   http: ^1.2.0
@@ -76,17 +76,17 @@ dev_dependencies:
   flutter_lints: 4.0.0
 
 # flutter_inappwebview_android 1.1.3 用了 AGP 9 已移除的
-# getDefaultProguardFile('proguard-android.txt')，本�?fork 改成 optimize 版本�?
+# getDefaultProguardFile('proguard-android.txt')，本地 fork 改成 optimize 版本。
 dependency_overrides:
   flutter_inappwebview_android:
     path: local_packages/flutter_inappwebview_android
-  # shared_preferences_android 2.4+ �?Pigeon coroutine API，部�?Android 设备
-  # 运行�?NoSuchMethodError: SharedPreferencesApiRegistrar.getAll(Continuation)
+  # shared_preferences_android 2.4+ 用 Pigeon coroutine API，部分 Android 设备
+  # 运行时 NoSuchMethodError: SharedPreferencesApiRegistrar.getAll(Continuation)
   shared_preferences_android: 2.3.2
 
-# dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库�?
-# 国内网络 / CI 环境可能拉不动，所以把 arm64 �?.so 放进仓库�?
-# 让它优先用本地文件（SHA 与包内清单一致：d9af2446…）�?
+# dart_smb2 的构建钩子默认从 GitHub Release 下载 libsmb2 预编译库。
+# 国内网络 / CI 环境可能拉不动，所以把 arm64 的 .so 放进仓库，
+# 让它优先用本地文件（SHA 与包内清单一致：d9af2446…）。
 hooks:
   user_defines:
     dart_smb2:
