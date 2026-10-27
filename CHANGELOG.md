@@ -1,5 +1,17 @@
 # 变更日志
 
+## [1.1.5] — 2026-10-27
+
+### 退出播放页进度丢失（修复）
+
+- `dispose()` 里用 `ref.read(...)` 触发 `Cannot use "ref" after the widget was
+  disposed`，进度没写库
+- 改为 `initState` 缓存 notifier 引用，`dispose` 用缓存
+
+### 投屏后本地仍在播（修复）
+
+- 投屏成功后自动暂停本地播放，避免手机与电视双重出声
+
 ## [1.1.4] — 2026-10-27
 
 ### NAS：WebDAV 目录/视频点不开（重要修复）

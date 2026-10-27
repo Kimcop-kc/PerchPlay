@@ -1,7 +1,41 @@
-# PerchPlay v1.1.4 更新说明
+# PerchPlay v1.1.5 更新说明
+
+> 本版修复 **退出播放页进度丢失** 与 **投屏后本地仍在出声** 两个问题。
+> 下方保留 v1.1.4 / v1.1.3 / v1.1.2 / v1.1.1 的完整改动记录。
+
+---
+
+## 本版（v1.1.5）改动
+
+### 一、退出播放页后播放进度丢失（修复）
+
+**现象**：看完视频退出播放页，再进来续播位置不对；诊断日志里能看到：
+
+```
+[Player] dispose 保存进度失败: Bad state: Cannot use "ref" after the widget was disposed.
+```
+
+**根因**：`dispose()` 里调 `ref.read(playerProvider.notifier).saveProgress()`，
+但 Riverpod 在 `dispose` 阶段 `ref` 已经失效，异常被 `catch` 吞掉 ——
+**进度根本没写进数据库**。
+
+**修复**：在 `initState` 就把 `PlayerNotifier` 与播放版本号的 notifier 引用
+缓存下来，`dispose` 直接用缓存引用，不再碰 `ref`。
+
+### 二、投屏后手机和电视同时出声（修复）
+
+**现象**：投屏成功后，手机扬声器还在放，电视也在放，两条进度各自走。
+
+**根因**：`_castCurrentTo` 调完 `castLocalFile` 就结束了，
+**没有暂停本地播放**。
+
+**修复**：投屏成功后，若本地正在播放则自动暂停。
+
+---
+
+## 历史版本改动（v1.1.4）
 
 > 本版修复 **NAS / 网盘** 两类问题：WebDAV 目录点不开、网盘没有外挂字幕。
-> 下方保留 v1.1.3 / v1.1.2 / v1.1.1 的完整改动记录。
 
 ---
 
