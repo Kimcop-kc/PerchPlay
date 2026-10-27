@@ -69,8 +69,18 @@ jobs:
           ln -sfn "${ANDROID_HOME}" ./sdk/android-sdk-linux
           ls -la sdk/
           echo "ANDROID_HOME=${ANDROID_HOME}"
-          # NDK 位置
+          echo "=== 可用 NDK ==="
           ls "${ANDROID_HOME}/ndk" || true
+
+      - name: 对齐 NDK 版本（官方硬编码 25.2，预装只有 27+）
+        run: |
+          set -euo pipefail
+          # patch 脚本 1e) 会读 ANDROID_HOME 探测实际 NDK 版本并改写 v_ndk，
+          # 但上一步才建好软链，patch 在那之前跑过。这里再跑一次，
+          # 此时 ANDROID_HOME 已就绪。
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools" 2>&1 | grep -E '1e\)|v_ndk|NDK' || true
+          echo "--- 最终 v_ndk ---"
+          grep '^v_ndk=' build-repo/buildscripts/include/depinfo.sh
 
       - name: 只下载依赖源码（跳过 SDK/NDK 下载）
         working-directory: ./build-repo/buildscripts

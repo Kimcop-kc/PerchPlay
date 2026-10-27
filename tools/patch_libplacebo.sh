@@ -24,6 +24,9 @@ TOOLS_DIR="${2:?需要本仓库 tools 目录路径}"
 BS="$BUILD_REPO/buildscripts"
 [ -d "$BS" ] || { echo "❌ 找不到 $BS"; exit 1; }
 
+DEP="$BS/include/depinfo.sh"
+DLS="$BS/include/download-deps.sh"
+MPVSH="$BS/scripts/mpv.sh"
 LP_VERSION="6.338.2"
 
 echo "=== 1) 复制 libplacebo 构建脚本 ==="
@@ -84,8 +87,34 @@ for f in "$BS"/scripts/*.sh; do
   fi
 done
 
+echo "=== 1e) 对齐 NDK 版本（官方硬编码 25.2，预装环境只有 27+）==="
+# 官方 build.yaml 用软链接的方式复用 Actions 预装 SDK，但 depinfo.sh 里
+# 硬编码 v_ndk=25.2.9519653，而 ubuntu-22.04 runner 预装的 NDK 是
+# 27.3.13750724 / 29.0 / 30.0 —— 没有 25.2。
+# path.sh 会拼出 ndk/25.2.9519653/toolchains/... → 不存在 →
+#   make: aarch64-linux-android21-clang: No such file or directory
+# 所以把 v_ndk 改成预装里实际存在的版本。
+# 优先 27.3（与 25 最接近、且 ndk-build 兼容 shaderc 的路径结构）。
+NDK_DIR=""
+if [ -n "${ANDROID_HOME:-}" ] && [ -d "${ANDROID_HOME}/ndk" ]; then
+  for pref in 27.3.13750724 27.2.12479018 26.3.11579264 26.1.10909125 25.2.9519653; do
+    if [ -d "${ANDROID_HOME}/ndk/${pref}" ]; then NDK_DIR="$pref"; break; fi
+  done
+  # 都对不上就取目录里任意一个
+  if [ -z "$NDK_DIR" ]; then
+    NDK_DIR=$(ls "${ANDROID_HOME}/ndk" 2>/dev/null | head -1)
+  fi
+fi
+
+if [ -n "$NDK_DIR" ]; then
+  sed -i "s/^v_ndk=.*/v_ndk=${NDK_DIR}/" "$DEP"
+  echo "  v_ndk -> ${NDK_DIR}"
+else
+  echo "  ⚠️ 未探测到 NDK，保留原值（可能失败）"
+fi
+grep -n '^v_ndk=' "$DEP" || true
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
-DEP="$BS/include/depinfo.sh"
 if ! grep -q '^v_libplacebo=' "$DEP"; then
   sed -i "/^v_libvpx=/a v_libplacebo=${LP_VERSION}" "$DEP"
 fi
@@ -98,7 +127,6 @@ sed -i 's/^\(\s*\)dep_mpv=(ffmpeg libass)$/\1dep_mpv=(ffmpeg libass libplacebo)/
 sed -i 's/^\(\s*\)dep_mpv=(ffmpeg libass fftools_ffi)$/\1dep_mpv=(ffmpeg libass fftools_ffi libplacebo)/' "$DEP"
 
 echo "=== 3) download-deps.sh：加 libplacebo 源码下载 ==="
-DLS="$BS/include/download-deps.sh"
 if ! grep -q 'libplacebo' "$DLS"; then
   # 插在 shaderc 之前（保持逻辑顺序：shaderc 是 libplacebo 的依赖）
   python3 - "$DLS" "$LP_VERSION" <<'PYEOF'
@@ -121,7 +149,6 @@ PYEOF
 fi
 
 echo "=== 4) mpv.sh：开启 libplacebo / vulkan / shaderc / plain-gl ==="
-MPVSH="$BS/scripts/mpv.sh"
 sed -i 's/-Dvulkan=disabled/-Dvulkan=enabled/' "$MPVSH"
 sed -i 's/-Dlibplacebo=disabled/-Dlibplacebo=enabled/' "$MPVSH"
 # shaderc + spirv-cross：libplacebo 运行时编译 GLSL 需要
