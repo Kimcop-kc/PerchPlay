@@ -222,6 +222,34 @@ PYEOF
 fi
 grep -n 'PKG_CONFIG' "$PATHSH" || true
 
+echo "=== 1h) 生成 vulkan.pc（NDK 只带 header，不带 pkg-config 文件）==="
+# mpv 的 meson.build:1269 是：
+#   vulkan = dependency('vulkan', version: '>= 1.1.70', required: vulkan_opt)
+# 而 Android NDK 只提供 vulkan/vulkan.h（在 sysroot 里），**没有 vulkan.pc**，
+# 于是报：
+#   ld.lld: error: unable to find library -lvulkan
+#   ERROR: Dependency "vulkan" not found (tried pkg-config and system)
+#
+# Android 的 libvulkan.so 是系统库（由设备/模拟器提供），链接时用
+# -lvulkan 由 NDK 的 toolchain 解析到 sysroot 的存根库。所以这里生成
+# 一个最小可用的 vulkan.pc，只声明 Cflags 和 Libs。
+for DESTDIR3 in "$prefix_dir/lib/pkgconfig" "$prefix_dir/usr/local/lib/pkgconfig"; do
+  mkdir -p "$DESTDIR3"
+  cat >"$DESTDIR3/vulkan.pc" <<VKEOF
+prefix=/usr/local
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+
+Name: vulkan
+Description: Vulkan (Android NDK built-in loader stub)
+Version: 1.3.268
+Libs: -lvulkan
+Cflags:
+VKEOF
+done
+echo "  已生成 vulkan.pc（lib + usr/local/lib 两份）"
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 if ! grep -q '^v_libplacebo=' "$DEP"; then
   sed -i "/^v_libvpx=/a v_libplacebo=${LP_VERSION}" "$DEP"
