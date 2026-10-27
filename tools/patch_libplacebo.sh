@@ -259,9 +259,17 @@ fi
 echo "=== 4) mpv.sh：开启 libplacebo / vulkan / shaderc / plain-gl ==="
 sed -i 's/-Dvulkan=disabled/-Dvulkan=enabled/' "$MPVSH"
 sed -i 's/-Dlibplacebo=disabled/-Dlibplacebo=enabled/' "$MPVSH"
-# shaderc + spirv-cross：libplacebo 运行时编译 GLSL 需要
+# 先清掉可能存在的 spirv-cross=enabled（早期版本误加的）。
+#
+# media-kit 的依赖树里**没有** spirv-cross 这个包，一旦开启，mpv 的
+#   meson.build:978  Dependency('spirv-cross-c-shared')
+# 就会硬失败。而 libplacebo 用 shaderc 就能把 GLSL 编成 SPIR-V，
+# 完全不需要 spirv-cross。
+sed -i 's/^[[:space:]]*-Dspirv-cross=enabled[[:space:]]*\\\{0,1\}$//' "$MPVSH"
+sed -i 's/[[:space:]]*-Dspirv-cross=enabled//g' "$MPVSH"
+# shaderc：libplacebo 运行时把 GLSL 编成 SPIR-V（hdr-toys 需要）
 if ! grep -q 'Dshaderc=enabled' "$MPVSH"; then
-  sed -i 's/-Dvulkan=enabled/-Dvulkan=enabled \\\n\t-Dshaderc=enabled \\\n\t-Dspirv-cross=enabled/' "$MPVSH"
+  sed -i 's/-Dvulkan=enabled/-Dvulkan=enabled \\\n\t-Dshaderc=enabled/' "$MPVSH"
 fi
 # plain-gl：libmpv（非 cplayer）场景下 gpu-next 需要它才能建上下文
 if ! grep -q 'Dplain-gl=enabled' "$MPVSH"; then
