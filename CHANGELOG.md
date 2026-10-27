@@ -1,5 +1,18 @@
 # 变更日志
 
+## [1.1.6] — 2026-10-27
+
+### 4K / 8K 视频卡顿（性能优化）
+
+- 渲染缩放：4K scale=0.5、8K scale=0.35，填充率降到 1/4 ~ 1/8；
+  缩小重采样改 bilinear、关 correct-downscaling
+- 硬解后端分平台：Android `mediacodec,mediacodec-copy`（修复 10bit/4K HDR
+  退回软解）、iOS `videotoolbox`、桌面 `auto-safe`
+- 解码线程调整：硬解 6 / 软解 8；hwdec-extra-frames 6→8
+- 高分辨率本地源 demuxer 缓冲：192MB(4K) / 256MB(8K)，预读 2s→5s
+- 修复 `width` 异步到达导致优化不生效：在 width 监听里重新触发，
+  并用签名去重
+
 ## [1.1.5] — 2026-10-27
 
 ### 退出播放页进度丢失（修复）
