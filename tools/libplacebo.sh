@@ -42,39 +42,23 @@ cd _build$ndk_suffix
 # 0.37 时代，用 v6.338.2 或 v7 早期都行，先用 v6.338.2 保守）。
 # ─────────────────────────────────────────────────────────────────────
 echo "=== 前置检查：shaderc 产物是否就位 ==="
-# libplacebo 的 src/glsl/meson.build 用 Dependency('shaderc') 找 shaderc，
-# 需要两样东西同时在：
+# libplacebo 的 src/glsl/meson.build 用 Dependency('shaderc')，实际需要三样：
 #   1. $prefix_dir/usr/local/lib/libshaderc_combined.a   （静态库）
 #   2. $prefix_dir/usr/local/lib/pkgconfig/shaderc.pc    （pkg-config 描述）
-# 缺任一个都会报 Dependency "shaderc" not found。
+#   3. $prefix_dir/usr/local/include/shaderc/shaderc.h   （头文件）
+# 缺 3 会报 'shaderc/shaderc.h' file not found。
 PLIB="$prefix_dir/usr/local/lib"
-for f in "$PLIB/libshaderc_combined.a" "$PLIB/pkgconfig/shaderc.pc" \
-         "$PLIB/pkgconfig/shaderc_combined.pc"; do
+for f in "$PLIB/libshaderc_combined.a" \
+         "$PLIB/pkgconfig/shaderc.pc" \
+         "$prefix_dir/usr/local/include/shaderc/shaderc.h"; do
 	if [ -f "$f" ]; then
-		echo "  ✓ $(basename "$f")  ($(du -h "$f" | cut -f1))"
+		echo "  ✓ $f"
 	else
 		echo "  ✗ 缺失: $f"
 	fi
 done
-# 如果只缺 shaderc.pc，这里补一份（双保险，防 patch 顺序问题）
-#
-# prefix 必须写 /usr/local 这种相对根路径：pkg-config 会与
-# PKG_CONFIG_SYSROOT_DIR 拼接，写绝对路径会拼成重复的两段。
-if [ ! -f "$PLIB/pkgconfig/shaderc.pc" ] && [ -f "$PLIB/libshaderc_combined.a" ]; then
-	echo "  补生成 shaderc.pc …"
-	cat >"$PLIB/pkgconfig/shaderc.pc" <<SHADERCEOF
-prefix=/usr/local
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
-
-Name: shaderc
-Description: shaderc (NDK bundled, combined static)
-Version: 2022.1
-Libs: -L\${libdir} -lshaderc_combined -lc++
-Cflags: -I\${includedir}
-SHADERCEOF
-fi
+echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
+echo "  PKG_CONFIG_SYSROOT_DIR=$PKG_CONFIG_SYSROOT_DIR"
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 
 meson setup .. \

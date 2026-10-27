@@ -48,33 +48,39 @@ if [ -f "$SHADERC" ]; then
 import sys
 p = sys.argv[1]
 src = open(p, encoding='utf-8').read()
-changed = []
+MARK = '# --- PATCHED-BY-PERCHPLAY: install shaderc to prefix ---'
 
-# (1) 补 mkdir -p
-if 'mkdir -p "$prefix_dir/lib"' not in src:
-    anchor = 'cp -r include/* "$prefix_dir/include"'
-    if anchor in src:
-        src = src.replace(anchor, 'mkdir -p "$prefix_dir/lib" "$prefix_dir/include"\n' + anchor, 1)
-    else:
-        src = src.replace('cd "$builddir"', 'cd "$builddir"\nmkdir -p "$prefix_dir/lib"', 1)
-    changed.append('mkdir -p')
-
-# (2) 补 shaderc.pc
-# 官方 shaderc.sh 生成的是 **shaderc_combined.pc**，但 libplacebo 的
-#   src/glsl/meson.build: Dependency('shaderc')
-# 只认 **shaderc.pc**，于是报
-#   ERROR: Dependency "shaderc" not found (tried pkg-config ...)
-if 'shaderc.pc' not in src:
+if MARK not in src:
+    # 官方 shaderc.sh 的问题（两处）：
+    #  1) 只把 .a 拷到 $prefix_dir/lib，但 $prefix_dir/lib 目录可能不存在
+    #     → cp: cannot create ... No such file or directory
+    #  2) 头部头文件只拷到 deps/shaderc/include（构建目录内），
+    #     **从未**装到 $prefix_dir/include
+    #     → libplacebo 编译 spirv_shaderc.c 时报
+    #        'shaderc/shaderc.h' file not found
+    #  3) 只生成 shaderc_combined.pc，而 libplacebo 的
+    #     Dependency('shaderc') 只认 shaderc.pc
+    #
+    # 与其分别打补丁，不如在脚本**末尾**统一做一次完整安装（幂等、清晰）。
     extra = '''
-# 额外生成 shaderc.pc（libplacebo 的 Dependency('shaderc') 只认这个名字）
-#
-# ⚠ 关键：prefix 必须写 **/usr/local 这种相对根路径**，不能写绝对路径。
-# pkg-config 会把它和 PKG_CONFIG_SYSROOT_DIR 拼起来：
-#   SYSROOT=.../prefix/arm64-v8a  +  prefix=/usr/local
-#   → .../prefix/arm64-v8a/usr/local   ✅ 正确
-# 如果 prefix 写成绝对路径，就会拼成
-#   .../prefix/arm64-v8a/.../prefix/arm64-v8a/usr/local   ❌ 重复
-# 上一轮报的 'shaderc/shaderc.h' file not found 就是这个原因。
+# --- PATCHED-BY-PERCHPLAY: install shaderc to prefix ---
+# 统一把 shaderc 的库 + 头文件 + pkgconfig 装到 prefix，
+# 修复官方脚本「头文件只放构建目录、pc 名字不匹配、lib 目录可能不存在」三个问题。
+SHADERC_INC="$builddir/include"
+[ -d "$SHADERC_INC" ] || SHADERC_INC="$builddir/libs/../include"
+mkdir -p "$prefix_dir/lib/pkgconfig" "$prefix_dir/include"
+if [ -d "$SHADERC_INC/shaderc" ]; then
+	cp -rf "$SHADERC_INC/shaderc" "$prefix_dir/include/"
+	echo "  [patch] 已安装 shaderc 头文件到 $prefix_dir/include/shaderc"
+else
+	echo "  [patch] WARN: 找不到 shaderc 头文件目录 $SHADERC_INC/shaderc"
+	ls -la "$builddir/include" 2>/dev/null || true
+fi
+[ -f "$prefix_dir/lib/libshaderc_combined.a" ] || \\
+	cp -f "$builddir"/libs/*/*/libshaderc.a "$prefix_dir/lib/libshaderc_combined.a" 2>/dev/null || true
+
+# prefix 必须写 /usr/local（相对根路径）：pkg-config 会与
+# PKG_CONFIG_SYSROOT_DIR 拼接，写绝对路径会拼成重复的两段。
 cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<SHADERCEOF
 prefix=/usr/local
 exec_prefix=\\${prefix}
@@ -87,15 +93,15 @@ Version: 2022.1
 Libs: -L\\${libdir} -lshaderc_combined -lc++
 Cflags: -I\\${includedir}
 SHADERCEOF
+echo "  [patch] 已生成 shaderc.pc"
 '''
     src = src.rstrip() + '\n' + extra
-    changed.append('shaderc.pc')
-
-open(p, 'w', encoding='utf-8').write(src)
-print('  shaderc.sh 补充:', ', '.join(changed) if changed else '无需改动')
+    open(p, 'w', encoding='utf-8').write(src)
+    print('  shaderc.sh 已追加完整安装逻辑')
+else:
+    print('  shaderc.sh 已修补过，跳过')
 PYEOF
 fi
-grep -n 'mkdir -p "\$prefix_dir/lib"' "$SHADERC" || echo "  (shaderc.sh 无需修补或已修补)"
 
 echo "=== 1c) 修复 autoconf 脚本的交叉编译三元组 bug ==="
 # 官方 libxml2.sh 用 --host=$ndk_triple，而 build.sh 里：
