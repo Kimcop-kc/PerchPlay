@@ -1,5 +1,22 @@
 # 变更日志
 
+## [1.1.4] — 2026-10-27
+
+### NAS：WebDAV 目录/视频点不开（重要修复）
+
+- WebDAV multistatus 解析正则硬编码 `<D:xxx>` 前缀，返回小写 `d:` 或无前缀的
+  服务器（群晖等）会解析失败：`isDirectory` 恒 false、`displayname` 取不到
+- 改为「任意命名空间前缀 + 不区分大小写」，`collection` 兼容自闭合与非自闭合
+- 新增 12 项回归测试覆盖各命名空间写法
+- iPad「播放不了 + NAS 点不开」同一根因
+
+### 网盘：自动加载同目录外挂字幕（新功能）
+
+- 新增 `CloudSubtitleService`：`listDirectory` 列目录 → 匹配同名字幕 →
+  `getDownloadUrl` 下载到本地缓存 → 自动挂载
+- 播放时传网盘账号/目录上下文（`cloudAccountId`/`cloudDirId`/`cloudVideoName`）
+- 后台执行不阻塞开播；已有字幕不覆盖
+
 ## [1.1.3] — 2026-10-25
 
 ### iOS：DTS / 杜比全景声音轨解码（重要修复）
