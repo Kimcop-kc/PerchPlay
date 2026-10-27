@@ -67,13 +67,21 @@ if 'mkdir -p "$prefix_dir/lib"' not in src:
 if 'shaderc.pc' not in src:
     extra = '''
 # 额外生成 shaderc.pc（libplacebo 的 Dependency('shaderc') 只认这个名字）
-cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<"END"
+# 注意：必须用 pkg-config 的 prefix 变量，@prefix@ 由 pkg-config 自己展开；
+# 直接写 ${libdir} 在这里是**未定义**的空值，会让 -L 变成 -L 空，
+# 最终 ld 报 unable to find library -lshaderc_combined。
+cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<SHADERCEOF
+prefix=$prefix_dir
+exec_prefix=\\${prefix}
+libdir=\\${prefix}/usr/local/lib
+includedir=\\${prefix}/usr/local/include
+
 Name: shaderc
 Description: shaderc (NDK bundled, combined static)
 Version: 2022.1
-Libs: -L${libdir} -lshaderc_combined -llibc++
-Cflags: -I${includedir}
-END
+Libs: -L\\${libdir} -lshaderc_combined -lc++
+Cflags: -I\\${includedir}
+SHADERCEOF
 '''
     src = src.rstrip() + '\n' + extra
     changed.append('shaderc.pc')
