@@ -57,6 +57,33 @@ PYEOF
 fi
 grep -n 'mkdir -p "\$prefix_dir/lib"' "$SHADERC" || echo "  (shaderc.sh 无需修补或已修补)"
 
+echo "=== 1c) 修复 autoconf 脚本的交叉编译三元组 bug ==="
+# 官方 libxml2.sh 用 --host=$ndk_triple，而 build.sh 里：
+#   ndk_triple=aarch64-linux-android        （**没有** API level 后缀）
+#   cc_triple=aarch64-linux-android21       （有 API level，但它不是 export 的）
+# autoconf 靠三元组末尾的版本号识别交叉编译；缺了就报：
+#   configure: error: cannot run C compiled programs.
+#   If you meant to cross compile, use `--host'.
+# 结果 ffmpeg 找不到 dav1d/libxml2，整个构建中断。
+#
+# 注意 cc_triple 是 build.sh 里的 local 变量，子脚本拿不到；
+# 但 build.sh 导出了 CC=$cc_triple-clang，所以要的答案在 $CC 里：
+#   aarch64-linux-android21-clang  → 去掉 -clang 就是完整三元组。
+XML2="$BS/scripts/libxml2.sh"
+if [ -f "$XML2" ] && grep -q -- '--host=\$ndk_triple' "$XML2"; then
+  sed -i 's/--host=\$ndk_triple/--host=${CC%-clang}/' "$XML2"
+  echo "  已改为 --host=\${CC%-clang}"
+fi
+grep -n 'host=' "$XML2" || true
+
+echo "=== 1d) 同理修正其它用 --host=\$ndk_triple 的脚本 ==="
+for f in "$BS"/scripts/*.sh; do
+  if grep -q -- '--host=\$ndk_triple' "$f" 2>/dev/null; then
+    sed -i 's/--host=\$ndk_triple/--host=${CC%-clang}/' "$f"
+    echo "  修正: $(basename "$f")"
+  fi
+done
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 DEP="$BS/include/depinfo.sh"
 if ! grep -q '^v_libplacebo=' "$DEP"; then
