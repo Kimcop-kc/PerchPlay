@@ -61,8 +61,19 @@ echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 echo "  PKG_CONFIG_SYSROOT_DIR=$PKG_CONFIG_SYSROOT_DIR"
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 
+# ⚠ 不要传 --prefix=$prefix_dir！
+#
+# media-kit 的约定（见 dav1d.sh 等）是：
+#   meson setup …（**不传 --prefix**，用默认 /usr/local）
+#   DESTDIR="$prefix_dir" ninja install
+# 这样最终装到 $prefix_dir/usr/local/{lib,include}，
+# 正好配合 setup_prefix 建的 usr/local 软链。
+#
+# 之前我传了 --prefix="$prefix_dir" 又叠 DESTDIR，路径变成
+#   $prefix_dir$prefix_dir/usr/local/...
+# 于是 libplacebo.pc 落到了错误位置，mpv 的
+#   Dependency('libplacebo') 报 not found。
 meson setup .. \
-	--prefix="$prefix_dir" \
 	--default-library static \
 	--buildtype release \
 	--cross-file "$prefix_dir"/crossfile.txt \
@@ -78,6 +89,22 @@ meson setup .. \
 
 ninja -j$cores
 DESTDIR="$prefix_dir" ninja install
+
+# 安装后校验 libplacebo.pc 是否落在正确位置。
+# 由于 setup_prefix 建了 usr/local -> . 软链，两种路径都可能出现，
+# 这里都打印出来，方便排查 mpv 的 Dependency('libplacebo')。
+echo "=== libplacebo 安装结果 ==="
+for f in "$prefix_dir/usr/local/lib/pkgconfig/libplacebo.pc" \
+         "$prefix_dir/lib/pkgconfig/libplacebo.pc" \
+         "$prefix_dir/usr/local/lib/libplacebo.a" \
+         "$prefix_dir/lib/libplacebo.a"; do
+	if [ -f "$f" ]; then
+		echo "  ✓ $f"
+		grep -i 'pl_has_vulkan' "$f" 2>/dev/null || true
+	else
+		echo "  ✗ $f"
+	fi
+done
 
 # ── 校验 pl_has_vulkan 是否真的写进了 pkgconfig ──
 # mpv 的 meson 用 libplacebo.get_variable('pl_has_vulkan') 判断能不能开
