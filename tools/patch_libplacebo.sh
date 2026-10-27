@@ -43,20 +43,45 @@ echo "=== 1b) 修复 shaderc.sh 的目录缺失 bug ==="
 # 这是 media-kit 构建脚本的既有缺陷（平时没人单编 shaderc，所以没暴露）。
 # 在脚本开头补一句 mkdir -p 即可。
 SHADERC="$BS/scripts/shaderc.sh"
-if [ -f "$SHADERC" ] && ! grep -q 'mkdir -p "\$prefix_dir/lib"' "$SHADERC"; then
+if [ -f "$SHADERC" ]; then
   python3 - "$SHADERC" <<'PYEOF'
 import sys
 p = sys.argv[1]
 src = open(p, encoding='utf-8').read()
-# 在第一个 cp/install 之前插入 mkdir
-anchor = 'cp -r include/* "$prefix_dir/include"'
-if anchor in src:
-    src = src.replace(anchor, 'mkdir -p "$prefix_dir/lib" "$prefix_dir/include"\n' + anchor, 1)
-else:
-    src = src.replace('cd "$builddir"', 'cd "$builddir"\nmkdir -p "$prefix_dir/lib"', 1)
+changed = []
+
+# (1) 补 mkdir -p
+if 'mkdir -p "$prefix_dir/lib"' not in src:
+    anchor = 'cp -r include/* "$prefix_dir/include"'
+    if anchor in src:
+        src = src.replace(anchor, 'mkdir -p "$prefix_dir/lib" "$prefix_dir/include"\n' + anchor, 1)
+    else:
+        src = src.replace('cd "$builddir"', 'cd "$builddir"\nmkdir -p "$prefix_dir/lib"', 1)
+    changed.append('mkdir -p')
+
+# (2) 补 shaderc.pc
+# 官方 shaderc.sh 生成的是 **shaderc_combined.pc**，但 libplacebo 的
+#   src/glsl/meson.build: Dependency('shaderc')
+# 只认 **shaderc.pc**，于是报
+#   ERROR: Dependency "shaderc" not found (tried pkg-config ...)
+if 'shaderc.pc' not in src:
+    extra = '''
+# 额外生成 shaderc.pc（libplacebo 的 Dependency('shaderc') 只认这个名字）
+cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<"END"
+Name: shaderc
+Description: shaderc (NDK bundled, combined static)
+Version: 2022.1
+Libs: -L${libdir} -lshaderc_combined -llibc++
+Cflags: -I${includedir}
+END
+'''
+    src = src.rstrip() + '\n' + extra
+    changed.append('shaderc.pc')
+
 open(p, 'w', encoding='utf-8').write(src)
-print('  已在 shaderc.sh 补 mkdir -p')
+print('  shaderc.sh 补充:', ', '.join(changed) if changed else '无需改动')
 PYEOF
+fi
 fi
 grep -n 'mkdir -p "\$prefix_dir/lib"' "$SHADERC" || echo "  (shaderc.sh 无需修补或已修补)"
 
