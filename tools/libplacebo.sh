@@ -73,27 +73,42 @@ echo "  PKG_CONFIG_SYSROOT_DIR=$PKG_CONFIG_SYSROOT_DIR"
 # 搜索路径找不到，会报：
 #   ld.lld: error: unable to find library -lvulkan
 #
-# 解决：探测出该目录的**绝对路径**，直接写进 vulkan.pc 的 Libs 里的 -L，
-# 这样 mpv（另一个子进程）通过 pkg-config 也能拿到同一条 -L。
+# 解决：探测出该目录，把**去掉 sysroot 前缀后**的路径写进 vulkan.pc。
+#
+# ⚠ 关键理解 pkg-config 的 SYSROOT 行为：
+#   设了 PKG_CONFIG_SYSROOT_DIR 后，pkg-config 会**自动**给输出里的
+#   每个 -I / -L 路径前面插入 sysroot。
+#   所以 .pc 里应当写「相对 sysroot 根」的路径：
+#     Libs: -L/usr/lib/aarch64-linux-android/24 -lvulkan
+#   最终 pkg-config 输出：
+#     -L<sysroot>/usr/lib/aarch64-linux-android/24  ✅
+#
+#   之前写的是绝对路径 /home/runner/.../sysroot/usr/lib/...，
+#   pkg-config 又插一次 sysroot，拼成
+#     <sysroot>/home/runner/.../sysroot/usr/lib/...  ❌
+#   这就是 ld 一直报 "unable to find library -lvulkan" 的原因
+#   （和最早 shaderc 的坑完全同源）。
 echo "=== 定位 libvulkan.so ==="
-VK_LIBDIR=""
+VK_RELDIR=""
 TC_ROOT="$(cd "$(dirname "$(which "${CC:-cc}")")/.." && pwd)"
+SYSROOT="$TC_ROOT/sysroot"
 for API in 21 24 26 28 30 31 33 34; do
-	TRY="$TC_ROOT/sysroot/usr/lib/aarch64-linux-android/$API"
+	TRY="$SYSROOT/usr/lib/aarch64-linux-android/$API"
 	if [ -f "$TRY/libvulkan.so" ]; then
-		VK_LIBDIR="$TRY"
+		VK_RELDIR="/usr/lib/aarch64-linux-android/$API"
 		break
 	fi
 done
-# 兜底：在 sysroot 里全量找一个
-if [ -z "$VK_LIBDIR" ]; then
-	FOUND=$(find "$TC_ROOT/sysroot/usr/lib" -name 'libvulkan.so' 2>/dev/null | head -1)
-	[ -n "$FOUND" ] && VK_LIBDIR="$(dirname "$FOUND")"
+if [ -z "$VK_RELDIR" ]; then
+	FOUND=$(find "$SYSROOT/usr/lib" -name 'libvulkan.so' 2>/dev/null | head -1)
+	if [ -n "$FOUND" ]; then
+		VK_RELDIR="${FOUND#$SYSROOT}"   # 去掉 sysroot 前缀，留 /usr/lib/...
+	fi
 fi
-if [ -n "$VK_LIBDIR" ]; then
-	echo "  ✓ libvulkan.so 位于: $VK_LIBDIR"
+if [ -n "$VK_RELDIR" ]; then
+	echo "  ✓ libvulkan.so 相对 sysroot 的路径: $VK_RELDIR"
 else
-	echo "  ⚠ 未找到 libvulkan.so，Vulkan 可能链接失败"
+	echo "  ⚠ 未找到 libvulkan.so"
 fi
 
 echo "=== 生成 vulkan.pc ==="
@@ -108,15 +123,16 @@ for VKDIR in "$prefix_dir/usr/local/lib/pkgconfig" "$prefix_dir/lib/pkgconfig"; 
 		echo "Name: vulkan"
 		echo "Description: Vulkan (Android NDK loader stub)"
 		echo "Version: 1.3.268"
-		if [ -n "$VK_LIBDIR" ]; then
-			echo "Libs: -L$VK_LIBDIR -lvulkan"
+		if [ -n "$VK_RELDIR" ]; then
+			# 相对 sysroot 的绝对路径，由 pkg-config 自动补 SYSROOT 前缀
+			echo "Libs: -L$VK_RELDIR -lvulkan"
 		else
 			echo "Libs: -lvulkan"
 		fi
 		echo "Cflags:"
 	} >"$VKDIR/vulkan.pc"
 	echo "  ✓ $VKDIR/vulkan.pc"
-	cat "$VKDIR/vulkan.pc" | sed 's/^/      /'
+	sed 's/^/      /' "$VKDIR/vulkan.pc"
 done
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 
