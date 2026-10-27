@@ -108,9 +108,23 @@ jobs:
           cp flavors/full.sh scripts/ffmpeg.sh
           echo "full flavor 已就位"
 
-          ABI="${{ inputs.arch == 'armv7l' && 'armeabi-v7a' || 'arm64-v8a' }}"
-          mkdir -p "prefix/$ABI/lib/pkgconfig" "prefix/$ABI/include"
-          echo "已预建 prefix/$ABI/lib/pkgconfig"
+          # ⚠ 不要预建 prefix/<abi>/ 目录！
+          #
+          # build.sh 的 setup_prefix 逻辑是：
+          #   if [ ! -d "$prefix_dir" ]; then
+          #     mkdir -p "$prefix_dir"
+          #     ln -s . "$prefix_dir/usr"
+          #     ln -s . "$prefix_dir/local"
+          #   fi
+          # 只在 prefix_dir **不存在**时才建 usr/local 软链。
+          # 之前为了修 shaderc 的 lib 目录缺失，在这里预建了
+          # prefix/$ABI/lib/pkgconfig，导致 prefix_dir 已存在、
+          # setup_prefix 直接跳过 —— usr/local 软链永远建不出来，
+          # 于是所有 usr/local/lib、usr/local/include 路径全部失效
+          # （表现为 'shaderc/shaderc.h' file not found）。
+          #
+          # 正确做法：让 setup_prefix 自己建目录和软链，不要插手。
+          echo "prefix 交给 build.sh 的 setup_prefix 初始化（不预建）"
 
       - name: 构建（shaderc → libplacebo → 其余 → mpv）
         id: build

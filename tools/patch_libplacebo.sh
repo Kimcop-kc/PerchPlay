@@ -68,20 +68,34 @@ if MARK not in src:
 # 修复官方脚本「头文件只放构建目录、pc 名字不匹配、lib 目录可能不存在」三个问题。
 SHADERC_INC="$builddir/include"
 [ -d "$SHADERC_INC" ] || SHADERC_INC="$builddir/libs/../include"
-mkdir -p "$prefix_dir/lib/pkgconfig" "$prefix_dir/include"
-if [ -d "$SHADERC_INC/shaderc" ]; then
-	cp -rf "$SHADERC_INC/shaderc" "$prefix_dir/include/"
-	echo "  [patch] 已安装 shaderc 头文件到 $prefix_dir/include/shaderc"
+# 同时装到 prefix 根和 usr/local 两个位置：
+# build.sh 的 setup_prefix 会建 usr/local -> . 的软链做「扁平化」，
+# 但 shaderc 步骤执行时该软链不一定在（或 cp -rf 会解引用），
+# 前置检查/libplacebo 都按 usr/local 找，所以两边都放一份最保险。
+for DEST in "$prefix_dir/include" "$prefix_dir/usr/local/include"; do
+	mkdir -p "$DEST"
+	if [ -d "$SHADERC_INC/shaderc" ]; then
+		cp -rf "$SHADERC_INC/shaderc" "$DEST/" 2>/dev/null || true
+	fi
+done
+if [ -d "$prefix_dir/include/shaderc" ] || [ -d "$prefix_dir/usr/local/include/shaderc" ]; then
+	echo "  [patch] 已安装 shaderc 头文件"
 else
 	echo "  [patch] WARN: 找不到 shaderc 头文件目录 $SHADERC_INC/shaderc"
 	ls -la "$builddir/include" 2>/dev/null || true
+	ls -la "$builddir/libs/../include" 2>/dev/null || true
 fi
-[ -f "$prefix_dir/lib/libshaderc_combined.a" ] || \\
-	cp -f "$builddir"/libs/*/*/libshaderc.a "$prefix_dir/lib/libshaderc_combined.a" 2>/dev/null || true
 
-# prefix 必须写 /usr/local（相对根路径）：pkg-config 会与
-# PKG_CONFIG_SYSROOT_DIR 拼接，写绝对路径会拼成重复的两段。
-cat >"$prefix_dir"/lib/pkgconfig/shaderc.pc <<SHADERCEOF
+LIBSRC=$(ls "$builddir"/libs/*/*/libshaderc.a 2>/dev/null | head -1)
+for DESTDIR2 in "$prefix_dir/lib" "$prefix_dir/usr/local/lib"; do
+	mkdir -p "$DESTDIR2"
+	if [ -n "$LIBSRC" ]; then
+		cp -f "$LIBSRC" "$DESTDIR2/libshaderc_combined.a" 2>/dev/null || true
+	fi
+	# prefix 必须写 /usr/local（相对根路径）：pkg-config 会与
+	# PKG_CONFIG_SYSROOT_DIR 拼接，写绝对路径会拼成重复的两段。
+	mkdir -p "$DESTDIR2/pkgconfig"
+	cat >"$DESTDIR2/pkgconfig/shaderc.pc" <<SHADERCEOF
 prefix=/usr/local
 exec_prefix=\\${prefix}
 libdir=\\${prefix}/lib
@@ -93,7 +107,8 @@ Version: 2022.1
 Libs: -L\\${libdir} -lshaderc_combined -lc++
 Cflags: -I\\${includedir}
 SHADERCEOF
-echo "  [patch] 已生成 shaderc.pc"
+done
+echo "  [patch] 已生成 shaderc.pc（lib + usr/local/lib 两份）"
 '''
     src = src.rstrip() + '\n' + extra
     open(p, 'w', encoding='utf-8').write(src)
