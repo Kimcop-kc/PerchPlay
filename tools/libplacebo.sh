@@ -66,24 +66,57 @@ echo "  PKG_CONFIG_SYSROOT_DIR=$PKG_CONFIG_SYSROOT_DIR"
 # 缺了它 mpv 会报：
 #   ld.lld: error: unable to find library -lvulkan
 #   ERROR: Dependency "vulkan" not found (tried pkg-config and system)
-# Android 的 libvulkan.so 由系统提供，-lvulkan 由 NDK toolchain 解析到
-# sysroot 的存根库，所以这里只需补一个最小的 pkg-config 描述。
+# Android 的 libvulkan.so 由系统提供，但它只存在于 NDK sysroot 的
+# **API level 子目录**里，例如：
+#   sysroot/usr/lib/aarch64-linux-android/21/libvulkan.so
+# 而不在 sysroot/usr/lib/aarch64-linux-android/ 下。所以 -lvulkan 用默认
+# 搜索路径找不到，会报：
+#   ld.lld: error: unable to find library -lvulkan
+#
+# 解决：探测出该目录的**绝对路径**，直接写进 vulkan.pc 的 Libs 里的 -L，
+# 这样 mpv（另一个子进程）通过 pkg-config 也能拿到同一条 -L。
+echo "=== 定位 libvulkan.so ==="
+VK_LIBDIR=""
+TC_ROOT="$(cd "$(dirname "$(which "${CC:-cc}")")/.." && pwd)"
+for API in 21 24 26 28 30 31 33 34; do
+	TRY="$TC_ROOT/sysroot/usr/lib/aarch64-linux-android/$API"
+	if [ -f "$TRY/libvulkan.so" ]; then
+		VK_LIBDIR="$TRY"
+		break
+	fi
+done
+# 兜底：在 sysroot 里全量找一个
+if [ -z "$VK_LIBDIR" ]; then
+	FOUND=$(find "$TC_ROOT/sysroot/usr/lib" -name 'libvulkan.so' 2>/dev/null | head -1)
+	[ -n "$FOUND" ] && VK_LIBDIR="$(dirname "$FOUND")"
+fi
+if [ -n "$VK_LIBDIR" ]; then
+	echo "  ✓ libvulkan.so 位于: $VK_LIBDIR"
+else
+	echo "  ⚠ 未找到 libvulkan.so，Vulkan 可能链接失败"
+fi
+
 echo "=== 生成 vulkan.pc ==="
 for VKDIR in "$prefix_dir/usr/local/lib/pkgconfig" "$prefix_dir/lib/pkgconfig"; do
 	mkdir -p "$VKDIR"
-	cat >"$VKDIR/vulkan.pc" <<VKEOF
-prefix=/usr/local
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
-
-Name: vulkan
-Description: Vulkan (Android NDK built-in loader stub)
-Version: 1.3.268
-Libs: -lvulkan
-Cflags:
-VKEOF
+	{
+		echo "prefix=/usr/local"
+		echo 'exec_prefix=${prefix}'
+		echo 'libdir=${prefix}/lib'
+		echo 'includedir=${prefix}/include'
+		echo ""
+		echo "Name: vulkan"
+		echo "Description: Vulkan (Android NDK loader stub)"
+		echo "Version: 1.3.268"
+		if [ -n "$VK_LIBDIR" ]; then
+			echo "Libs: -L$VK_LIBDIR -lvulkan"
+		else
+			echo "Libs: -lvulkan"
+		fi
+		echo "Cflags:"
+	} >"$VKDIR/vulkan.pc"
 	echo "  ✓ $VKDIR/vulkan.pc"
+	cat "$VKDIR/vulkan.pc" | sed 's/^/      /'
 done
 echo "  PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR"
 
