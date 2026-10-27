@@ -82,7 +82,6 @@ open(p, 'w', encoding='utf-8').write(src)
 print('  shaderc.sh 补充:', ', '.join(changed) if changed else '无需改动')
 PYEOF
 fi
-fi
 grep -n 'mkdir -p "\$prefix_dir/lib"' "$SHADERC" || echo "  (shaderc.sh 无需修补或已修补)"
 
 echo "=== 1c) 修复 autoconf 脚本的交叉编译三元组 bug ==="
