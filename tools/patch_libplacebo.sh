@@ -30,6 +30,33 @@ echo "=== 1) 复制 libplacebo 构建脚本 ==="
 cp "$TOOLS_DIR/libplacebo.sh" "$BS/scripts/libplacebo.sh"
 chmod +x "$BS/scripts/libplacebo.sh"
 
+echo "=== 1b) 修复 shaderc.sh 的目录缺失 bug ==="
+# 官方 shaderc.sh 最后一步是：
+#   cp libs/*/$abi/libshaderc.a "$prefix_dir/lib/libshaderc_combined.a"
+# 但 build.sh 的 setup_prefix 只创建 $prefix_dir 本身，**不创建 lib/ 子目录**，
+# 导致：
+#   cp: cannot create regular file '.../prefix/arm64-v8a/lib/libshaderc_combined.a':
+#       No such file or directory
+# 这是 media-kit 构建脚本的既有缺陷（平时没人单编 shaderc，所以没暴露）。
+# 在脚本开头补一句 mkdir -p 即可。
+SHADERC="$BS/scripts/shaderc.sh"
+if [ -f "$SHADERC" ] && ! grep -q 'mkdir -p "\$prefix_dir/lib"' "$SHADERC"; then
+  python3 - "$SHADERC" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p, encoding='utf-8').read()
+# 在第一个 cp/install 之前插入 mkdir
+anchor = 'cp -r include/* "$prefix_dir/include"'
+if anchor in src:
+    src = src.replace(anchor, 'mkdir -p "$prefix_dir/lib" "$prefix_dir/include"\n' + anchor, 1)
+else:
+    src = src.replace('cd "$builddir"', 'cd "$builddir"\nmkdir -p "$prefix_dir/lib"', 1)
+open(p, 'w', encoding='utf-8').write(src)
+print('  已在 shaderc.sh 补 mkdir -p')
+PYEOF
+fi
+grep -n 'mkdir -p "\$prefix_dir/lib"' "$SHADERC" || echo "  (shaderc.sh 无需修补或已修补)"
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 DEP="$BS/include/depinfo.sh"
 if ! grep -q '^v_libplacebo=' "$DEP"; then
