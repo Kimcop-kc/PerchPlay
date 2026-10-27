@@ -127,6 +127,43 @@ if [ -f "$MBED" ] && ! grep -q 'armv8-a' "$MBED"; then
 fi
 grep -n 'march=' "$MBED" || true
 
+echo "=== 1g) 修 pkg-config 路径（dav1d/libxml2 找不到的根因）==="
+# path.sh 里是：
+#   export PKG_CONFIG_SYSROOT_DIR=$prefix_dir
+#   export PKG_CONFIG_LIBDIR=$PKG_CONFIG_SYSROOT_DIR/lib/pkgconfig
+#
+# 但 setup_prefix 做了扁平化软链：
+#   ln -s . "$prefix_dir/usr"
+#   ln -s . "$prefix_dir/local"
+# 于是依赖实际装在 $prefix_dir/usr/local/lib/pkgconfig，
+# 而 PKG_CONFIG_LIBDIR 指向 $prefix_dir/lib/pkgconfig ——
+# 两者靠软链其实是同一目录，但 **PKG_CONFIG_SYSROOT_DIR 会让 pkg-config
+# 在 .pc 里的 -L 路径前再拼一次 sysroot**，拼成 $prefix_dir/$prefix_dir/lib，
+# 于是 ffmpeg 的 configure 判定 "dav1d >= 0.5.0 not found"。
+#
+# 修法：SYSROOT 置空（交叉编译时 prefix 已经是绝对沙盒路径，不需要再拼），
+# LIBDIR 直接指向真实存在的 usr/local/lib/pkgconfig。
+PATHSH="$BS/include/path.sh"
+if [ -f "$PATHSH" ] && ! grep -q 'PKG_CONFIG_FIXED_BY_PATCH' "$PATHSH"; then
+  python3 - "$PATHSH" <<'PYEOF'
+import sys, re
+p = sys.argv[1]
+src = open(p, encoding='utf-8').read()
+# 只改 LIBDIR，**不动 SYSROOT**：
+#   SYSROOT 保留是对的（交叉编译时 .pc 里的相对路径需要它来定位），
+#   问题只在 LIBDIR 少了一段 usr/local。
+#   加上 $prefix_dir/usr/local/lib/pkgconfig 后，pkg-config 能扫到
+#   dav1d.pc / libxml-2.0.pc / libplacebo.pc 等实际产物。
+src = re.sub(
+    r'\s*export\s+PKG_CONFIG_LIBDIR=("[^"]*"|\S*)',
+    '\n\texport PKG_CONFIG_LIBDIR="$prefix_dir/usr/local/lib/pkgconfig:$prefix_dir/lib/pkgconfig"',
+    src)
+open(p, 'w', encoding='utf-8').write(src)
+print('  path.sh 的 PKG_CONFIG_LIBDIR 已扩大搜索路径')
+PYEOF
+fi
+grep -n 'PKG_CONFIG' "$PATHSH" || true
+
 echo "=== 2) depinfo.sh：版本号 + 依赖关系 ==="
 if ! grep -q '^v_libplacebo=' "$DEP"; then
   sed -i "/^v_libvpx=/a v_libplacebo=${LP_VERSION}" "$DEP"
