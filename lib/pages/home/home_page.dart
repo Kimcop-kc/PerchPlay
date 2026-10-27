@@ -841,19 +841,24 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,
+      // 小屏 / 键盘弹出时，AlertDialog 默认的 insetPadding(40) 会让可用高度
+      // 过窄，内容被顶出屏幕、按钮点不到。收到 20 并允许滚动。
       builder: (ctx) => AlertDialog(
         backgroundColor: GlassTheme.bg,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         title: const Text('新建播放列表',
             style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: GlassTheme.textPrimary),
-          decoration: const InputDecoration(
-            hintText: '列表名称',
-            hintStyle: TextStyle(color: GlassTheme.textTertiary),
+        content: SingleChildScrollView(
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: GlassTheme.textPrimary),
+            decoration: const InputDecoration(
+              hintText: '列表名称',
+              hintStyle: TextStyle(color: GlassTheme.textTertiary),
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(

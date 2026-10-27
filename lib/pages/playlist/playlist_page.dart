@@ -323,23 +323,27 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
+      // 小屏 / 键盘弹出时避免内容被顶出屏幕（默认 insetPadding 40 太宽）
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFFF2F2F7),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         title: const Text('新建播放列表',
             style: TextStyle(color: GlassTheme.textPrimary, fontSize: 18)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: GlassTheme.textPrimary),
-          decoration: InputDecoration(
-            hintText: '输入列表名称',
-            hintStyle: TextStyle(color: GlassTheme.textTertiary),
-            enabledBorder: UnderlineInputBorder(
-              borderSide:
-                  BorderSide(color: Colors.black.withValues(alpha: 0.2)),
-            ),
-            focusedBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: GlassTheme.accentTeal),
+        content: SingleChildScrollView(
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: GlassTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: '输入列表名称',
+              hintStyle: TextStyle(color: GlassTheme.textTertiary),
+              enabledBorder: UnderlineInputBorder(
+                borderSide:
+                    BorderSide(color: Colors.black.withValues(alpha: 0.2)),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: GlassTheme.accentTeal),
+              ),
             ),
           ),
         ),

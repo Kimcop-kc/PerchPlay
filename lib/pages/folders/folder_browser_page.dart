@@ -1,26 +1,28 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/constants/app_constants.dart';
+import '../../providers/library_provider.dart';
 import '../../services/local_media_import_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
 
-class FolderBrowserPage extends StatefulWidget {
+class FolderBrowserPage extends ConsumerStatefulWidget {
   /// 切回「全部视频」视图的回调（由首页传入，用于点击胶囊切换器时切回）。
   final VoidCallback? onSwitchToVideos;
   const FolderBrowserPage({super.key, this.onSwitchToVideos});
 
   @override
-  State<FolderBrowserPage> createState() => _FolderBrowserPageState();
+  ConsumerState<FolderBrowserPage> createState() => _FolderBrowserPageState();
 }
 
-class _FolderBrowserPageState extends State<FolderBrowserPage> {
+class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
   String _currentPath = '';
   String _rootPath = '';
   List<FileSystemEntity> _entries = [];
@@ -184,7 +186,16 @@ class _FolderBrowserPageState extends State<FolderBrowserPage> {
         .importVideosFromFilesApp();
     if (!mounted) return;
     if (imported.isNotEmpty) {
-      // 导入成功：回到 Documents 根刷新
+      // 导入成功：**必须重扫影库**。
+      //
+      // 原来只调 _loadRoots() 刷新文件夹列表，导致导入的视频只在文件夹页
+      // 可见，首页/播放列表里都找不到 —— 用户看到的就是「导入的视频播不了」。
+      try {
+        await ref.read(libraryProvider.notifier).scan();
+      } catch (e) {
+        debugPrint('[Import] 导入后重扫影库失败: $e');
+      }
+      if (!mounted) return;
       await _loadRoots();
     } else {
       setState(() => _loading = false);

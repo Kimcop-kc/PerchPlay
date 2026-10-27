@@ -314,17 +314,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   PlayerNotifier() : super(PlayerState(player: Player())) {
     // VideoController 由 Provider 全局创建，跨页面复用。
     //
-    // ⚠ 必须显式指定 `vo: 'gpu'`：
-    // media_kit 在 Android 上默认用 `vo=libmpv`（见其 native_video_controller
-    // 的 `vo ?? 'libmpv'`），而 libmpv 后端是「通过 Flutter 纹理回传 RGB 帧」，
-    // **完全不支持 HDR 输出** —— 所有 target-colorspace-hint / tone-mapping /
-    // target-peak 设置都被它忽略。这就是之前「改了没变、HDR 不起作用」的根因。
+    // ⚠ vo 必须**按平台**指定，不能全局写死：
     //
-    // `gpu`（OpenGL）后端支持 HDR 合成，且比 gpu-next 在 Android 上稳定得多
-    // （gpu-next 需要 libplacebo，闪退风险高，留作路径 B 的实验开关）。
+    //   Android → `gpu`
+    //     media_kit 在 Android 上默认是 `libmpv`（Flutter 纹理回传 RGB 帧），
+    //     它**完全不支持 HDR 输出**（target-colorspace-hint / tone-mapping
+    //     全被忽略）。`gpu`（OpenGL）能走 SurfaceFlinger 的 HDR 合成，
+    //     且比 gpu-next 稳定（gpu-next 需要 libplacebo，闪退风险高）。
+    //
+    //   iOS / 桌面 → 不传（用 media_kit 默认 `libmpv`）
+    //     iOS 上**没有 `gpu` 这个 vo 后端**，硬塞 `gpu` 会导致渲染管线建不起来
+    //     —— 表现就是「iPad 上视频播不了 / 黑屏」。media_kit 官方文档写明
+    //     iOS 默认就是 `libmpv`，交给它自己选才对。
     _globalController = VideoController(
       state.player,
-      configuration: const VideoControllerConfiguration(vo: 'gpu'),
+      configuration: VideoControllerConfiguration(
+        vo: Platform.isAndroid ? 'gpu' : null,
+      ),
     );
     state = state.copyWith(videoController: _globalController);
     _setupListeners();

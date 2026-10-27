@@ -2053,42 +2053,47 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
     final portCtrl = TextEditingController(text: '');
     final result = await showDialog<bool>(
       context: context,
+      // 两个输入框 + 说明文字，键盘弹出后在小屏上会被顶出屏幕，
+      // 收到 insetPadding 并让内容可滚动。
       builder: (ctx) => AlertDialog(
         backgroundColor: GlassTheme.bg,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         title: const Text(
           '手动添加投屏设备',
           style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: hostCtrl,
-              autofocus: true,
-              keyboardType: TextInputType.url,
-              style: const TextStyle(color: GlassTheme.textPrimary),
-              decoration: const InputDecoration(
-                labelText: '设备 IP',
-                hintText: '例如 192.168.1.20',
-                hintStyle: TextStyle(color: GlassTheme.textTertiary),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: hostCtrl,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                style: const TextStyle(color: GlassTheme.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: '设备 IP',
+                  hintText: '例如 192.168.1.20',
+                  hintStyle: TextStyle(color: GlassTheme.textTertiary),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: portCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: GlassTheme.textPrimary),
-              decoration: const InputDecoration(
-                labelText: '端口（可留空，默认 80/1400）',
-                hintStyle: TextStyle(color: GlassTheme.textTertiary),
+              const SizedBox(height: 8),
+              TextField(
+                controller: portCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: GlassTheme.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: '端口（可留空，默认 80/1400）',
+                  hintStyle: TextStyle(color: GlassTheme.textTertiary),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '会依次尝试 /description.xml、/dmr.xml、/rootDesc.xml',
-              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
-            ),
-          ],
+              const SizedBox(height: 8),
+              const Text(
+                '会依次尝试 /description.xml、/dmr.xml、/rootDesc.xml',
+                style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
