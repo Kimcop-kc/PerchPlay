@@ -21,6 +21,8 @@ import '../services/native_bridge_service.dart';
 import '../services/library_prune_service.dart';
 import '../services/playback_busy.dart';
 import '../services/hdr_output_mode.dart';
+import '../services/anime4k_mode.dart';
+import '../services/shader_asset_installer.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -70,6 +72,12 @@ class PlayerState {
   /// 非 [HdrOutputMode.off] 时走 `vo=gpu-next` + hdr-toys 着色器，
   /// 绕过下面的 SDR 色调映射逻辑（两者互斥）。
   final HdrOutputMode hdrOutputMode;
+
+  /// Anime4K 动漫放大档位。
+  ///
+  /// 与 [hdrOutputMode] **互斥**：两者都写 `glsl-shader` 且都要求
+  /// `vo=gpu-next`，叠加会互相干扰。非 off 时 hdrOutputMode 一定是 off。
+  final Anime4kMode anime4kMode;
 
   /// 第二字幕：内嵌轨道 id（交给 mpv 的 secondary-sid 渲染）
   final String? secondaryTrackId;
@@ -137,6 +145,7 @@ class PlayerState {
     this.transferFunction,
     this.sigPeak,
     this.hdrOutputMode = HdrOutputMode.off,
+    this.anime4kMode = Anime4kMode.off,
     this.secondaryTrackId,
     this.secondarySubtitle,
     this.secondaryEntries,
@@ -176,6 +185,8 @@ class PlayerState {
     double? sigPeak,
     /// HDR 输出模式（gpu-next + hdr-toys）。null 表示不改。
     HdrOutputMode? hdrOutputMode,
+    /// Anime4K 档位。null 表示不改。
+    Anime4kMode? anime4kMode,
     String? secondaryTrackId,
     SubtitleModel? secondarySubtitle,
     List<SubtitleEntry>? secondaryEntries,
@@ -232,6 +243,7 @@ class PlayerState {
           clearMediaInfo ? null : (transferFunction ?? this.transferFunction),
       sigPeak: clearMediaInfo ? null : (sigPeak ?? this.sigPeak),
     hdrOutputMode: hdrOutputMode ?? this.hdrOutputMode,
+    anime4kMode: anime4kMode ?? this.anime4kMode,
       secondaryTrackId: clearSecondaryTrackId
           ? null
           : (secondaryTrackId ?? this.secondaryTrackId),
@@ -394,7 +406,32 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         AppSettingsService.instance.setHdrOutputMode('off').catchError((_) {}),
       );
     }
-    final androidVo = savedHdrMode.needsGpuNext ? 'gpu-next' : 'gpu';
+
+    var savedAnime4k = Anime4kModeX.fromId(
+      AppSettingsService.instance.anime4kMode,
+    );
+    if (!savedAnime4k.isAvailable) {
+      debugPrint('[Player] Anime4K ${savedAnime4k.id} 在 '
+          '${Platform.operatingSystem} 不可用，回退到 off');
+      savedAnime4k = Anime4kMode.off;
+      unawaited(
+        AppSettingsService.instance.setAnime4kMode('off').catchError((_) {}),
+      );
+    }
+
+    // 互斥：两个都非 off 时以 Anime4K 为准（它更「显式」，用户主动
+    // 为动漫开启），HDR 输出模式让位并纠正持久化。
+    if (savedAnime4k.needsGpuNext && savedHdrMode.needsGpuNext) {
+      debugPrint('[Player] Anime4K 与 HDR 输出模式互斥，保留 Anime4K');
+      savedHdrMode = HdrOutputMode.off;
+      unawaited(
+        AppSettingsService.instance.setHdrOutputMode('off').catchError((_) {}),
+      );
+    }
+
+    final needGpuNext =
+        savedHdrMode.needsGpuNext || savedAnime4k.needsGpuNext;
+    final androidVo = needGpuNext ? 'gpu-next' : 'gpu';
     _globalController = VideoController(
       state.player,
       configuration: VideoControllerConfiguration(
@@ -403,15 +440,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     );
     state = state.copyWith(
       videoController: _globalController,
-      // 从设置里恢复 HDR 输出模式。
+      // 从设置里恢复两个着色器功能的状态。
       //
-      // ⚠ 注意：这个值只影响 setProperty 层面的行为（target-prim/trc、
+      // ⚠ 注意：这些值只影响 setProperty 层面的行为（target-prim/trc、
       // glsl-shader 等）。**vo 后端是 VideoController 构造时固定的**，
-      // 运行时改不了。所以真正要生效，videocontroller 必须一开始就是用
-      // gpu-next 创建的 —— 见下面 vo 的取值逻辑。
-      hdrOutputMode: HdrOutputModeX.fromId(
-        AppSettingsService.instance.hdrOutputMode,
-      ),
+      // 运行时改不了。所以真正要生效，VideoController 必须一开始就是用
+      // gpu-next 创建的 —— 见上面 vo 的取值逻辑。
+      hdrOutputMode: savedHdrMode,
+      anime4kMode: savedAnime4k,
     );
     _setupListeners();
     applyDecodingMode();
@@ -848,6 +884,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (sig == _lastHdrAppliedSig) return;
       _lastHdrAppliedSig = sig;
 
+      // ── 视频滤镜链（Anime4K / HDR 输出的 glsl-shader 挂载）──
+      //
+      // 两者都写 `glsl-shader`，统一由 _applyVideoFilters 决定谁生效，
+      // 避免互相覆盖。Anime4K 只动分辨率/线条、不动色彩空间，所以
+      // 它**不改变**下面的 HDR/SDR 色彩映射（可以共存）；
+      // HDR 输出模式则要求独占，见下面的分支。
+      await _applyVideoFilters();
+
       // ── HDR 输出模式（gpu-next + hdr-toys）优先处理 ──
       //
       // 这条路径与下面的 SDR 映射逻辑**互斥**：hdr-toys 要求
@@ -959,7 +1003,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final mode = state.hdrOutputMode;
     try {
       // ── 1) 释放 hdr-toys 的 shader 到磁盘 ──
-      final root = await HdrShaderInstaller.instance.ensureInstalled();
+      final root = await hdrToysShaderInstaller.ensureInstalled();
       if (root == null) {
         debugPrint('[HDR-OUT] shader 不可用，回退到 SDR 映射');
         // 回退：把状态改回 off，让下次进入 SDR 分支
@@ -1048,6 +1092,218 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
         _lastHdrAppliedSig = null;
       }
+    }
+  }
+
+  /// 应用 Anime4K 动漫放大。
+  ///
+  /// ## 与 HDR 输出模式互斥
+  ///
+  /// 两者都往 `glsl-shader` 列表里塞文件、都假设独占 MAIN hook 阶段。
+  /// 叠加会让 shader 链互相干扰（Anime4K 的 `//!WHEN` 条件按
+  /// 放大倍数判断，HDR 的传递函数转换会改变管线宽度），
+  /// 且 GPU 负担翻倍。所以这里强制二选一。
+  ///
+  /// ## 为什么不会拖慢普通片源
+  ///
+  /// Anime4K 的 shader 带 `//!WHEN OUTPUT.w MAIN.w / 1.200 >` 条件：
+  /// 放大倍数不到 1.2 倍时**整个 shader 会被跳过**。所以：
+  ///   - 1080p 番在 1080p 屏 → 约 1.0 倍 → 零开销
+  ///   - 480p 番在 1080p 屏 → 2.25 倍 → 真正开始干活（也正是需要的场景）
+  Future<void> _applyAnime4k(NativePlayer platform) async {
+    final mode = state.anime4kMode;
+    try {
+      final root = await anime4kShaderInstaller.ensureInstalled();
+      if (root == null) {
+        debugPrint('[Anime4K] shader 不可用，关闭该功能');
+        if (mounted) {
+          state = state.copyWith(anime4kMode: Anime4kMode.off);
+          _lastVideoFilterSig = null;
+        }
+        return;
+      }
+
+      final files = <String>[];
+      for (final name in mode.shaderChain) {
+        final f = File('${root.path}/$name');
+        if (!await f.exists()) {
+          debugPrint('[Anime4K] ⚠ shader 缺失: ${f.path}');
+          continue;
+        }
+        files.add(f.path);
+      }
+
+      if (files.isEmpty) {
+        debugPrint('[Anime4K] 没有可用的 shader，关闭');
+        if (mounted) {
+          state = state.copyWith(anime4kMode: Anime4kMode.off);
+          _lastVideoFilterSig = null;
+        }
+        return;
+      }
+
+      // 先清空，避免上一档的 shader 残留（列表属性是累加的）
+      try {
+        await platform.setProperty('glsl-shader', '');
+      } catch (_) {}
+      for (final p in files) {
+        await platform.setProperty('glsl-shader', p);
+      }
+
+      // Anime4K 不需要 shader opts（它的行为由 //!WHEN 条件控制）
+      try {
+        await platform.setProperty('glsl-shader-opts-append', '');
+      } catch (_) {}
+
+      debugPrint('[Anime4K] 已应用 ${mode.id}（${files.length} 个 shader）');
+    } catch (e, st) {
+      debugPrint('[Anime4K] 应用失败，关闭: $e\n$st');
+      if (mounted) {
+        state = state.copyWith(anime4kMode: Anime4kMode.off);
+        _lastVideoFilterSig = null;
+      }
+    }
+  }
+
+  /// 切换 Anime4K 档位。
+  ///
+  /// 与 HDR 输出模式相同：需要 `vo=gpu-next`，所以切换时要重建
+  /// VideoController（vo 是构造时固定的）。
+  ///
+  /// 若当前正开着 HDR 输出模式，会**先关掉它**（两者互斥）。
+  Future<void> setAnime4kMode(Anime4kMode mode) async {
+    if (state.anime4kMode == mode) return;
+
+    if (!mode.isAvailable) {
+      debugPrint('[Anime4K] ${mode.id} 在当前平台不可用，忽略');
+      if (mode != Anime4kMode.off) {
+        try {
+          await AppSettingsService.instance.setAnime4kMode('off');
+        } catch (_) {}
+      }
+      return;
+    }
+
+    debugPrint('[Anime4K] 切换到 ${mode.id}');
+    try {
+      await AppSettingsService.instance.setAnime4kMode(mode.id);
+    } catch (e) {
+      debugPrint('[Anime4K] 保存设置失败: $e');
+    }
+
+    // 互斥：关掉 HDR 输出模式
+    final needTurnOffHdr =
+        mode.needsGpuNext && state.hdrOutputMode.needsGpuNext;
+    if (needTurnOffHdr) {
+      debugPrint('[Anime4K] 与 HDR 输出模式互斥，先关闭 HDR');
+      await AppSettingsService.instance.setHdrOutputMode('off');
+    }
+
+    final wasPlaying = state.isPlaying;
+    final resumePos = state.position;
+    final video = state.currentVideo;
+
+    if (!Platform.isAndroid) {
+      state = state.copyWith(
+        anime4kMode: mode,
+        hdrOutputMode: needTurnOffHdr
+            ? HdrOutputMode.off
+            : state.hdrOutputMode,
+      );
+      _lastVideoFilterSig = null;
+      _lastHdrAppliedSig = null;
+      return;
+    }
+
+    try {
+      // Anime4K 与 HDR 都要求 gpu-next
+      final newVo =
+          (mode.needsGpuNext || state.hdrOutputMode.needsGpuNext)
+              ? 'gpu-next'
+              : 'gpu';
+      state = state.copyWith(
+        anime4kMode: mode,
+        hdrOutputMode:
+            needTurnOffHdr ? HdrOutputMode.off : state.hdrOutputMode,
+      );
+
+      final rebuilt = VideoController(
+        state.player,
+        configuration: VideoControllerConfiguration(vo: newVo),
+      );
+      _globalController = rebuilt;
+      state = state.copyWith(videoController: rebuilt);
+
+      _lastVideoFilterSig = null;
+      _lastHdrAppliedSig = null;
+      _lastScalingSig = null;
+
+      // 重新应用（这个时候 HDR 已是 off，走的是 Anime4K 分支）
+      await applyDecodingMode();
+      await applyHdrToneMapping();
+      await _applyVideoFilters();
+
+      if (video != null && resumePos > Duration.zero) {
+        try {
+          await state.player.seek(resumePos);
+          if (wasPlaying) await state.player.play();
+        } catch (e) {
+          debugPrint('[Anime4K] 恢复播放位置失败（忽略）: $e');
+        }
+      }
+      debugPrint('[Anime4K] 已切换到 ${mode.id}（vo=$newVo）');
+    } catch (e, st) {
+      debugPrint('[Anime4K] 重建 VideoController 失败: $e\n$st');
+      try {
+        final fallback = VideoController(
+          state.player,
+          configuration: const VideoControllerConfiguration(vo: 'gpu'),
+        );
+        _globalController = fallback;
+        state = state.copyWith(
+          videoController: fallback,
+          anime4kMode: Anime4kMode.off,
+        );
+        await AppSettingsService.instance.setAnime4kMode('off');
+      } catch (e2) {
+        debugPrint('[Anime4K] 回滚也失败: $e2');
+      }
+    }
+  }
+
+  /// 应用视频滤镜链（目前只有 Anime4K 一个来源）。
+  ///
+  /// 单独抽出来是因为它和 HDR 输出模式的 shader 链**都要写
+  /// `glsl-shader`**，必须在同一处统一决定谁生效，避免互相覆盖。
+  ///
+  /// 分工：
+  ///   - HDR 输出模式 → 由 [_applyHdrOutputMode] 自己挂 shader，
+  ///     本方法在那种情况下**什么都不做**（直接返回）
+  ///   - Anime4K → 由本方法挂
+  ///   - 两者都关 → 清空
+  Future<void> _applyVideoFilters() async {
+    // HDR 输出模式要独占 glsl-shader，交给它自己管
+    if (state.hdrOutputMode.needsGpuNext) return;
+
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+
+    final sig = state.anime4kMode.id;
+    if (sig == _lastVideoFilterSig) return;
+    _lastVideoFilterSig = sig;
+
+    if (state.anime4kMode.needsGpuNext) {
+      await _applyAnime4k(platform);
+      return;
+    }
+
+    // 两者都关：清空，避免上一部片源的 shader 残留
+    try {
+      await platform.setProperty('glsl-shader', '');
+      await platform.setProperty('glsl-shader-opts-append', '');
+      debugPrint('[Filter] 已清空 glsl-shader');
+    } catch (e) {
+      debugPrint('[Filter] 清空失败（忽略）: $e');
     }
   }
 
@@ -1233,6 +1489,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 每次播片都会 applyHdrToneMapping 打一堆日志 + setProperty。
   /// 用签名去重，同一模式同一片源只应用一次，日志也降到 1 行。
   String? _lastHdrAppliedSig;
+
+  /// 视频滤镜链签名（Anime4K + HDR 输出的组合）。
+  ///
+  /// 两者都写 `glsl-shader`，必须在一个地方统一决定谁生效，
+  /// 否则会互相覆盖。
+  String? _lastVideoFilterSig;
 
   /// 上次应用的「分辨率缩放档位」签名（normal / 4k / 8k）。
   ///

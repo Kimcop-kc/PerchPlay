@@ -36,6 +36,7 @@ class AppSettingsService {
   static const _kHardwareDecoding = 'settings.hardwareDecoding';
   static const _kPlayerOrientation = 'settings.playerOrientation';
   static const _kHdrOutputMode = 'settings.hdrOutputMode';
+  static const _kAnime4kMode = 'settings.anime4kMode';
   static const _kAllFilesPrompted = 'settings.allFilesPrompted';
   static const _kGlassBlur = 'settings.glassBlur';
   static const _kGlassBlurV2 = 'settings.glassBlurV2';
@@ -70,6 +71,7 @@ class AppSettingsService {
   bool _hardwareDecoding = true;
   String _playerOrientation = 'auto';
   String _hdrOutputMode = 'off';
+  String _anime4kMode = 'off';
   bool _allFilesPrompted = false;
   bool _glassBlur = true;
   String _tmdbApiKey = '';
@@ -192,6 +194,7 @@ class AppSettingsService {
         _kHardwareDecoding: _hardwareDecoding,
         _kPlayerOrientation: _playerOrientation,
     _kHdrOutputMode: _hdrOutputMode,
+    _kAnime4kMode: _anime4kMode,
         _kAllFilesPrompted: _allFilesPrompted,
         _kGlassBlurV2: _glassBlur,
         _kTmdbApiKey: _tmdbApiKey,
@@ -338,6 +341,7 @@ class AppSettingsService {
     _hardwareDecoding = map[_kHardwareDecoding] as bool? ?? true;
     _playerOrientation = map[_kPlayerOrientation] as String? ?? 'auto';
     _hdrOutputMode = map[_kHdrOutputMode] as String? ?? 'off';
+    _anime4kMode = map[_kAnime4kMode] as String? ?? 'off';
     _allFilesPrompted = map[_kAllFilesPrompted] as bool? ?? false;
     _glassBlur = map[_kGlassBlurV2] as bool? ?? true;
     _tmdbApiKey = map[_kTmdbApiKey] as String? ?? '';
@@ -383,6 +387,7 @@ class AppSettingsService {
     _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
     _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
     _hdrOutputMode = prefs.getString(_kHdrOutputMode) ?? 'off';
+    _anime4kMode = prefs.getString(_kAnime4kMode) ?? 'off';
     _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
     if (prefs.containsKey(_kGlassBlurV2)) {
       _glassBlur = prefs.getBool(_kGlassBlurV2) ?? true;
@@ -624,6 +629,23 @@ class AppSettingsService {
       await prefs.setString(_kHdrOutputMode, value);
     } catch (e) {
       debugPrint('[PerchPlay] setHdrOutputMode SP write failed: $e');
+    }
+    _scheduleJsonFlush();
+  }
+
+  /// Anime4K 动漫放大档位（存的稳定字符串 id，见 `Anime4kModeX.id`）。
+  ///
+  /// 默认 `off`。与 HDR 输出模式互斥：两者都写 mpv 的 `glsl-shader`，
+  /// 叠加会互相干扰，切换时由 PlayerNotifier 负责关掉另一个。
+  String get anime4kMode => _anime4kMode;
+
+  Future<void> setAnime4kMode(String value) async {
+    _anime4kMode = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kAnime4kMode, value);
+    } catch (e) {
+      debugPrint('[PerchPlay] setAnime4kMode SP write failed: $e');
     }
     _scheduleJsonFlush();
   }

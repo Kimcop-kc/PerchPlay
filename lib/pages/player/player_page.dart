@@ -15,6 +15,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../services/hdr_output_mode.dart';
+import '../../services/anime4k_mode.dart';
 import '../../core/system/orientation_policy.dart';
 import '../../core/system/system_ui_policy.dart';
 import '../../core/responsive/breakpoints.dart';
@@ -817,6 +818,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         : Colors.white70,
                   ),
                   onPressed: () => _showHdrOutputModeSheet(state),
+                ),
+                // Anime4K 动漫放大入口。
+                //
+                // 始终显示：老番（480p/720p）是最主要的使用场景，
+                // 而这恰恰是「看 SDR 片源」的时候 —— 不能按 HDR 片源过滤。
+                // 启用时图标变主紫色。
+                IconButton(
+                  tooltip: '动漫放大（Anime4K）',
+                  icon: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: state.anime4kMode.needsGpuNext
+                        ? GlassTheme.accentPurple
+                        : Colors.white70,
+                  ),
+                  onPressed: () => _showAnime4kSheet(state),
                 ),
                 // 播放页内直接搜索投屏设备
                 IconButton(
@@ -2109,10 +2125,178 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
+  /// Anime4K 档位选择器（播放页内）。
+  ///
+  /// 与 HDR 输出模式互斥：切换时 PlayerNotifier 会自动关掉另一个，
+  /// 这里在说明里写清楚，避免用户以为「开了没反应」。
+  void _showAnime4kSheet(PlayerState state) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+            border: Border.all(color: Colors.white12, width: 0.5),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 2, 4, 8),
+                  child: Text(
+                    '动漫放大（Anime4K）',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  child: Text(
+                    '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显。'
+                    '实拍视频会显得发糊，不建议开。'
+                    '帧率够高时才会真正生效，低倍率下几乎不耗 GPU。',
+                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ),
+                for (final m in Anime4kMode.values)
+                  Opacity(
+                    opacity: m.isAvailable ? 1.0 : 0.4,
+                    child: _anime4kModeTile(
+                      mode: m,
+                      selected: m == state.anime4kMode,
+                      onTap: !m.isAvailable
+                          ? null
+                          : () {
+                              Navigator.of(ctx).pop();
+                              ref
+                                  .read(playerProvider.notifier)
+                                  .setAnime4kMode(m);
+                            },
+                    ),
+                  ),
+                if (!anime4kSupported)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                    child: Text(
+                      '当前平台不支持（需要 Android + 带 libplacebo 的构建版本）。',
+                      style:
+                          TextStyle(color: Colors.orangeAccent, fontSize: 10.5),
+                    ),
+                  ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                  child: Text(
+                    '与「HDR 输出模式」互斥，开启其一会自动关闭另一个。',
+                    style: TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _anime4kModeTile({
+    required Anime4kMode mode,
+    required bool selected,
+    required VoidCallback? onTap,
+  }) {
+    final enabled = mode.isAvailable;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? GlassTheme.accentPurple.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.6)
+                    : Colors.white10,
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            mode.label,
+                            style: TextStyle(
+                              color: selected
+                                  ? GlassTheme.accentPurple
+                                  : Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          // GPU 负载提示：帮用户判断自己的机器扛不扛得住
+                          if (mode.gpuWeight > 0) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                'GPU ${mode.gpuWeight}x',
+                                style: const TextStyle(
+                                    color: Colors.white38, fontSize: 9),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        mode.description,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected && enabled)
+                  const Icon(Icons.check_circle_rounded,
+                      color: GlassTheme.accentPurple, size: 18),
+                if (!enabled)
+                  const Icon(Icons.block_rounded,
+                      color: Colors.white38, size: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _hdrModeTile({
     required HdrOutputMode mode,
-    required bool selected,
-    required VoidCallback onTap,
+    required bool selected,    required VoidCallback onTap,
   }) {
     // 平台不支持时置灰且不可点：切了只会黑屏或没效果
     final enabled = mode.isAvailable;

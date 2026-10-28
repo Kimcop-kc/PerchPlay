@@ -107,3 +107,6 @@ flutter:
     - assets/hdr-toys/shaders/hdr-toys/gamut-mapping/
     - assets/hdr-toys/shaders/hdr-toys/transfer-function/
     - assets/hdr-toys/shaders/hdr-toys/transfer-function/log/
+    # Anime4K 的 GLSL hook 着色器（MIT 许可，见 assets/anime4k/LICENSE）
+    # 只取 S/M/L 三档 CNN + DoG 轻量方案，不含 VL/UL/GAN（体积大且手机带不动）
+    - assets/anime4k/shaders/anime4k/
