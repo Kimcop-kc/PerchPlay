@@ -103,31 +103,55 @@ fi
 # 先另存一份带符号的，方便以后定位崩溃。
 echo ""
 echo "▶ [3/6] strip 符号"
-# 依次尝试几个可能的 SDK 根：
-#   1. build-repo/buildscripts/sdk/android-sdk-linux（workflow 建的软链，
-#      与 build.sh 用的**完全是同一个** NDK，最可靠）
-#   2. $ANDROID_HOME
-#   3. runner 上的默认位置
-LLVM_STRIP=""
-for SDK_ROOT in \
-	"$BS/sdk/android-sdk-linux" \
-	"${ANDROID_HOME:-}" \
-	"${ANDROID_SDK_ROOT:-}" \
-	"/usr/local/lib/android/sdk"; do
-	[ -n "$SDK_ROOT" ] || continue
-	[ -d "$SDK_ROOT/ndk" ] || continue
-	LLVM_STRIP=$(find "$SDK_ROOT/ndk" -name 'llvm-strip' -type f 2>/dev/null | head -1)
-	if [ -n "$LLVM_STRIP" ]; then
-		echo "   SDK 根: $SDK_ROOT"
-		break
-	fi
-done
-# 兜底：直接从 PATH 找（build.sh 已把 toolchain/bin 加进 PATH）
-if [ -z "$LLVM_STRIP" ] && command -v llvm-strip >/dev/null 2>&1; then
-	LLVM_STRIP=$(command -v llvm-strip)
-fi
 OUTDIR="$BS/artifacts/libplacebo"
 mkdir -p "$OUTDIR"
+
+# 定位 llvm-strip。
+#
+# 最可靠的做法是**按 build.sh 用的路径直接拼**，而不是 find：
+#   $BS/sdk/android-sdk-linux/ndk/$v_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
+# 这里的 $v_ndk 从 depinfo.sh 读，与 build.sh 里 PATH 用的完全是同一个。
+# （之前用 find + `-type f` 探测失败：NDK 里这些工具是**软链**，
+#   `-type f` 不匹配软链，于是 find 返回空。）
+LLVM_STRIP=""
+. "$BS/include/depinfo.sh" 2>/dev/null || true
+
+if [ -n "${v_ndk:-}" ]; then
+	for TRIPLE_DIR in "$BS/sdk/android-sdk-linux/ndk/$v_ndk/toolchains/llvm/prebuilt/"*; do
+		[ -d "$TRIPLE_DIR/bin" ] || continue
+		if [ -x "$TRIPLE_DIR/bin/llvm-strip" ]; then
+			LLVM_STRIP="$TRIPLE_DIR/bin/llvm-strip"
+			echo "   按 v_ndk=$v_ndk 定位: $LLVM_STRIP"
+			break
+		fi
+	done
+fi
+
+# 兜底 1：find（同时匹配普通文件和软链）
+if [ -z "$LLVM_STRIP" ]; then
+	for SDK_ROOT in "$BS/sdk/android-sdk-linux" "${ANDROID_HOME:-}" \
+		"${ANDROID_SDK_ROOT:-}" "/usr/local/lib/android/sdk"; do
+		[ -n "$SDK_ROOT" ] && [ -d "$SDK_ROOT/ndk" ] || continue
+		LLVM_STRIP=$(find "$SDK_ROOT/ndk" -name 'llvm-strip' \( -type f -o -type l \) \
+			2>/dev/null | head -1 || true)
+		[ -n "$LLVM_STRIP" ] && { echo "   find 定位: $LLVM_STRIP"; break; }
+	done
+fi
+
+# 兜底 2：PATH（build.sh 已把 toolchain/bin 加进去）
+if [ -z "$LLVM_STRIP" ] && command -v llvm-strip >/dev/null 2>&1; then
+	LLVM_STRIP=$(command -v llvm-strip)
+	echo "   从 PATH 定位: $LLVM_STRIP"
+fi
+
+if [ -z "$LLVM_STRIP" ]; then
+	echo "   诊断信息："
+	echo "     v_ndk=${v_ndk:-<未读到>}"
+	ls -d "$BS/sdk/android-sdk-linux/ndk/"* 2>/dev/null | sed 's/^/     ndk: /' || true
+	ls "$BS/sdk/android-sdk-linux/ndk/${v_ndk:-none}/toolchains/llvm/prebuilt/" \
+		2>/dev/null | sed 's/^/     prebuilt: /' || true
+fi
+
 if [ -n "$LLVM_STRIP" ]; then
 	echo "   使用: $LLVM_STRIP"
 	cp -f "$LIBMPV_SRC" "$OUTDIR/libmpv-$ABI-unstripped.so"

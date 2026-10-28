@@ -14,6 +14,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../services/hdr_output_mode.dart';
 import '../../core/system/orientation_policy.dart';
 import '../../core/system/system_ui_policy.dart';
 import '../../core/responsive/breakpoints.dart';
@@ -798,6 +799,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                   onPressed: () => _showVideoInfoSheet(state),
                 ),
+                // HDR 输出模式入口。
+                //
+                // 显示条件：当前是 HDR 片源，**或**已启用了某个 HDR 档位。
+                //  - HDR 片源：最需要调的场景（色彩不对就切一下）
+                //  - 已启用档位：即使看 SDR 片源也要能切回「关闭」，
+                //    否则用户开了之后找不到关的地方
+                // SDR 片源 + 未启用时不显示，避免默认状态多一个没用的按钮。
+                if (_hdrBadgeText(state) != null || state.hdrOutputMode.needsGpuNext)
+                  IconButton(
+                    tooltip: 'HDR 输出模式',
+                    icon: Icon(
+                      Icons.hdr_strong_rounded,
+                      color: state.hdrOutputMode.needsGpuNext
+                          ? GlassTheme.accentPurple
+                          : Colors.white70,
+                    ),
+                    onPressed: () => _showHdrOutputModeSheet(state),
+                  ),
                 // 播放页内直接搜索投屏设备
                 IconButton(
                   tooltip: '投屏',
@@ -1970,25 +1989,172 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// HDR / 杜比视界角标（顶栏文件名旁）。
   ///
   /// 统一白色小字 + 半透明黑底，低调不遮挡画面。
+  ///
+  /// 点击可打开「HDR 输出模式」选择器 —— 用户正是在看到 HDR 片源、
+  /// 觉得色彩不对的时候才需要切档，就地切换比「退出播放 → 进设置」
+  /// 顺手得多。角标本身也不占额外位置。
   Widget _buildHdrBadge(PlayerState state) {
     final label = _hdrBadgeText(state);
     if (label == null) return const SizedBox.shrink();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(3),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.5),
+    final mode = state.hdrOutputMode;
+    final active = mode.needsGpuNext;
+
+    return GestureDetector(
+      onTap: () => _showHdrOutputModeSheet(state),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          // 启用了 HDR 输出模式时用主紫高亮，让用户一眼知道当前生效
+          color: active
+              ? GlassTheme.accentPurple.withValues(alpha: 0.85)
+              : Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(
+            color: active
+                ? GlassTheme.accentPurple
+                : Colors.white.withValues(alpha: 0.25),
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                height: 1.1,
+              ),
+            ),
+            // 启用 HDR 输出时补一个很小的标记，区别于「只是识别到 HDR」
+            if (active) ...[
+              const SizedBox(width: 3),
+              const Icon(Icons.hdr_strong_rounded,
+                  color: Colors.white, size: 10),
+            ],
+          ],
+        ),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          height: 1.1,
+    );
+  }
+
+  /// 播放页内的「HDR 输出模式」选择器。
+  ///
+  /// 与设置页那个是同一份枚举、同一个 notifier 方法，只是入口不同：
+  /// 这里紧贴画面，切完立刻能看效果。
+  void _showHdrOutputModeSheet(PlayerState state) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+            border: Border.all(color: Colors.white12, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 2, 4, 10),
+                child: Text(
+                  'HDR 输出模式',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              // 说明一句：切换会重建渲染器，避免用户以为闪一下是 bug
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+                child: Text(
+                  '切换会重建渲染器，画面闪一下是正常的。'
+                  '非「关闭」档需要安装带 libplacebo 的构建版本。',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ),
+              for (final m in HdrOutputMode.values)
+                _hdrModeTile(
+                  mode: m,
+                  selected: m == state.hdrOutputMode,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    ref.read(playerProvider.notifier).setHdrOutputMode(m);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _hdrModeTile({
+    required HdrOutputMode mode,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? GlassTheme.accentPurple.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.6)
+                    : Colors.white10,
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mode.label,
+                        style: TextStyle(
+                          color: selected
+                              ? GlassTheme.accentPurple
+                              : Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        mode.description,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  const Icon(Icons.check_circle_rounded,
+                      color: GlassTheme.accentPurple, size: 18),
+              ],
+            ),
+          ),
         ),
       ),
     );
