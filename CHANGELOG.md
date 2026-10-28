@@ -1,5 +1,33 @@
 # 变更日志
 
+## [1.1.8] — 2026-10-28
+
+### iOS 发绿 / 发洋红（修复）
+
+- **根因**：上一版为解决 Android 偏色，在 HDR 与 SDR 两个分支都无条件设置了
+  `target-prim=bt.709` / `target-trc=bt.1886`。这两个参数在 Android
+  (`vo=gpu`) 下是必须的，但 iOS 走 `vo=libmpv`（mpv 自行渲染成 RGB 后经
+  Flutter 纹理回传），mpv 内部已完成 YUV→RGB，再指定目标色彩空间会导致
+  **矩阵套两遍** → 整幅发绿 / 发洋红，且与片源无关。
+- **修复**：三处改为按平台区分，只在 Android 上设置
+  （HDR 分支 / SDR 分支 / `_resetHdrBeforeOpen` 复位）。
+
+### HDR 输出模式（新增，Android）
+
+- 新增 5 档：关闭 / BT.2100 PQ / BT.2100 HLG / BT.2020 / 线性 HDR
+- 走 `vo=gpu-next` + libplacebo + hdr-toys 着色器链做精确色彩转换
+- 入口：播放页顶部栏 HDR 按钮、文件名旁的 HDR / 杜比视界角标、设置页
+- 默认关闭；切换会重建渲染器（画面闪一下属正常）
+- 非 Android 平台选项置灰（iOS 无原生 Vulkan，暂不支持）
+- SDR 片源同样可用（「BT.2020」档面向广色域 SDR）
+- 新增 `test/hdr_output_mode_test.dart`（31 项）
+
+### 构建
+
+- 新增 libplacebo 版 libmpv 的 CI 流水线（`build-android-libplacebo.yml`）
+  与 APK 构建流水线（`build-android-apk.yml`）
+- 该版本 APK 体积增加约 11 MB（libplacebo + shaderc + Vulkan）
+
 ## [1.1.7] — 2026-10-27
 
 ### 部分视频色彩不对（修复）
