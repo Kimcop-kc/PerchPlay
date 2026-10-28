@@ -22,11 +22,29 @@
 - SDR 片源同样可用（「BT.2020」档面向广色域 SDR）
 - 新增 `test/hdr_output_mode_test.dart`（31 项）
 
+### 动漫放大 Anime4K（新增，Android）
+
+- 17 个档位，按「模式 × CNN 级别」组织：
+  - Mode A（Restore）S/M/L/VL/UL — 老番、模糊片源（主力）
+  - Mode B（Restore Soft）S/M/L — 降采样伪影、锯齿
+  - Mode C（Upscale+Denoise）S/M/L — 片源干净时
+  - GAN S/M/L/UUL — 上游高质量变体
+  - 极轻量（非 CNN DoG）— 几乎不耗 GPU
+- 内置 33 个 shader（约 5.2 MB），含全档位
+- **自动降档**：每 3 秒采样 mpv `frame-drop-count`，连续超预算就降一档，
+  最多降 4 档；只降不升（升档手动）
+- 着色器自带「放大倍数 < 1.2 跳过」条件，1080p 片源几乎零开销
+- 与 HDR 输出模式**互斥**（都占用 mpv 着色器插槽）
+- 入口：播放页顶部栏按钮、设置页「播放」分组
+- 新增 `test/anime4k_mode_test.dart`（31 项）
+  与 `test/anime4k_auto_downgrade_test.dart`（14 项）
+
 ### 构建
 
 - 新增 libplacebo 版 libmpv 的 CI 流水线（`build-android-libplacebo.yml`）
   与 APK 构建流水线（`build-android-apk.yml`）
-- 该版本 APK 体积增加约 11 MB（libplacebo + shaderc + Vulkan）
+- 该版本 APK 约 50 MB（常规版约 34 MB），增量来自
+  libplacebo + shaderc + Vulkan + Anime4K 着色器
 
 ## [1.1.7] — 2026-10-27
 
