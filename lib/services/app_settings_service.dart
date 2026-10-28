@@ -35,6 +35,7 @@ class AppSettingsService {
   static const _kBackgroundPlay = 'settings.backgroundPlay';
   static const _kHardwareDecoding = 'settings.hardwareDecoding';
   static const _kPlayerOrientation = 'settings.playerOrientation';
+  static const _kHdrOutputMode = 'settings.hdrOutputMode';
   static const _kAllFilesPrompted = 'settings.allFilesPrompted';
   static const _kGlassBlur = 'settings.glassBlur';
   static const _kGlassBlurV2 = 'settings.glassBlurV2';
@@ -68,6 +69,7 @@ class AppSettingsService {
   bool _backgroundPlay = true;
   bool _hardwareDecoding = true;
   String _playerOrientation = 'auto';
+  String _hdrOutputMode = 'off';
   bool _allFilesPrompted = false;
   bool _glassBlur = true;
   String _tmdbApiKey = '';
@@ -189,6 +191,7 @@ class AppSettingsService {
         _kBackgroundPlay: _backgroundPlay,
         _kHardwareDecoding: _hardwareDecoding,
         _kPlayerOrientation: _playerOrientation,
+    _kHdrOutputMode: _hdrOutputMode,
         _kAllFilesPrompted: _allFilesPrompted,
         _kGlassBlurV2: _glassBlur,
         _kTmdbApiKey: _tmdbApiKey,
@@ -334,6 +337,7 @@ class AppSettingsService {
     _backgroundPlay = map[_kBackgroundPlay] as bool? ?? true;
     _hardwareDecoding = map[_kHardwareDecoding] as bool? ?? true;
     _playerOrientation = map[_kPlayerOrientation] as String? ?? 'auto';
+    _hdrOutputMode = map[_kHdrOutputMode] as String? ?? 'off';
     _allFilesPrompted = map[_kAllFilesPrompted] as bool? ?? false;
     _glassBlur = map[_kGlassBlurV2] as bool? ?? true;
     _tmdbApiKey = map[_kTmdbApiKey] as String? ?? '';
@@ -378,6 +382,7 @@ class AppSettingsService {
     _backgroundPlay = prefs.getBool(_kBackgroundPlay) ?? true;
     _hardwareDecoding = prefs.getBool(_kHardwareDecoding) ?? true;
     _playerOrientation = prefs.getString(_kPlayerOrientation) ?? 'auto';
+    _hdrOutputMode = prefs.getString(_kHdrOutputMode) ?? 'off';
     _allFilesPrompted = prefs.getBool(_kAllFilesPrompted) ?? false;
     if (prefs.containsKey(_kGlassBlurV2)) {
       _glassBlur = prefs.getBool(_kGlassBlurV2) ?? true;
@@ -601,6 +606,24 @@ class AppSettingsService {
       await prefs.setString(_kPlayerOrientation, value);
     } catch (e) {
       debugPrint('[PerchPlay] setPlayerOrientation SP write failed: $e');
+    }
+    _scheduleJsonFlush();
+  }
+
+  /// HDR 输出模式（存的稳定字符串 id，见 `HdrOutputModeX.id`）。
+  ///
+  /// 默认 `off`：绝大多数设备/片源用不到，且开启后走 gpu-next +
+  /// Vulkan 渲染路径，兼容性不如默认的 OpenGL 路径。只有用户明确
+  /// 想要 HDR 直通时才手动开。
+  String get hdrOutputMode => _hdrOutputMode;
+
+  Future<void> setHdrOutputMode(String value) async {
+    _hdrOutputMode = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kHdrOutputMode, value);
+    } catch (e) {
+      debugPrint('[PerchPlay] setHdrOutputMode SP write failed: $e');
     }
     _scheduleJsonFlush();
   }

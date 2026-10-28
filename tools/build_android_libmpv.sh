@@ -103,17 +103,46 @@ fi
 # 先另存一份带符号的，方便以后定位崩溃。
 echo ""
 echo "▶ [3/6] strip 符号"
-LLVM_STRIP=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk" \
-	-name 'llvm-strip' -type f 2>/dev/null | head -1)
+# 依次尝试几个可能的 SDK 根：
+#   1. build-repo/buildscripts/sdk/android-sdk-linux（workflow 建的软链，
+#      与 build.sh 用的**完全是同一个** NDK，最可靠）
+#   2. $ANDROID_HOME
+#   3. runner 上的默认位置
+LLVM_STRIP=""
+for SDK_ROOT in \
+	"$BS/sdk/android-sdk-linux" \
+	"${ANDROID_HOME:-}" \
+	"${ANDROID_SDK_ROOT:-}" \
+	"/usr/local/lib/android/sdk"; do
+	[ -n "$SDK_ROOT" ] || continue
+	[ -d "$SDK_ROOT/ndk" ] || continue
+	LLVM_STRIP=$(find "$SDK_ROOT/ndk" -name 'llvm-strip' -type f 2>/dev/null | head -1)
+	if [ -n "$LLVM_STRIP" ]; then
+		echo "   SDK 根: $SDK_ROOT"
+		break
+	fi
+done
+# 兜底：直接从 PATH 找（build.sh 已把 toolchain/bin 加进 PATH）
+if [ -z "$LLVM_STRIP" ] && command -v llvm-strip >/dev/null 2>&1; then
+	LLVM_STRIP=$(command -v llvm-strip)
+fi
 OUTDIR="$BS/artifacts/libplacebo"
 mkdir -p "$OUTDIR"
 if [ -n "$LLVM_STRIP" ]; then
 	echo "   使用: $LLVM_STRIP"
 	cp -f "$LIBMPV_SRC" "$OUTDIR/libmpv-$ABI-unstripped.so"
 	BEFORE=$(stat -c%s "$LIBMPV_SRC")
+	# 对 .so 用 --strip-all（与官方 bundle_full.sh 一致）。
+	# 注意 --strip-unneeded 对静态链入的库有时会保留更多调试段，
+	# 实测不如 --strip-all 彻底。
 	"$LLVM_STRIP" --strip-all "$LIBMPV_SRC"
 	AFTER=$(stat -c%s "$LIBMPV_SRC")
 	echo "   ✓ strip: $((BEFORE/1048576))MB → $((AFTER/1048576))MB"
+	if [ "$AFTER" -gt $((30*1024*1024)) ]; then
+		echo "   ⚠ strip 后仍有 $((AFTER/1048576))MB，比官方(12MB)大很多。"
+		echo "     原因：libplacebo + shaderc + Vulkan 都是新加的，且未开 LTO。"
+		echo "     体积可接受（APK 会增大，但换来真正的 HDR 输出能力）。"
+	fi
 else
 	echo "   ⚠ 找不到 llvm-strip，保留未 strip 版本（体积会大 3~5 倍）"
 fi

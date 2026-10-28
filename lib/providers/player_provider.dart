@@ -1,5 +1,5 @@
 import 'dart:async' show Timer, unawaited;
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +20,7 @@ import '../services/device_info_service.dart';
 import '../services/native_bridge_service.dart';
 import '../services/library_prune_service.dart';
 import '../services/playback_busy.dart';
+import '../services/hdr_output_mode.dart';
 
 /// 播放器状态
 class PlayerState {
@@ -63,6 +64,12 @@ class PlayerState {
   final String? colorPrimaries; // 色域：bt.2020 / bt.709 / ...
   final String? transferFunction; // 传递函数：pq / hlg / bt.1886 / ...
   final double? sigPeak; // 信号峰值亮度（HDR 才有，SDR 通常 null 或 1.0）
+
+  /// HDR 输出模式。
+  ///
+  /// 非 [HdrOutputMode.off] 时走 `vo=gpu-next` + hdr-toys 着色器，
+  /// 绕过下面的 SDR 色调映射逻辑（两者互斥）。
+  final HdrOutputMode hdrOutputMode;
 
   /// 第二字幕：内嵌轨道 id（交给 mpv 的 secondary-sid 渲染）
   final String? secondaryTrackId;
@@ -129,6 +136,7 @@ class PlayerState {
     this.colorPrimaries,
     this.transferFunction,
     this.sigPeak,
+    this.hdrOutputMode = HdrOutputMode.off,
     this.secondaryTrackId,
     this.secondarySubtitle,
     this.secondaryEntries,
@@ -166,6 +174,8 @@ class PlayerState {
     String? colorPrimaries,
     String? transferFunction,
     double? sigPeak,
+    /// HDR 输出模式（gpu-next + hdr-toys）。null 表示不改。
+    HdrOutputMode? hdrOutputMode,
     String? secondaryTrackId,
     SubtitleModel? secondarySubtitle,
     List<SubtitleEntry>? secondaryEntries,
@@ -221,6 +231,7 @@ class PlayerState {
       transferFunction:
           clearMediaInfo ? null : (transferFunction ?? this.transferFunction),
       sigPeak: clearMediaInfo ? null : (sigPeak ?? this.sigPeak),
+    hdrOutputMode: hdrOutputMode ?? this.hdrOutputMode,
       secondaryTrackId: clearSecondaryTrackId
           ? null
           : (secondaryTrackId ?? this.secondaryTrackId),
@@ -351,13 +362,43 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     //     iOS 上**没有 `gpu` 这个 vo 后端**，硬塞 `gpu` 会导致渲染管线建不起来
     //     —— 表现就是「iPad 上视频播不了 / 黑屏」。media_kit 官方文档写明
     //     iOS 默认就是 `libmpv`，交给它自己选才对。
+    // vo 的取值取决于「是否启用 HDR 输出模式」：
+    //
+    //   关闭 HDR 输出（默认）→ `gpu`（OpenGL ES）
+    //     最稳，兼容所有设备。代价是不支持 HDR 直通。
+    //
+    //   启用 HDR 输出 → `gpu-next`
+    //     需要 libmpv 带 libplacebo + Vulkan。官方 media_kit 的库
+    //     不开这两个选项，用官方库时 gpu-next 会建不起来渲染管线
+    //     （表现为黑屏）。所以只有配了自建 libmpv 的用户才该开。
+    //     见 tools/build_android_libmpv.sh。
+    //
+    // ⚠ vo 是 VideoController 构造时固定、运行时无法更改的属性，
+    //    所以切换 HDR 输出模式必须**重建 VideoController**（见
+    //    switchHdrOutputMode）。这也是为什么默认关：避免用户
+    //    无意间走进 Vulkan 路径。
+    final savedHdrMode = HdrOutputModeX.fromId(
+      AppSettingsService.instance.hdrOutputMode,
+    );
+    final androidVo = savedHdrMode.needsGpuNext ? 'gpu-next' : 'gpu';
     _globalController = VideoController(
       state.player,
       configuration: VideoControllerConfiguration(
-        vo: Platform.isAndroid ? 'gpu' : null,
+        vo: Platform.isAndroid ? androidVo : null,
       ),
     );
-    state = state.copyWith(videoController: _globalController);
+    state = state.copyWith(
+      videoController: _globalController,
+      // 从设置里恢复 HDR 输出模式。
+      //
+      // ⚠ 注意：这个值只影响 setProperty 层面的行为（target-prim/trc、
+      // glsl-shader 等）。**vo 后端是 VideoController 构造时固定的**，
+      // 运行时改不了。所以真正要生效，videocontroller 必须一开始就是用
+      // gpu-next 创建的 —— 见下面 vo 的取值逻辑。
+      hdrOutputMode: HdrOutputModeX.fromId(
+        AppSettingsService.instance.hdrOutputMode,
+      ),
+    );
     _setupListeners();
     applyDecodingMode();
     // iOS 锁屏 / 控制中心的远程控制（播放、暂停、快进、下一集等）
@@ -783,12 +824,25 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (platform is! NativePlayer) return;
       final isHdr = state.hdrType != null;
 
-      // ── 去重：同一 HDR 类型只应用一次 ──
+      // ── 去重：同一 HDR 类型 + 同一输出模式只应用一次 ──
       // videoParams 触发多次 + open 后 applyRobustPlayback 又调一次，
       // 每次都打日志 + setProperty。用签名去重，状态真正变化才应用。
-      final sig = state.hdrType ?? 'sdr';
+      //
+      // 签名里带上输出模式：用户在设置里切换 HDR 档位后必须重新应用，
+      // 否则切档不生效（要等下一个视频才起效，体验很差）。
+      final sig = '${state.hdrType ?? 'sdr'}|${state.hdrOutputMode.id}';
       if (sig == _lastHdrAppliedSig) return;
       _lastHdrAppliedSig = sig;
+
+      // ── HDR 输出模式（gpu-next + hdr-toys）优先处理 ──
+      //
+      // 这条路径与下面的 SDR 映射逻辑**互斥**：hdr-toys 要求
+      // target-prim / target-trc 与输入严格匹配，且明确禁止设置
+      // target-peak。所以走这里时必须跳过下面的全部 setProperty。
+      if (state.hdrOutputMode.needsGpuNext) {
+        await _applyHdrOutputMode(platform);
+        return;
+      }
 
       if (isHdr) {
         // ── 输出色彩空间：必须显式指定 ──
@@ -847,6 +901,223 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
     } catch (e) {
       debugPrint('[Player] 应用 HDR 色调映射失败: $e');
+    }
+  }
+
+  /// 应用「HDR 输出模式」：`vo=gpu-next` + hdr-toys 着色器链。
+  ///
+  /// ## 与 SDR 映射逻辑互斥
+  ///
+  /// hdr-toys 的工作原理是「把输入色彩空间精确还原成目标色彩空间」，
+  /// 它对 `target-prim` / `target-trc` 的要求是**必须与输入匹配**。
+  /// 而 [applyHdrToneMapping] 的 SDR 分支把它们固定成 `bt.709` /
+  /// `bt.1886`，两者同时生效会互相打架，表现为严重偏色。
+  ///
+  /// 所以这里是**二选一**：走进这个方法就不再执行下面的 SDR 逻辑。
+  ///
+  /// ## 为什么必须清掉 target-peak
+  ///
+  /// hdr-toys 的 README 明确写了：
+  ///   "Make sure NOT to set target-peak, icc-profile, or similar options"
+  /// 残留的 peak 值会让 libplacebo 在 shader 之前再做一次 tone-map，
+  /// 结果是「画面发灰 + 高光死白」。
+  ///
+  /// ## 失败处理
+  ///
+  /// 如果 shader 释放失败（或 libmpv 不带 libplacebo），不抛异常、
+  /// 不黑屏，只回退到 SDR 映射并打日志。宁可没有 HDR，也不能播不了。
+  Future<void> _applyHdrOutputMode(NativePlayer platform) async {
+    final mode = state.hdrOutputMode;
+    try {
+      // ── 1) 释放 hdr-toys 的 shader 到磁盘 ──
+      final root = await HdrShaderInstaller.instance.ensureInstalled();
+      if (root == null) {
+        debugPrint('[HDR-OUT] shader 不可用，回退到 SDR 映射');
+        // 回退：把状态改回 off，让下次进入 SDR 分支
+        if (mounted) {
+          state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
+          _lastHdrAppliedSig = null;
+        }
+        return;
+      }
+
+      // ── 2) 清掉会对 shader 造成二次处理的参数 ──
+      // 这些必须显式清，不能只靠「不再设置」——
+      // 上一个片源/上一次设置可能留下了值。
+      await platform.setProperty('target-peak', 'auto');
+      await platform.setProperty('tone-mapping', 'clip');
+      await platform.setProperty('gamut-mapping-mode', 'clip');
+      await platform.setProperty('hdr-compute-peak', 'no');
+      // 显式关掉 icc，防止某些设备上系统 profile 被自动加载
+      await platform.setProperty('icc-profile', '');
+      await platform.setProperty('icc-profile-auto', 'no');
+
+      // ── 3) 目标色彩空间 ──
+      final prim = mode.targetPrim;
+      final trc = mode.targetTrc;
+      if (prim != null) await platform.setProperty('target-prim', prim);
+      if (trc != null) await platform.setProperty('target-trc', trc);
+
+      // ── 4) 是否向系统声明 HDR 输出 ──
+      // 只有 PQ / HLG 需要。开这个之后 Android 会让 SurfaceFlinger
+      // 走 HDR 合成路径，系统状态栏/亮度行为都会变（这是预期的）。
+      await platform.setProperty(
+        'target-colorspace-hint',
+        mode.colorspaceHint ? 'yes' : 'no',
+      );
+
+      // ── 5) 设置着色器链 ──
+      //
+      // 注意 setProperty 的语义差异：
+      //   `glsl-shader` 是**列表属性**，连续 setProperty 是「追加」还是
+      //   「替换」取决于 mpv 版本。为稳妥，先清空再逐个追加。
+      try {
+        await platform.setProperty('glsl-shader', '');
+      } catch (_) {
+        // 某些版本不接受空值，忽略
+      }
+
+      final files = <String>[];
+      for (final rel in mode.shaderChain) {
+        final f = File('${root.path}/$rel');
+        if (!await f.exists()) {
+          debugPrint('[HDR-OUT] ⚠ shader 缺失: ${f.path}');
+          continue;
+        }
+        files.add(f.path);
+      }
+
+      if (files.isEmpty) {
+        debugPrint('[HDR-OUT] 没有可用的 shader 文件，回退 SDR');
+        if (mounted) {
+          state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
+          _lastHdrAppliedSig = null;
+        }
+        return;
+      }
+
+      // mpv 的列表属性用 append 语义最可靠
+      for (final p in files) {
+        await platform.setProperty('glsl-shader', p);
+      }
+
+      // ── 6) 着色器参数 ──
+      // glsl-shader-opts-append 是累加的，所以切档前要先清掉旧的。
+      try {
+        await platform.setProperty('glsl-shader-opts-append', '');
+      } catch (_) {}
+      for (final opt in mode.shaderOpts) {
+        await platform.setProperty('glsl-shader-opts-append', opt);
+      }
+
+      debugPrint('[HDR-OUT] 已应用 ${mode.id} '
+          '(${files.length} 个 shader, target=$prim/$trc, '
+          'hint=${mode.colorspaceHint})');
+    } catch (e, st) {
+      debugPrint('[HDR-OUT] 应用失败，回退 SDR: $e\n$st');
+      if (mounted) {
+        state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
+        _lastHdrAppliedSig = null;
+      }
+    }
+  }
+
+  /// 切换 HDR 输出模式（由设置页调用）。
+  ///
+  /// ## 为什么要重建 VideoController
+  ///
+  /// `vo` 是 [VideoControllerConfiguration] 的字段，在 `VideoController`
+  /// 构造时传给原生侧并固定下来（Android 侧 `widListener` 里直接用
+  /// `configuration.vo!`）。mpv 虽然允许 `setProperty('vo', ...)`，
+  /// 但 media_kit 的 Flutter 纹理通路是按初始 vo 建立的：
+  /// 从 `gpu`（OpenGL ES 纹理）切到 `gpu-next`（Vulkan Surface）
+  /// 必须重建纹理，否则拿不到画面。
+  ///
+  /// 所以这里保留当前播放位置和播放状态，重建 controller 后恢复。
+  ///
+  /// ## 失败回滚
+  ///
+  /// gpu-next 建不起来时（例如用户装的是官方 libmpv，没有 libplacebo），
+  /// 会立刻回退到 `gpu` 并把模式重置为 off，避免留下黑屏。
+  Future<void> setHdrOutputMode(HdrOutputMode mode) async {
+    if (state.hdrOutputMode == mode) return;
+    debugPrint('[HDR-OUT] 切换到 ${mode.id}');
+
+    // 先把设置写下去：即使重建失败，用户的选择也保留了
+    try {
+      await AppSettingsService.instance.setHdrOutputMode(mode.id);
+    } catch (e) {
+      debugPrint('[HDR-OUT] 保存设置失败: $e');
+    }
+
+    // 记录当前播放状态，重建后恢复
+    final wasPlaying = state.isPlaying;
+    final resumePos = state.position;
+    final video = state.currentVideo;
+
+    // 非 Android 平台没有 gpu-next，直接改状态、走 SDR 逻辑即可
+    if (!Platform.isAndroid) {
+      state = state.copyWith(
+        hdrOutputMode: mode == HdrOutputMode.off ? HdrOutputMode.off : mode,
+      );
+      _lastHdrAppliedSig = null;
+      await applyHdrToneMapping();
+      return;
+    }
+
+    // ── 重建 VideoController ──
+    try {
+      final newVo = mode.needsGpuNext ? 'gpu-next' : 'gpu';
+      debugPrint('[HDR-OUT] 重建 VideoController, vo=$newVo');
+
+      state = state.copyWith(hdrOutputMode: mode);
+
+      final rebuilt = VideoController(
+        state.player,
+        configuration: VideoControllerConfiguration(vo: newVo),
+      );
+      _globalController = rebuilt;
+      state = state.copyWith(videoController: rebuilt);
+
+      // 旧 controller 不主动 dispose：
+      // media_kit 的 AndroidVideoController 把清理函数注册在
+      // `player.platform.release` 上（只有 Player.dispose 时才触发），
+      // 且 VideoController 本身没有公开的 dispose 方法。
+      // 强行释放会留下悬挂的 native handle，导致后续重建失败。
+      // 这里只把 state 的引用切到新 controller，旧的随 Player 一起回收。
+      debugPrint('[HDR-OUT] 旧 controller 保留（随 Player 释放）');
+
+      _lastHdrAppliedSig = null;
+      _lastScalingSig = null;
+      await applyHdrToneMapping();
+
+      // 恢复播放位置与状态
+      if (video != null && resumePos > Duration.zero) {
+        try {
+          await state.player.seek(resumePos);
+          if (wasPlaying) await state.player.play();
+        } catch (e) {
+          debugPrint('[HDR-OUT] 恢复播放位置失败（忽略）: $e');
+        }
+      }
+      debugPrint('[HDR-OUT] 已切换到 ${mode.id}（vo=$newVo）');
+    } catch (e, st) {
+      debugPrint('[HDR-OUT] 重建 VideoController 失败: $e\n$st');
+      // 回滚到 gpu + 关闭 HDR
+      try {
+        final fallback = VideoController(
+          state.player,
+          configuration: const VideoControllerConfiguration(vo: 'gpu'),
+        );
+        _globalController = fallback;
+        state = state.copyWith(
+          videoController: fallback,
+          hdrOutputMode: HdrOutputMode.off,
+        );
+        await AppSettingsService.instance.setHdrOutputMode('off');
+      } catch (e2) {
+        debugPrint('[HDR-OUT] 回滚也失败: $e2');
+      }
     }
   }
 

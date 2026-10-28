@@ -97,3 +97,13 @@ flutter:
   assets:
     - assets/icons/
     - assets/branding/
+    # hdr-toys 的 GLSL hook 着色器（MIT 许可，见 assets/hdr-toys/LICENSE）
+    #
+    # 这些 shader 只在「HDR 输出模式」非关闭时用到，且要求 libmpv
+    # 带 libplacebo + vo=gpu-next。Flutter 的 assets 只能按**目录**
+    # 声明（不能递归），所以下面按子目录逐个列出。
+    - assets/hdr-toys/shaders/hdr-toys/utils/
+    - assets/hdr-toys/shaders/hdr-toys/tone-mapping/
+    - assets/hdr-toys/shaders/hdr-toys/gamut-mapping/
+    - assets/hdr-toys/shaders/hdr-toys/transfer-function/
+    - assets/hdr-toys/shaders/hdr-toys/transfer-function/log/
