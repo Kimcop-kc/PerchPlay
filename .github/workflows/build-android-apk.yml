@@ -86,9 +86,13 @@ jobs:
         if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
         uses: actions/cache@v4
         with:
+          # 与 build-android-libplacebo.yml 保持一致：缓存到仓库目录**之外**。
+          # 直接缓存 build-repo/buildscripts/{deps,prefix} 会让
+          # actions/cache 把 build-repo/ 父目录建出来（没有 .git），
+          # 后面的 git clone 报 destination path already exists。
           path: |
-            build-repo/buildscripts/deps
-            build-repo/buildscripts/prefix
+            ~/libmpv-cache/deps
+            ~/libmpv-cache/prefix
           key: libmpv-lp-${{ inputs.arch }}-${{ steps.pkghash.outputs.hash }}
           restore-keys: |
             libmpv-lp-${{ inputs.arch }}-
@@ -97,12 +101,18 @@ jobs:
         if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
         run: |
           set -euo pipefail
-          if [ -d build-repo/.git ]; then
-            echo "复用缓存的 build-repo"
-          else
-            git clone --depth 1 https://github.com/media-kit/libmpv-android-video-build.git build-repo
-          fi
-          git -C build-repo rev-parse --short HEAD
+          rm -rf build-repo
+          git clone --depth 1 \
+            https://github.com/media-kit/libmpv-android-video-build.git build-repo
+          echo "HEAD: $(git -C build-repo rev-parse --short HEAD)"
+
+          CACHE="$HOME/libmpv-cache"
+          for d in deps prefix; do
+            if [ -d "$CACHE/$d" ]; then
+              mv "$CACHE/$d" "build-repo/buildscripts/$d"
+              echo "✓ 已恢复缓存 $d"
+            fi
+          done
 
       - name: 应用 libplacebo patch
         if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
@@ -140,6 +150,11 @@ jobs:
         working-directory: ./build-repo/buildscripts
         run: |
           set -euo pipefail
+          # 缓存里的 deps/ 可能带残留 git 锁文件和错误属主
+          if [ -d deps ]; then
+            find deps -name '*.lock' -path '*/.git/*' -delete 2>/dev/null || true
+            chmod -R u+w deps 2>/dev/null || true
+          fi
           chmod +x include/download-deps.sh
           ./include/download-deps.sh
         timeout-minutes: 40
@@ -160,6 +175,24 @@ jobs:
           chmod +x tools/build_android_libmpv.sh
           bash tools/build_android_libmpv.sh "$PWD/build-repo" "${{ inputs.arch }}"
         timeout-minutes: 150
+
+      # 把 deps/prefix 挪回缓存挂载点，供 actions/cache 的 post 步骤保存。
+      # 必须在「构建 libmpv JAR」之后、「汇总 JAR 路径」之前 ——
+      # JAR 在 buildscripts/artifacts/ 下，与 deps/prefix 无关，不受影响。
+      - name: 回写缓存目录
+        if: always() && inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          CACHE="$HOME/libmpv-cache"
+          mkdir -p "$CACHE"
+          for d in deps prefix; do
+            SRC="build-repo/buildscripts/$d"
+            if [ -d "$SRC" ]; then
+              rm -rf "$CACHE/$d"
+              mv "$SRC" "$CACHE/$d"
+              echo "✓ 已回写 $d ($(du -sh "$CACHE/$d" 2>/dev/null | cut -f1))"
+            fi
+          done
 
       - name: 汇总 JAR 路径
         id: jar

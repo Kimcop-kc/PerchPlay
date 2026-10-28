@@ -64,23 +64,44 @@ jobs:
         id: cache
         uses: actions/cache@v4
         with:
+          # 缓存到 **仓库目录之外** 的独立路径，避免 actions/cache
+          # 把 build-repo/ 父目录建出来、与后面的 git clone 冲突
+          # （曾报 fatal: destination path 'build-repo' already exists）。
           path: |
-            build-repo/buildscripts/deps
-            build-repo/buildscripts/prefix
+            ~/libmpv-cache/deps
+            ~/libmpv-cache/prefix
           key: libmpv-lp-${{ inputs.arch }}-${{ steps.pkghash.outputs.hash }}
-          # 部分命中也能省掉大部分时间（deps 源码不变）
           restore-keys: |
             libmpv-lp-${{ inputs.arch }}-
 
       - name: 检出 media-kit 构建仓库
         run: |
           set -euo pipefail
-          if [ -d build-repo/.git ]; then
-            echo "复用缓存的 build-repo"
-          else
-            git clone --depth 1 https://github.com/media-kit/libmpv-android-video-build.git build-repo
-          fi
+          rm -rf build-repo
+          git clone --depth 1 \
+            https://github.com/media-kit/libmpv-android-video-build.git build-repo
           echo "HEAD: $(git -C build-repo rev-parse --short HEAD)"
+
+          # 把缓存的 deps/prefix 放回 buildscripts 下（如果命中）
+          CACHE="$HOME/libmpv-cache"
+          if [ -d "$CACHE/deps" ]; then
+            mv "$CACHE/deps" build-repo/buildscripts/deps
+            echo "✓ 已恢复缓存的 deps: $(ls build-repo/buildscripts/deps | tr '\n' ' ')"
+          else
+            echo "无 deps 缓存，将完整下载"
+          fi
+          if [ -d "$CACHE/prefix" ]; then
+            mv "$CACHE/prefix" build-repo/buildscripts/prefix
+            echo "✓ 已恢复缓存的 prefix"
+          else
+            echo "无 prefix 缓存，将完整编译"
+          fi
+
+      - name: 保存缓存用的挂载点（构建后回写）
+        run: |
+          # 建一个空目录占位，构建结束时把 deps/prefix 挪回来供 cache 保存
+          mkdir -p "$HOME/libmpv-cache"
+          echo "缓存挂载点已建: $HOME/libmpv-cache"
 
       - name: 应用 libplacebo patch
         run: |
@@ -131,6 +152,14 @@ jobs:
         working-directory: ./build-repo/buildscripts
         run: |
           set -euo pipefail
+          # 缓存恢复的 deps/ 里可能残留 git 锁文件（上一个 runner 被杀时
+          # 留下的 index.lock 之类），会让后续 git 操作直接失败。
+          if [ -d deps ]; then
+            echo "清理缓存里的 git 残留"
+            find deps -name '*.lock' -path '*/.git/*' -delete 2>/dev/null || true
+            # 权限：缓存恢复后属主可能不对
+            chmod -R u+w deps 2>/dev/null || true
+          fi
           chmod +x include/download-deps.sh
           ./include/download-deps.sh
         timeout-minutes: 40
@@ -199,6 +228,28 @@ jobs:
           path: build-repo/buildscripts/artifacts/libplacebo/*-unstripped.so
           retention-days: 14
           if-no-files-found: warn
+
+      # ─────────────────────────────────────────────────────────────
+      # 把 deps/prefix 挪回缓存挂载点，供 actions/cache 的 post 步骤保存。
+      # 放在所有 artifact 上传**之后**：这些上传要读
+      # build-repo/buildscripts/artifacts/，虽然与 deps/prefix 无关，
+      # 但顺序明确了不容易将来改错。
+      # if: always() —— 即使构建失败也回写，下次能命中部分缓存。
+      # ─────────────────────────────────────────────────────────────
+      - name: 回写缓存目录
+        if: always()
+        run: |
+          CACHE="$HOME/libmpv-cache"
+          mkdir -p "$CACHE"
+          for d in deps prefix; do
+            SRC="build-repo/buildscripts/$d"
+            if [ -d "$SRC" ]; then
+              rm -rf "$CACHE/$d"
+              mv "$SRC" "$CACHE/$d"
+              echo "✓ 已回写 $d ($(du -sh "$CACHE/$d" 2>/dev/null | cut -f1))"
+            fi
+          done
+          du -sh "$CACHE" 2>/dev/null || true
 
       - name: 结论
         if: always()
