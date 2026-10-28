@@ -1,0 +1,215 @@
+name: Android — libplacebo 版 libmpv 构建
+
+# ═══════════════════════════════════════════════════════════════════
+# 目的
+# ═══════════════════════════════════════════════════════════════════
+# 构建**带 libplacebo（gpu-next）的 libmpv**，产出可直接被
+# media_kit_libs_android_video 使用的 JAR。
+#
+# 为什么需要自己构建
+# ──────────────────
+# media-kit 官方发布的 libmpv 在编译时显式关闭了：
+#     -Dvulkan=disabled -Dlibplacebo=disabled -Dshaderc=disabled
+# 因此官方库**没有 gpu-next 后端**，无法运行 hdr-toys 这类需要
+# libplacebo 的 GLSL hook 着色器，也就做不了 HDR 输出档位。
+#
+# 产物
+# ────
+#   artifacts/libplacebo/full-<abi>.jar   可直接替换官方 JAR
+#   （内含 libmpv.so + libmediakitandroidhelper.so）
+#
+# 触发
+# ────
+# 手动触发。构建约 40 分钟（缓存命中时 ~15 分钟）。
+# ═══════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: '目标架构'
+        required: false
+        default: 'arm64'
+        type: choice
+        options:
+          - arm64
+          - armv7l
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 libmpv (libplacebo)
+    # 必须用 ubuntu-22.04：官方 CI 也是这个版本，
+    # 且预装 SDK 的 NDK 版本与构建脚本兼容性最好。
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: 检出本仓库
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────────────────────────────
+      # 缓存：把整个 build-repo 的 deps/ 和 prefix/ 缓存起来。
+      # 单次全量构建约 40 分钟，命中缓存后只需编 libplacebo + mpv。
+      # 缓存 key 包含 patch 脚本的哈希 —— patch 一改就自动失效，
+      # 避免用到旧的、配置不对的产物。
+      # ─────────────────────────────────────────────────────────────
+      - name: 计算 patch 脚本哈希（缓存 key 用）
+        id: pkghash
+        run: |
+          echo "hash=$(cat tools/patch_libplacebo.sh tools/libplacebo.sh | sha256sum | cut -c1-16)" >> $GITHUB_OUTPUT
+
+      - name: 恢复构建缓存
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-repo/buildscripts/deps
+            build-repo/buildscripts/prefix
+          key: libmpv-lp-${{ inputs.arch }}-${{ steps.pkghash.outputs.hash }}
+          # 部分命中也能省掉大部分时间（deps 源码不变）
+          restore-keys: |
+            libmpv-lp-${{ inputs.arch }}-
+
+      - name: 检出 media-kit 构建仓库
+        run: |
+          set -euo pipefail
+          if [ -d build-repo/.git ]; then
+            echo "复用缓存的 build-repo"
+          else
+            git clone --depth 1 https://github.com/media-kit/libmpv-android-video-build.git build-repo
+          fi
+          echo "HEAD: $(git -C build-repo rev-parse --short HEAD)"
+
+      - name: 应用 libplacebo patch
+        run: |
+          set -euo pipefail
+          chmod +x tools/patch_libplacebo.sh
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools"
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 安装构建工具
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            ninja-build pkg-config zip unzip curl \
+            autoconf automake libtool gperf \
+            nasm yasm cmake wget
+          # meson 必须用 pip 装新版：ubuntu-22.04 仓库的是 0.61.2，
+          # 而 libplacebo 6.338 要求 >= 0.63。
+          python3 -m pip install --upgrade --user "meson>=1.3,<2"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          meson --version
+          ninja --version
+
+      - name: Symlink SDK
+        working-directory: ./build-repo/buildscripts
+        run: |
+          set -euo pipefail
+          mkdir -p sdk
+          ln -sfn "${ANDROID_HOME}" ./sdk/android-sdk-linux
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "=== 可用 NDK ==="
+          ls "${ANDROID_HOME}/ndk" || true
+
+      - name: 对齐 NDK 版本
+        run: |
+          set -euo pipefail
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools" 2>&1 \
+            | grep -E '1e\)|v_ndk|NDK' || true
+          grep '^v_ndk=' build-repo/buildscripts/include/depinfo.sh
+
+      - name: 下载依赖源码
+        working-directory: ./build-repo/buildscripts
+        run: |
+          set -euo pipefail
+          chmod +x include/download-deps.sh
+          ./include/download-deps.sh
+        timeout-minutes: 40
+
+      - name: 准备 ffmpeg flavor
+        working-directory: ./build-repo/buildscripts
+        run: |
+          set -euo pipefail
+          rm -f scripts/ffmpeg.sh
+          cp flavors/full.sh scripts/ffmpeg.sh
+          # 关键：**不要**预建 prefix/<abi>/ 目录。
+          # build.sh 的 setup_prefix 只在 prefix_dir 不存在时才建
+          # usr/local 软链；预建会让它跳过，导致所有 usr/local 路径失效。
+          echo "full flavor 已就位（prefix 交给 setup_prefix 初始化）"
+
+      # ─────────────────────────────────────────────────────────────
+      # 正式构建
+      # ─────────────────────────────────────────────────────────────
+      - name: 构建 libmpv + 打包 JAR
+        run: |
+          set -euo pipefail
+          chmod +x tools/build_android_libmpv.sh
+          bash tools/build_android_libmpv.sh "$PWD/build-repo" "${{ inputs.arch }}"
+        timeout-minutes: 150
+
+      - name: 校验 JAR
+        run: |
+          set -euo pipefail
+          ABI="${{ inputs.arch == 'armv7l' && 'armeabi-v7a' || 'arm64-v8a' }}"
+          JAR="build-repo/buildscripts/artifacts/libplacebo/full-$ABI.jar"
+          test -f "$JAR" || { echo "❌ JAR 不存在"; exit 1; }
+          echo "=== JAR 内容 ==="
+          unzip -l "$JAR"
+
+          echo ""
+          echo "=== 从 JAR 里提 libmpv.so 复查 ==="
+          mkdir -p /tmp/jarcheck && cd /tmp/jarcheck
+          unzip -oq "$OLDPWD/$JAR"
+          SO="lib/$ABI/libmpv.so"
+          ls -lh "$SO"
+          echo ""
+          echo "--- NEEDED ---"
+          readelf -d "$SO" | grep -E 'NEEDED|SONAME' || true
+          readelf -d "$SO" | grep -q 'libvulkan.so' \
+            || { echo "❌ libmpv.so 没有 libvulkan.so 依赖"; exit 1; }
+          echo "✓ libvulkan.so 依赖存在"
+
+          echo ""
+          echo "--- 关键符号 ---"
+          echo -n "placebo 相关: "; (nm -D "$SO" 2>/dev/null | grep -ci placebo) || echo 0
+          echo -n "shaderc 相关: "; (nm -D "$SO" 2>/dev/null | grep -ci shaderc) || echo 0
+
+      - name: 上传 JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-libplacebo-${{ inputs.arch }}
+          path: build-repo/buildscripts/artifacts/libplacebo/*.jar
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: 上传未 strip 的 so（排查崩溃用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-unstripped-${{ inputs.arch }}
+          path: build-repo/buildscripts/artifacts/libplacebo/*-unstripped.so
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: 结论
+        if: always()
+        run: |
+          ABI="${{ inputs.arch == 'armv7l' && 'armeabi-v7a' || 'arm64-v8a' }}"
+          JAR="build-repo/buildscripts/artifacts/libplacebo/full-$ABI.jar"
+          echo "════════════════════════════════════════"
+          echo "构建结果: ${{ job.status }}"
+          if [ -f "$JAR" ]; then
+            echo "✅ JAR: $(du -h "$JAR" | cut -f1)"
+          else
+            echo "❌ 未产出 JAR"
+          fi
+          echo "════════════════════════════════════════"

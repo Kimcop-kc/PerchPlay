@@ -1,0 +1,284 @@
+name: Android — 构建 APK（可选 libplacebo 版 libmpv）
+
+# ═══════════════════════════════════════════════════════════════════
+# 两件事可以分开做，也可以一起做：
+#
+#   build_libmpv = true  → 先构建带 libplacebo 的 libmpv JAR，
+#                          这次构建自始至终都用它替代官方 JAR
+#   build_libmpv = false → 直接用官方 libmpv（不启用 gpu-next）
+#
+# 为什么「注入 JAR」要在这个 workflow 里做而不是改 pubspec
+# ─────────────────────────────────────────────────────────────
+# media_kit_libs_android_video 的 build.gradle 里写死了从 GitHub
+# Release 下载官方 JAR（并校验 MD5）。要换成自建版本，最稳妥的做法
+# 是**在 `flutter pub get` 之后**改掉 pub cache 里那份 build.gradle，
+# 把下载地址改成本地 file:// URL。这样：
+#   - 不需要 fork 插件、不需要 dependency_overrides
+#   - 官方那套「下载 → MD5 校验 → 拷到 buildDir/output」流程照常走
+#   - MD5 换成自建 JAR 的实际值，损坏时会立刻报错
+# ═══════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_libmpv:
+        description: '构建带 gpu-next 的 libmpv（耗时约 20-40 分钟）'
+        required: true
+        type: boolean
+        default: true
+      create_release:
+        description: '构建完成后是否创建/更新 Release（需先打 tag）'
+        required: false
+        type: boolean
+        default: false
+      arch:
+        description: 'libmpv 目标架构'
+        required: false
+        default: 'arm64'
+        type: choice
+        options:
+          - arm64
+          - armv7l
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建 APK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      PUB_HOSTED_URL: https://pub.dev
+      FLUTTER_STORAGE_BASE_URL: https://storage.googleapis.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # ─────────────────────────────────────────────────────────────
+      # libmpv JAR：优先用已有 artifact（省 30 分钟），没有就现编
+      # ─────────────────────────────────────────────────────────────
+      - name: 尝试复用已有的 libmpv JAR artifact
+        id: try_artifact
+        if: inputs.build_libmpv
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-android-libplacebo.yml
+          name: libmpv-libplacebo-${{ inputs.arch }}
+          path: prebuilt-libmpv
+          search_artifacts: true
+          if_no_artifact_found: fail
+
+      - name: 计算 patch 脚本哈希
+        id: pkghash
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          echo "hash=$(cat tools/patch_libplacebo.sh tools/libplacebo.sh | sha256sum | cut -c1-16)" >> $GITHUB_OUTPUT
+
+      - name: 恢复 libmpv 构建缓存
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-repo/buildscripts/deps
+            build-repo/buildscripts/prefix
+          key: libmpv-lp-${{ inputs.arch }}-${{ steps.pkghash.outputs.hash }}
+          restore-keys: |
+            libmpv-lp-${{ inputs.arch }}-
+
+      - name: 检出 media-kit 构建仓库
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          if [ -d build-repo/.git ]; then
+            echo "复用缓存的 build-repo"
+          else
+            git clone --depth 1 https://github.com/media-kit/libmpv-android-video-build.git build-repo
+          fi
+          git -C build-repo rev-parse --short HEAD
+
+      - name: 应用 libplacebo patch
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          chmod +x tools/patch_libplacebo.sh
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools"
+
+      - name: 安装构建工具
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            ninja-build pkg-config zip unzip curl \
+            autoconf automake libtool gperf \
+            nasm yasm cmake wget
+          python3 -m pip install --upgrade --user "meson>=1.3,<2"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          meson --version
+
+      - name: Symlink SDK + 对齐 NDK
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p build-repo/buildscripts/sdk
+          ln -sfn "${ANDROID_HOME}" ./build-repo/buildscripts/sdk/android-sdk-linux
+          bash tools/patch_libplacebo.sh "$PWD/build-repo" "$PWD/tools" 2>&1 \
+            | grep -E '1e\)|v_ndk|NDK' || true
+          grep '^v_ndk=' build-repo/buildscripts/include/depinfo.sh
+
+      - name: 下载依赖源码
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        working-directory: ./build-repo/buildscripts
+        run: |
+          set -euo pipefail
+          chmod +x include/download-deps.sh
+          ./include/download-deps.sh
+        timeout-minutes: 40
+
+      - name: 准备 ffmpeg flavor
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        working-directory: ./build-repo/buildscripts
+        run: |
+          set -euo pipefail
+          rm -f scripts/ffmpeg.sh
+          cp flavors/full.sh scripts/ffmpeg.sh
+          echo "full flavor（prefix 交给 setup_prefix 初始化，不预建）"
+
+      - name: 构建 libmpv JAR
+        if: inputs.build_libmpv && steps.try_artifact.outcome != 'success'
+        run: |
+          set -euo pipefail
+          chmod +x tools/build_android_libmpv.sh
+          bash tools/build_android_libmpv.sh "$PWD/build-repo" "${{ inputs.arch }}"
+        timeout-minutes: 150
+
+      - name: 汇总 JAR 路径
+        id: jar
+        if: inputs.build_libmpv
+        run: |
+          set -euo pipefail
+          ABI="${{ inputs.arch == 'armv7l' && 'armeabi-v7a' || 'arm64-v8a' }}"
+          if [ "${{ steps.try_artifact.outcome }}" = "success" ]; then
+            JAR=$(find prebuilt-libmpv -name "full-$ABI.jar" | head -1)
+          else
+            JAR="build-repo/buildscripts/artifacts/libplacebo/full-$ABI.jar"
+          fi
+          test -f "$JAR" || { echo "❌ 找不到 JAR"; exit 1; }
+          echo "path=$JAR" >> $GITHUB_OUTPUT
+          echo "abi=$ABI"  >> $GITHUB_OUTPUT
+          echo "✓ JAR: $JAR ($(du -h "$JAR" | cut -f1))"
+          unzip -l "$JAR"
+
+      # ─────────────────────────────────────────────────────────────
+      # Flutter 构建
+      # ─────────────────────────────────────────────────────────────
+      - name: 安装 Flutter 3.47.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: zulu
+
+      - name: 安装依赖
+        run: flutter pub get
+
+      # ── 关键一步：把自建 JAR 注入 pub cache ──
+      - name: 注入自建 libmpv JAR
+        if: inputs.build_libmpv
+        run: |
+          set -euo pipefail
+          python3 tools/patch_media_kit_jar.py \
+            "${{ steps.jar.outputs.path }}" \
+            "${{ steps.jar.outputs.abi }}"
+
+      - name: 静态分析
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tail -60
+
+      - name: 单元测试
+        continue-on-error: true
+        run: |
+          flutter test 2>&1 | tail -60
+
+      - name: 配置发布签名
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，本次为 debug 签名"
+            exit 0
+          fi
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
+            "$RUNNER_TEMP/release.jks" \
+            "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_ALIAS }}" > android/key.properties
+          echo "✓ 发布签名已配置"
+
+      - name: 构建 APK（仅 arm64-v8a）
+        run: flutter build apk --release
+
+      - name: 校验 APK 内的 libmpv.so
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          ls -lh "$APK"
+          mkdir -p /tmp/apkcheck && cd /tmp/apkcheck
+          unzip -oq "$OLDPWD/$APK" 'lib/arm64-v8a/*'
+          SO=lib/arm64-v8a/libmpv.so
+          test -f "$SO" || { echo "❌ APK 里没有 libmpv.so"; ls lib/arm64-v8a/ 2>/dev/null; exit 1; }
+          echo "=== APK 内 libmpv.so ==="
+          ls -lh "$SO"
+          readelf -d "$SO" | grep -E 'NEEDED|SONAME' || true
+          if [ "${{ inputs.build_libmpv }}" = "true" ]; then
+            readelf -d "$SO" | grep -q 'libvulkan.so' \
+              || { echo "❌ libmpv.so 没有 libvulkan.so，说明注入失败"; exit 1; }
+            echo "✅ libmpv.so 含 libvulkan（gpu-next 可用）"
+            echo -n "shaderc 符号: "; (nm -D "$SO" 2>/dev/null | grep -ci shaderc) || echo 0
+          fi
+
+      - name: 校验签名
+        run: |
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort | tail -1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | head -6
+
+      - name: 重命名产物
+        run: |
+          cd build/app/outputs/flutter-apk
+          V="${GITHUB_REF_NAME:-manual}"
+          SUFFIX=""
+          if [ "${{ inputs.build_libmpv }}" = "true" ]; then SUFFIX="-gpu-next"; fi
+          mv app-release.apk "PerchPlay-${V}-arm64-v8a${SUFFIX}.apk"
+          ls -la *.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.ref_name || 'manual' }}${{ inputs.build_libmpv && '-gpu-next' || '' }}
+          path: build/app/outputs/flutter-apk/PerchPlay-*.apk
+          retention-days: 30
+
+      - name: 发布到 Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.create_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PerchPlay ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: build/app/outputs/flutter-apk/PerchPlay-*.apk
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false
