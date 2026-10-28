@@ -26,7 +26,8 @@ jobs:
   build:
     name: 构建 APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 加入 JAR 下载后仍远低于 60 分钟；留 90 分钟余量应对 runner 慢
+    timeout-minutes: 90
     env:
       PUB_HOSTED_URL: https://pub.dev
       FLUTTER_STORAGE_BASE_URL: https://storage.googleapis.com
@@ -35,6 +36,46 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
+
+      # ─────────────────────────────────────────────────────────────
+      # 注入 libplacebo 版 libmpv（HDR 输出模式依赖它）
+      #
+      # 官方 media-kit 的 libmpv 编译时关闭了 libplacebo / vulkan /
+      # shaderc，没有 gpu-next 后端，HDR 输出模式用不了。
+      # 这里下载我们自建的 JAR 替换官方那个，见
+      # .github/workflows/build-android-libplacebo.yml。
+      #
+      # continue-on-error: 万一 artifact 过期或下载失败，**不能让发版
+      # 整个失败** —— 退化成普通 APK（HDR 选项会置灰）仍是可用的包。
+      # 后面有一步会检查并给出明确提示。
+      # ─────────────────────────────────────────────────────────────
+      - name: 下载自建的 libplacebo 版 libmpv JAR
+        id: libmpv
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          # JAR 由 build-android-libplacebo.yml 在 **master** 上构建。
+          # 发版时当前 ref 是 tag（v1.1.8），必须显式指明去 master 找，
+          # 否则搜不到（除非 workflow 恰好也在 tag 上跑过）。
+          workflow: build-android-libplacebo.yml
+          branch: master
+          name: libmpv-libplacebo-arm64
+          path: prebuilt-libmpv
+          search_artifacts: true
+          if_no_artifact_found: fail
+
+      - name: 确认 JAR 就位
+        id: jar
+        run: |
+          set -euo pipefail
+          JAR=$(find prebuilt-libmpv -name 'full-arm64-v8a.jar' 2>/dev/null | head -1 || true)
+          if [ -n "$JAR" ] && [ -f "$JAR" ]; then
+            echo "path=$JAR" >> $GITHUB_OUTPUT
+            echo "✓ JAR: $JAR ($(du -h "$JAR" | cut -f1))"
+          else
+            echo "path=" >> $GITHUB_OUTPUT
+            echo "::warning::未取到 libplacebo 版 libmpv，本次 APK 不含 gpu-next（HDR 选项会置灰）"
+          fi
 
       - name: 安装 Flutter 3.47.7
         uses: subosito/flutter-action@v2
@@ -51,6 +92,14 @@ jobs:
 
       - name: 安装依赖
         run: flutter pub get
+
+      # 必须在 flutter pub get 之后：pub cache 里才有那份 build.gradle
+      - name: 注入自建 libmpv JAR
+        if: steps.jar.outputs.path != ''
+        run: |
+          set -euo pipefail
+          python3 tools/patch_media_kit_jar.py \
+            "${{ steps.jar.outputs.path }}" arm64-v8a
 
       # 静态分析单独一步：style 提示不阻断构建。
       - name: 静态分析
@@ -80,6 +129,31 @@ jobs:
 
       - name: 构建 APK（仅 arm64-v8a）
         run: flutter build apk --release
+
+      # ─────────────────────────────────────────────────────────────
+      # 复查 APK 里的 libmpv.so：确认注入成功、且带 libvulkan。
+      # 这一步**不阻断发版**，只报警 —— 万一 JAR 没取到，退化成普通
+      # APK 仍是可用的包（HDR 选项会置灰），不该让用户什么都拿不到。
+      # ─────────────────────────────────────────────────────────────
+      - name: 复查 APK 内的 libmpv.so
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          ls -lh "$APK"
+          mkdir -p /tmp/apkcheck && cd /tmp/apkcheck
+          unzip -oq "$OLDPWD/$APK" 'lib/arm64-v8a/*'
+          SO=lib/arm64-v8a/libmpv.so
+          test -f "$SO" || { echo "::error::APK 里没有 libmpv.so"; exit 1; }
+          echo "=== APK 内 libmpv.so ==="
+          ls -lh "$SO"
+          readelf -d "$SO" | grep -E 'NEEDED|SONAME' || true
+          if readelf -d "$SO" 2>/dev/null | grep -q 'libvulkan.so'; then
+            echo "✅ libmpv.so 含 libvulkan（gpu-next / HDR 可用）"
+            echo -n "shaderc 符号: "; (nm -D "$SO" 2>/dev/null | grep -ci shaderc) || echo 0
+          else
+            echo "::warning::libmpv.so 不含 libvulkan，HDR 输出模式将不可用（注入了吗？）"
+          fi
 
       - name: 校验签名
         run: |
