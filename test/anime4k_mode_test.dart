@@ -47,9 +47,8 @@ void main() {
       // 上游规则：如果不是以 Restore 开头，就必须用 Upscale_Denoise 开头。
       // 先放大再修复是错的 —— 放大后的伪影更难修，且耗时 4 倍。
       //
-      // ⚠ 注意 Upscale_Denoise 这个文件名里同时含 "Upscale" 和 "Denoise"，
-      // 它本身就承担「降噪 + 放大」两件事，所以判断「第一个纯 Upscale」
-      // 时要把它排除掉，否则会误判成「Upscale 出现在 Denoise 之前」。
+      // ⚠ Upscale_Denoise 文件名里同时含 "Upscale" 和 "Denoise"，
+      // 它本身承担「降噪 + 放大」两件事，判断「纯 Upscale」时要排除。
       bool isPureUpscale(String s) =>
           s.contains('Upscale') &&
           !s.contains('Denoise') &&
@@ -73,7 +72,7 @@ void main() {
       }
     });
 
-    test('每个链至少有一个 Upscale（模式定义要求）', () {
+    test('每个链至少有一个 Upscale', () {
       for (final m in Anime4kMode.values) {
         if (m == Anime4kMode.off) continue;
         expect(m.shaderChain.any((s) => s.contains('Upscale')), isTrue,
@@ -82,9 +81,6 @@ void main() {
     });
 
     test('AutoDownscalePre 只能出现在两次 Upscale 之间', () {
-      // 上游：它的作用是把第一次放大后的结果先缩到屏宽，
-      // 让第二次放大正好命中屏幕，省 GPU。
-      // 放在别处只会白白多一次缩放。
       for (final m in Anime4kMode.values) {
         if (m == Anime4kMode.off) continue;
         final chain = m.shaderChain;
@@ -102,8 +98,10 @@ void main() {
       }
     });
 
-    test('链内没有重复 shader', () {
-      // 上游明确说：同一个文件用两次会导致 bug 和性能损失
+    test('链内没有重复 shader（上游硬规则）', () {
+      // 上游原话："You can only use each shader file once. Using the same
+      // file two or more times causes buggy behaviour and loss of
+      // performance."
       for (final m in Anime4kMode.values) {
         final c = m.shaderChain;
         expect(c.length, c.toSet().length, reason: '${m.id} 有重复项');
@@ -119,57 +117,150 @@ void main() {
       }
     });
 
-    test('只用了 S/M/L 三档，没有 VL/UL/UUL/GAN', () {
-      // 手机 GPU 带不动这些：单个 shader 就 143KB~1MB，且官方数据
-      // （Vega64 桌面卡）显示它们在 1080p→4K 已吃满 24fps 预算。
+    test('GPU 负载不超过 512（避免算出离谱值）', () {
       for (final m in Anime4kMode.values) {
-        for (final s in m.shaderChain) {
-          for (final banned in ['_VL', '_UL', '_UUL', '_GAN']) {
-            expect(s.contains(banned), isFalse, reason: '$s 不该用 $banned 档');
-          }
-        }
+        expect(m.gpuWeight, lessThanOrEqualTo(512), reason: m.id);
       }
     });
   });
 
   group('档位语义', () {
-    test('standard 用的是 Mode A（Restore_CNN，非 Soft）', () {
-      final c = Anime4kMode.standard.shaderChain;
-      expect(c.any((s) => s.contains('Restore_CNN_S.glsl')), isTrue);
-      expect(c.any((s) => s.contains('Restore_CNN_Soft')), isFalse);
+    test('Mode A 档用 Restore_CNN（非 Soft）', () {
+      for (final m in [
+        Anime4kMode.modeAS,
+        Anime4kMode.modeAM,
+        Anime4kMode.modeAL,
+        Anime4kMode.modeAVL,
+        Anime4kMode.modeAUL,
+      ]) {
+        final c = m.shaderChain;
+        expect(c.any((s) => s.contains('Restore_CNN_')), isTrue,
+            reason: '${m.id} 应该有 Restore_CNN');
+        expect(c.any((s) => s.contains('Restore_CNN_Soft')), isFalse,
+            reason: '${m.id} 不该有 Restore_CNN_Soft');
+      }
     });
 
-    test('restoreSoft 用的是 Restore_CNN_Soft（Mode B）', () {
-      final c = Anime4kMode.restoreSoft.shaderChain;
-      expect(c.any((s) => s.contains('Restore_CNN_Soft_S.glsl')), isTrue);
+    test('Mode B 档用 Restore_CNN_Soft', () {
+      for (final m in [
+        Anime4kMode.modeBS,
+        Anime4kMode.modeBM,
+        Anime4kMode.modeBL,
+      ]) {
+        expect(m.shaderChain.any((s) => s.contains('Restore_CNN_Soft')), isTrue,
+            reason: '${m.id} 应该有 Restore_CNN_Soft');
+      }
     });
 
-    test('clean 用的是 Upscale_Denoise（Mode C）', () {
-      final c = Anime4kMode.clean.shaderChain;
-      expect(c.any((s) => s.contains('Upscale_Denoise')), isTrue);
+    test('Mode C 档用 Upscale_Denoise', () {
+      for (final m in [
+        Anime4kMode.modeCS,
+        Anime4kMode.modeCM,
+        Anime4kMode.modeCL,
+      ]) {
+        expect(m.shaderChain.any((s) => s.contains('Upscale_Denoise')), isTrue,
+            reason: '${m.id} 应该有 Upscale_Denoise');
+      }
     });
 
-    test('light 不含任何 CNN（非 CNN 的极轻量方案）', () {
+    test('light 不含任何 CNN', () {
       final c = Anime4kMode.light.shaderChain;
-      expect(c.any((s) => s.contains('CNN')), isFalse,
-          reason: 'light 档应该只用非 CNN shader');
+      expect(c.any((s) => s.contains('CNN')), isFalse);
       expect(c.any((s) => s.contains('DoG')), isTrue);
     });
 
-    test('GPU 负载随画质档递增：light < standard < high < ultra', () {
-      expect(Anime4kMode.light.gpuWeight,
-          lessThan(Anime4kMode.standard.gpuWeight));
-      expect(Anime4kMode.standard.gpuWeight,
-          lessThan(Anime4kMode.high.gpuWeight));
-      expect(Anime4kMode.high.gpuWeight,
-          lessThan(Anime4kMode.ultra.gpuWeight));
+    test('GAN 档都含 GAN 变体 shader', () {
+      for (final m in [
+        Anime4kMode.ganS,
+        Anime4kMode.ganM,
+        Anime4kMode.ganL,
+        Anime4kMode.ganUUL,
+      ]) {
+        expect(m.shaderChain.any((s) => s.contains('GAN')), isTrue,
+            reason: '${m.id} 应该有 GAN shader');
+      }
     });
 
-    test('high / ultra 用的 CNN 档位逐级更高', () {
-      expect(Anime4kMode.high.shaderChain.any((s) => s.contains('_M.glsl')),
-          isTrue);
-      expect(Anime4kMode.ultra.shaderChain.any((s) => s.contains('_L.glsl')),
-          isTrue);
+    test('同一模式内 GPU 负载随 CNN 档递增', () {
+      expect(Anime4kMode.modeAS.gpuWeight,
+          lessThan(Anime4kMode.modeAM.gpuWeight));
+      expect(Anime4kMode.modeAM.gpuWeight,
+          lessThan(Anime4kMode.modeAL.gpuWeight));
+      expect(Anime4kMode.modeAL.gpuWeight,
+          lessThan(Anime4kMode.modeAVL.gpuWeight));
+      expect(Anime4kMode.modeAVL.gpuWeight,
+          lessThan(Anime4kMode.modeAUL.gpuWeight));
+
+      expect(Anime4kMode.modeBS.gpuWeight,
+          lessThan(Anime4kMode.modeBM.gpuWeight));
+      expect(Anime4kMode.modeBM.gpuWeight,
+          lessThan(Anime4kMode.modeBL.gpuWeight));
+
+      expect(Anime4kMode.modeCS.gpuWeight,
+          lessThan(Anime4kMode.modeCM.gpuWeight));
+      expect(Anime4kMode.modeCM.gpuWeight,
+          lessThan(Anime4kMode.modeCL.gpuWeight));
+    });
+
+    test('light 是最低档，负载最小', () {
+      final others = Anime4kMode.values
+          .where((m) => m != Anime4kMode.off && m != Anime4kMode.light);
+      for (final m in others) {
+        expect(Anime4kMode.light.gpuWeight, lessThanOrEqualTo(m.gpuWeight),
+            reason: 'light 应该比 ${m.id} 轻');
+      }
+    });
+  });
+
+  group('自动降档路径', () {
+    test('off 和 light 没有更低的档', () {
+      expect(Anime4kMode.off.lowerTier, isNull);
+      expect(Anime4kMode.light.lowerTier, isNull);
+    });
+
+    test('从任意非 off 档一直降都能到 light 且不死循环', () {
+      for (final start in Anime4kMode.values) {
+        if (start == Anime4kMode.off) continue;
+        var cur = start;
+        var steps = 0;
+        while (cur.lowerTier != null) {
+          final next = cur.lowerTier!;
+          expect(next.gpuWeight, lessThan(cur.gpuWeight),
+              reason: '${cur.id} → ${next.id} 负载必须下降');
+          cur = next;
+          if (++steps > 20) fail('降档链过长，可能有环: ${start.id}');
+        }
+        expect(cur, Anime4kMode.light,
+            reason: '${start.id} 最终应降到 light');
+      }
+    });
+
+    test('降档不跨模式（A 不会直接跳到 B）', () {
+      // 跨模式会改变画质风格，用户会困惑
+      for (final m in [
+        Anime4kMode.modeAM,
+        Anime4kMode.modeAL,
+        Anime4kMode.modeAVL,
+        Anime4kMode.modeAUL,
+      ]) {
+        final lower = m.lowerTier!;
+        expect(lower == Anime4kMode.light || lower.id.startsWith('a_'), isTrue,
+            reason: '${m.id} 降到了 ${lower.id}，不该跨模式');
+      }
+      for (final m in [Anime4kMode.modeBM, Anime4kMode.modeBL]) {
+        final lower = m.lowerTier!;
+        expect(lower == Anime4kMode.light || lower.id.startsWith('b_'), isTrue,
+            reason: '${m.id} 降到了 ${lower.id}');
+      }
+    });
+
+    test('isHeavy 与 gpuWeight 阈值一致', () {
+      for (final m in Anime4kMode.values) {
+        expect(m.isHeavy, m.gpuWeight >= 16, reason: m.id);
+      }
+      expect(Anime4kMode.light.isHeavy, isFalse);
+      expect(Anime4kMode.modeAS.isHeavy, isFalse);
+      expect(Anime4kMode.modeAL.isHeavy, isTrue);
     });
   });
 
@@ -191,14 +282,18 @@ void main() {
       expect(Anime4kModeX.fromId(''), Anime4kMode.off);
     });
 
-    test('id 是稳定字符串', () {
+    test('id 是稳定字符串（改了会让老用户设置失效）', () {
       expect(Anime4kMode.off.id, 'off');
       expect(Anime4kMode.light.id, 'light');
-      expect(Anime4kMode.standard.id, 'standard');
-      expect(Anime4kMode.high.id, 'high');
-      expect(Anime4kMode.ultra.id, 'ultra');
-      expect(Anime4kMode.restoreSoft.id, 'restore_soft');
-      expect(Anime4kMode.clean.id, 'clean');
+      expect(Anime4kMode.modeAS.id, 'a_s');
+      expect(Anime4kMode.modeAM.id, 'a_m');
+      expect(Anime4kMode.modeAL.id, 'a_l');
+      expect(Anime4kMode.modeAVL.id, 'a_vl');
+      expect(Anime4kMode.modeAUL.id, 'a_ul');
+      expect(Anime4kMode.modeBS.id, 'b_s');
+      expect(Anime4kMode.modeCS.id, 'c_s');
+      expect(Anime4kMode.ganS.id, 'gan_s');
+      expect(Anime4kMode.ganUUL.id, 'gan_uul');
     });
   });
 
@@ -230,6 +325,11 @@ void main() {
         expect(m.shortLabel.length, lessThanOrEqualTo(m.label.length),
             reason: m.id);
       }
+    });
+
+    test('label 全都不重复（选择器里要能区分）', () {
+      final labels = Anime4kMode.values.map((m) => m.label).toList();
+      expect(labels.length, labels.toSet().length);
     });
   });
 }

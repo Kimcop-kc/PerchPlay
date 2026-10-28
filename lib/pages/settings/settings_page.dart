@@ -13,6 +13,7 @@ import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/hdr_output_mode.dart';
+import '../../services/anime4k_mode.dart';
 import '../../services/storage_manager.dart';
 import '../../services/library_prune_service.dart';
 import '../../services/update_service.dart';
@@ -258,7 +259,211 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
             ),
           ),
+          _divider(),
+          // Anime4K 动漫放大：同样走 gpu-next，与 HDR 输出模式互斥
+          _settingRow(
+            Icons.auto_awesome_rounded,
+            '动漫放大（Anime4K）',
+            trailing: Text(
+                Anime4kModeX.fromId(_settings.anime4kMode).shortLabel,
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontWeight: FontWeight.w600)),
+            onTap: () => _showAnime4kPicker(),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
+              '实拍视频会显得发糊。掉帧会自动降档。与「HDR 输出模式」互斥',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// 选择 Anime4K 档位。
+  ///
+  /// 与 HDR 输出模式互斥：PlayerNotifier 里会自动关掉另一个。
+  void _showAnime4kPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _anime4kSheet(
+        current: _settings.anime4kMode,
+        onSelect: (id) async {
+          final mode = Anime4kModeX.fromId(id);
+          if (mounted) setState(() {});
+          await ref.read(playerProvider.notifier).setAnime4kMode(mode);
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
+  Widget _anime4kSheet({
+    required String current,
+    required Future<void> Function(String) onSelect,
+  }) {
+    final bottomInset =
+        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(GlassTheme.radiusXl)),
+      child: SafeBackdropFilter(
+        blurSigma: 24,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, bottomInset),
+          decoration: const BoxDecoration(
+            color: GlassTheme.bgRaised,
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(GlassTheme.radiusXl)),
+          ),
+          // 17 档放不下，必须可滚动
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: GlassTheme.textTertiary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text('动漫放大（Anime4K）',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700)),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
+                  child: Text(
+                    '掉帧会自动降档；帧率稳住后不会自动升回，需要手动调。'
+                    '与「HDR 输出模式」互斥。',
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+                  ),
+                ),
+                for (final m in Anime4kMode.values)
+                  Opacity(
+                    opacity: m.isAvailable ? 1.0 : 0.4,
+                    child: _anime4kOptionTile(
+                      mode: m,
+                      selected: m.id == current,
+                      onTap: !m.isAvailable
+                          ? () {}
+                          : () async {
+                              Navigator.of(context).pop();
+                              await onSelect(m.id);
+                            },
+                    ),
+                  ),
+                if (!anime4kSupported)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+                    child: Text(
+                      'Anime4K 需要 Android + 带 libplacebo 的构建版本，'
+                      '当前平台已置灰。',
+                      style:
+                          TextStyle(color: Colors.orangeAccent, fontSize: 11),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _anime4kOptionTile({
+    required Anime4kMode mode,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: selected
+                  ? GlassTheme.accentPurple.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+              border: Border.all(
+                color: selected
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.5)
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(mode.label,
+                              style: TextStyle(
+                                  color: selected
+                                      ? GlassTheme.accentPurple
+                                      : GlassTheme.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600)),
+                          if (mode.gpuWeight > 0) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color:
+                                    GlassTheme.textTertiary.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                'GPU ${mode.gpuWeight}x',
+                                style: const TextStyle(
+                                    color: GlassTheme.textTertiary,
+                                    fontSize: 9),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(mode.description,
+                          style: const TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  const Icon(Icons.check_circle_rounded,
+                      color: GlassTheme.accentPurple, size: 20),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

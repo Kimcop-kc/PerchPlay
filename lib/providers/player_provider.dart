@@ -22,6 +22,7 @@ import '../services/library_prune_service.dart';
 import '../services/playback_busy.dart';
 import '../services/hdr_output_mode.dart';
 import '../services/anime4k_mode.dart';
+import '../services/anime4k_auto_downgrade.dart';
 import '../services/shader_asset_installer.dart';
 
 /// 播放器状态
@@ -1156,8 +1157,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       } catch (_) {}
 
       debugPrint('[Anime4K] 已应用 ${mode.id}（${files.length} 个 shader）');
+
+      // 启动自动降档监控。
+      // 采样 frame-drop-count，持续掉帧就自动降一档 —— 因为手机端
+      // 性能无法预估，只能实测。
+      _anime4kAuto.start(state.player, mode);
     } catch (e, st) {
       debugPrint('[Anime4K] 应用失败，关闭: $e\n$st');
+      _anime4kAuto.stop();
       if (mounted) {
         state = state.copyWith(anime4kMode: Anime4kMode.off);
         _lastVideoFilterSig = null;
@@ -1238,6 +1245,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _lastHdrAppliedSig = null;
       _lastScalingSig = null;
 
+      // 让监控器知道档位变了（重置预热期，避免切档瞬间的掉帧被算到新档）
+      _anime4kAuto.updateMode(mode);
+
       // 重新应用（这个时候 HDR 已是 off，走的是 Anime4K 分支）
       await applyDecodingMode();
       await applyHdrToneMapping();
@@ -1298,6 +1308,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
 
     // 两者都关：清空，避免上一部片源的 shader 残留
+    _anime4kAuto.stop();
     try {
       await platform.setProperty('glsl-shader', '');
       await platform.setProperty('glsl-shader-opts-append', '');
@@ -1495,6 +1506,19 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 两者都写 `glsl-shader`，必须在一个地方统一决定谁生效，
   /// 否则会互相覆盖。
   String? _lastVideoFilterSig;
+
+  /// Anime4K 自动降档监控。
+  ///
+  /// 上游只给了桌面显卡性能数据，手机端无从预估。与其猜「你的机器
+  /// 该用哪档」，不如让播放器自己测：持续掉帧就降一档。
+  late final Anime4kAutoDowngrade _anime4kAuto = Anime4kAutoDowngrade(
+    onDowngrade: (next) {
+      // 走 setAnime4kMode 而不是直接改 state：
+      // 需要重建 VideoController（如果 vo 变化）+ 持久化 + 重挂 shader
+      debugPrint('[HDR-AUTO] 自动降档到 ${next.id}');
+      unawaited(setAnime4kMode(next));
+    },
+  );
 
   /// 上次应用的「分辨率缩放档位」签名（normal / 4k / 8k）。
   ///
