@@ -327,13 +327,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           fontWeight: FontWeight.w700)),
                 ),
                 for (final m in HdrOutputMode.values)
-                  _hdrOptionTile(
-                    mode: m,
-                    selected: m.id == current,
-                    onTap: () async {
-                      Navigator.of(context).pop();
-                      await onSelect(m.id);
-                    },
+                  Opacity(
+                    // 平台不支持时置灰（见 hdr_output_mode.dart 的说明）
+                    opacity: m.isAvailable ? 1.0 : 0.4,
+                    child: _hdrOptionTile(
+                      mode: m,
+                      selected: m.id == current,
+                      onTap: !m.isAvailable
+                          ? () {}
+                          : () async {
+                              Navigator.of(context).pop();
+                              await onSelect(m.id);
+                            },
+                    ),
+                  ),
+                if (!hdrOutputModeSupported)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+                    child: Text(
+                      'HDR 直通需要 Android + 带 libplacebo 的构建版本，'
+                      '当前平台已置灰。',
+                      style:
+                          TextStyle(color: Colors.orangeAccent, fontSize: 11),
+                    ),
                   ),
               ],
             ),

@@ -801,22 +801,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                 ),
                 // HDR 输出模式入口。
                 //
-                // 显示条件：当前是 HDR 片源，**或**已启用了某个 HDR 档位。
-                //  - HDR 片源：最需要调的场景（色彩不对就切一下）
-                //  - 已启用档位：即使看 SDR 片源也要能切回「关闭」，
-                //    否则用户开了之后找不到关的地方
-                // SDR 片源 + 未启用时不显示，避免默认状态多一个没用的按钮。
-                if (_hdrBadgeText(state) != null || state.hdrOutputMode.needsGpuNext)
-                  IconButton(
-                    tooltip: 'HDR 输出模式',
-                    icon: Icon(
-                      Icons.hdr_strong_rounded,
-                      color: state.hdrOutputMode.needsGpuNext
-                          ? GlassTheme.accentPurple
-                          : Colors.white70,
-                    ),
-                    onPressed: () => _showHdrOutputModeSheet(state),
+                // **始终显示**（不限 HDR 片源）：
+                //  - SDR 片源也能用 ——「BT.2020」档就是给广色域 SDR 用的，
+                //    普通片源开它颜色更艳；「线性 HDR」给专业监看用。
+                //  - 已启用某档位时要能随时切回「关闭」，不能藏起来。
+                //  - HDR 片源当然最需要（色彩不对就地切）。
+                // 之前只在 HDR 片源或已启用时显示，导致 SDR 用户根本
+                // 发现不了这个功能。
+                IconButton(
+                  tooltip: 'HDR 输出模式',
+                  icon: Icon(
+                    Icons.hdr_strong_rounded,
+                    color: state.hdrOutputMode.needsGpuNext
+                        ? GlassTheme.accentPurple
+                        : Colors.white70,
                   ),
+                  onPressed: () => _showHdrOutputModeSheet(state),
+                ),
                 // 播放页内直接搜索投屏设备
                 IconButton(
                   tooltip: '投屏',
@@ -2091,6 +2092,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     ref.read(playerProvider.notifier).setHdrOutputMode(m);
                   },
                 ),
+              // 平台不支持时给一句明确说明，而不是让用户点了没反应
+              if (!hdrOutputModeSupported)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                  child: Text(
+                    '当前平台不支持 HDR 直通（需要 Android + 带 libplacebo 的构建版本），'
+                    '非「关闭」档已置灰。',
+                    style: TextStyle(color: Colors.orangeAccent, fontSize: 10.5),
+                  ),
+                ),
             ],
           ),
         ),
@@ -2103,56 +2114,64 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     required bool selected,
     required VoidCallback onTap,
   }) {
+    // 平台不支持时置灰且不可点：切了只会黑屏或没效果
+    final enabled = mode.isAvailable;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? GlassTheme.accentPurple.withValues(alpha: 0.22)
-                  : Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.4,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
                 color: selected
-                    ? GlassTheme.accentPurple.withValues(alpha: 0.6)
-                    : Colors.white10,
-                width: 0.5,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        mode.label,
-                        style: TextStyle(
-                          color: selected
-                              ? GlassTheme.accentPurple
-                              : Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        mode.description,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 10.5),
-                      ),
-                    ],
-                  ),
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.22)
+                    : Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? GlassTheme.accentPurple.withValues(alpha: 0.6)
+                      : Colors.white10,
+                  width: 0.5,
                 ),
-                if (selected)
-                  const Icon(Icons.check_circle_rounded,
-                      color: GlassTheme.accentPurple, size: 18),
-              ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mode.label,
+                          style: TextStyle(
+                            color: selected
+                                ? GlassTheme.accentPurple
+                                : Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          mode.description,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 10.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (selected && enabled)
+                    const Icon(Icons.check_circle_rounded,
+                        color: GlassTheme.accentPurple, size: 18),
+                  if (!enabled)
+                    const Icon(Icons.block_rounded,
+                        color: Colors.white38, size: 16),
+                ],
+              ),
             ),
           ),
         ),

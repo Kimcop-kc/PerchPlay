@@ -171,6 +171,34 @@ void main() {
     });
   });
 
+  group('平台可用性', () {
+    test('off 在所有平台都可用', () {
+      // 关档不能禁用，否则用户没法退回安全状态
+      expect(HdrOutputMode.off.isAvailable, isTrue);
+    });
+
+    test('非 off 档的可用性跟随 hdrOutputModeSupported', () {
+      // 测试环境（dart vm on Windows）不是 Android，所以应当全部不可用
+      for (final m in HdrOutputMode.values) {
+        if (m == HdrOutputMode.off) continue;
+        expect(m.isAvailable, hdrOutputModeSupported,
+            reason: '${m.id}.isAvailable 应与 hdrOutputModeSupported 一致');
+      }
+    });
+
+    test('测试环境下（非 Android）hdrOutputModeSupported 为 false', () {
+      // 这台机器跑 flutter test 是 Windows/Linux/macOS，不是 Android
+      expect(hdrOutputModeSupported, isFalse);
+    });
+
+    test('非 off 档在非 Android 上不可用', () {
+      for (final m in HdrOutputMode.values) {
+        if (m == HdrOutputMode.off) continue;
+        expect(m.isAvailable, isFalse, reason: '${m.id} 不该在非 Android 可用');
+      }
+    });
+  });
+
   group('展示文案', () {
     test('label / shortLabel / description 都非空', () {
       for (final m in HdrOutputMode.values) {

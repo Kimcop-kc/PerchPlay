@@ -55,6 +55,33 @@ enum HdrOutputMode {
   linear,
 }
 
+/// HDR 输出模式在当前平台是否可用。
+///
+/// ## 为什么只有 Android
+///
+/// 这套功能依赖三件事同时成立：
+///   1. libmpv 编译时带 `-Dlibplacebo=enabled -Dvulkan=enabled
+///      -Dshaderc=enabled`
+///   2. 渲染后端能建 `vo=gpu-next`（需要 Vulkan）
+///   3. hdr-toys 的 hook 着色器能被 libplacebo 执行
+///
+/// 目前只有 **Android** 满足：
+///   - 自建 libmpv（tools/build_android_libmpv.sh）打开了这三项，
+///     Android 设备自带 Vulkan loader（libvulkan.so 是系统库）。
+///
+/// iOS 不满足，且有硬性障碍：
+///   - media_kit 的 iOS libmpv 同样关闭了 libplacebo
+///   - 即使打开，iOS **没有原生 Vulkan**，必须引入 MoltenVK
+///     （Vulkan → Metal 翻译层），构建链完全不同（Nix + macOS runner），
+///     且 MoltenVK 对 libplacebo 的 compute shader 支持并不完整
+///   - iOS 上 media_kit 走 `vo=libmpv`（纹理回传），本身做不了 HDR 直通
+///
+/// 所以 iOS / 桌面一律不允许切到非 off 档：切了只会黑屏或毫无效果。
+bool get hdrOutputModeSupported {
+  if (kIsWeb) return false;
+  return Platform.isAndroid;
+}
+
 /// [HdrOutputMode] 的扩展：把 Dart 枚举映射到 mpv 参数 + shader 文件列表。
 extension HdrOutputModeX on HdrOutputMode {
   /// 存储用的稳定标识（不随枚举顺序变化）。
@@ -95,6 +122,11 @@ extension HdrOutputModeX on HdrOutputMode {
 
   /// 是否需要 gpu-next + libplacebo。
   bool get needsGpuNext => this != HdrOutputMode.off;
+
+  /// 当前平台能否使用这个档位。
+  ///
+  /// 非 Android 一律返回 false（看文件顶部 [hdrOutputModeSupported] 说明）。
+  bool get isAvailable => !needsGpuNext || hdrOutputModeSupported;
 
   /// 目标色域（mpv `target-prim`）。null 表示不干预。
   String? get targetPrim => switch (this) {

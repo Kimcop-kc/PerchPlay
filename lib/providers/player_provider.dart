@@ -377,9 +377,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     //    所以切换 HDR 输出模式必须**重建 VideoController**（见
     //    switchHdrOutputMode）。这也是为什么默认关：避免用户
     //    无意间走进 Vulkan 路径。
-    final savedHdrMode = HdrOutputModeX.fromId(
+    //
+    // ⚠ 非 Android 平台强制回 off：gpu-next + libplacebo 那套只在
+    //    Android 上具备（见 hdrOutputModeSupported）。设置可能从
+    //    别的设备同步过来，这里必须纠正，否则 iOS 会试图建
+    //    gpu-next 管线而黑屏。
+    var savedHdrMode = HdrOutputModeX.fromId(
       AppSettingsService.instance.hdrOutputMode,
     );
+    if (!savedHdrMode.isAvailable) {
+      debugPrint('[Player] ${savedHdrMode.id} 在 ${Platform.operatingSystem} '
+          '不可用，回退到 off');
+      savedHdrMode = HdrOutputMode.off;
+      // 异步纠正持久化，不阻塞构造
+      unawaited(
+        AppSettingsService.instance.setHdrOutputMode('off').catchError((_) {}),
+      );
+    }
     final androidVo = savedHdrMode.needsGpuNext ? 'gpu-next' : 'gpu';
     _globalController = VideoController(
       state.player,
@@ -845,19 +859,31 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
 
       if (isHdr) {
-        // ── 输出色彩空间：必须显式指定 ──
+        // ── 输出色彩空间 ──
         //
-        // 这是「部分视频色彩不对」的**主要根因**：之前只设 tone-mapping 和
-        // target-peak，从不设 target-prim / target-trc。mpv 会用自己的默认
-        // 猜测值做色彩空间转换，猜错就偏色（发绿/发紫/肤色发灰/过饱和）。
+        // ⚠ **只在 Android 上设 target-prim / target-trc**。
         //
-        // 我们不是真的做 HDR 输出（media_kit 的 OpenGL ES / libmpv 后端
-        // 不支持），而是「把 HDR 内容映射到 SDR 显示」，所以目标必须是
-        // 标准 SDR 色彩空间：
-        //   target-prim=bt.709  → sRGB/Rec.709 色域（几乎所有手机屏幕）
-        //   target-trc=bt.1886  → 标准 SDR 伽马
-        await platform.setProperty('target-prim', 'bt.709');
-        await platform.setProperty('target-trc', 'bt.1886');
+        // 两个平台的 vo 后端完全不同，对这两个参数的敏感度也完全相反：
+        //
+        //   Android → vo=gpu（OpenGL ES + SurfaceFlinger）
+        //     必须显式指定，否则 mpv 用默认猜测做色彩空间转换，
+        //     猜错就偏色（发绿/发紫/肤色发灰/过饱和）。这里设
+        //     bt.709 + bt.1886 是对的。
+        //
+        //   iOS → vo=libmpv（mpv 自己渲染成 RGB，再经 Flutter 纹理回传）
+        //     **不能设**。这条路径下 mpv 已经在内部把帧转成 RGB，
+        //     再强行指定 target-prim/trc 会让它多做一次色彩转换
+        //     —— 典型症状就是整幅画面发绿 / 发洋红（YUV 矩阵被套了
+        //     两次，或 U/V 通道错位），且**所有片源都受影响**。
+        //
+        // 这是 65941eb 引入的回归：那个提交为了解决 Android 的偏色，
+        // 在 HDR 和 SDR 两个分支都无条件设了这两个属性，结果把 iOS
+        // 打坏了。
+        final bool setTargetColorspace = Platform.isAndroid;
+        if (setTargetColorspace) {
+          await platform.setProperty('target-prim', 'bt.709');
+          await platform.setProperty('target-trc', 'bt.1886');
+        }
 
         // HLG 和 HDR10(PQ) 的映射策略不同
         final isHlg = (state.hdrType ?? '') == 'HLG';
@@ -870,7 +896,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           await platform.setProperty('target-peak', peak);
           await platform.setProperty('hdr-compute-peak', 'no');
           debugPrint('[HDR] HLG 映射: clip target-peak=$peak '
-              'target-prim=bt.709');
+              'targetColorspace=$setTargetColorspace');
         } else {
           // HDR10 / 杜比 PQ：bt.2390（业界标准 EETF），最接近片源色彩意图
           await platform.setProperty('tone-mapping', 'bt.2390');
@@ -879,7 +905,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           // 让 mpv 自己算信号峰值（对缺失 sig-peak 元数据的 HDR 源很有用）
           await platform.setProperty('hdr-compute-peak', 'yes');
           debugPrint('[HDR] HDR10 映射: bt.2390 target-peak=250 '
-              'target-prim=bt.709');
+              'targetColorspace=$setTargetColorspace');
         }
         // HDR10+ 动态元数据：打开（若片源带，mpv 会自动用）
         await platform.setProperty('hdr10plus', 'auto');
@@ -888,16 +914,19 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       } else {
         // SDR：关掉全部色调映射开销，让渲染管线走最轻路径
         //
-        // 但**色彩空间仍要显式指定**：SDR 片源如果是 bt.601（老 DV/电视源）
-        // 或 bt.2020（部分 Web 源），不指定 target-prim 时 mpv 的自动推断
-        // 在部分片源上会错判，表现为整体偏色。
-        await platform.setProperty('target-prim', 'bt.709');
-        await platform.setProperty('target-trc', 'bt.1886');
+        // 色彩空间同样**只在 Android 上显式指定**（原因见上面 HDR 分支）：
+        // Android 的 vo=gpu 需要它避免 bt.601/bt.2020 片源被推断错；
+        // iOS 的 vo=libmpv 设了反而会二次转换导致整体发绿/洋红。
+        if (Platform.isAndroid) {
+          await platform.setProperty('target-prim', 'bt.709');
+          await platform.setProperty('target-trc', 'bt.1886');
+        }
         await platform.setProperty('tone-mapping', 'clip');
         await platform.setProperty('hdr-compute-peak', 'no');
         await platform.setProperty('hdr10plus', 'no');
         await platform.setProperty('dolbyvision', 'no');
-        debugPrint('[HDR] SDR: clip target-prim=bt.709');
+        debugPrint('[HDR] SDR: clip '
+            'targetColorspace=${Platform.isAndroid}');
       }
     } catch (e) {
       debugPrint('[Player] 应用 HDR 色调映射失败: $e');
@@ -1041,6 +1070,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 会立刻回退到 `gpu` 并把模式重置为 off，避免留下黑屏。
   Future<void> setHdrOutputMode(HdrOutputMode mode) async {
     if (state.hdrOutputMode == mode) return;
+
+    // 平台不支持时强制回 off：纯 Dart 层面的最后一道防线。
+    // UI 已经把选项置灰了，但设置可能从别处（比如恢复旧偏好）进来。
+    if (!mode.isAvailable) {
+      debugPrint('[HDR-OUT] ${mode.id} 在当前平台不可用，忽略');
+      if (mode != HdrOutputMode.off) {
+        // 顺手把设置也纠正回 off，避免下次启动又读到无效值
+        try {
+          await AppSettingsService.instance.setHdrOutputMode('off');
+        } catch (_) {}
+      }
+      return;
+    }
+
     debugPrint('[HDR-OUT] 切换到 ${mode.id}');
 
     // 先把设置写下去：即使重建失败，用户的选择也保留了
@@ -1137,10 +1180,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('dolbyvision', 'no');
       // 中性峰值，避免残留极值影响新文件探测
       await platform.setProperty('target-peak', '1000');
-      // 色彩空间也复位成标准 SDR：否则上一部片源设的 target-prim/target-trc
-      // 会被下一部沿用，在「片源色彩空间不同」时直接表现为偏色。
-      await platform.setProperty('target-prim', 'bt.709');
-      await platform.setProperty('target-trc', 'bt.1886');
+      // 色彩空间复位：只在 Android 上做。
+      //
+      // Android 的 vo=gpu 需要把 target-prim/target-trc 复位成标准 SDR，
+      // 否则上一部片源的设置会被下一部沿用，片源色彩空间不同时直接偏色。
+      //
+      // iOS 的 vo=libmpv **从来不该设这两个属性**（设了会二次转换，
+      // 整幅画面发绿/洋红），所以也不存在"残留"问题，跳过即可。
+      if (Platform.isAndroid) {
+        await platform.setProperty('target-prim', 'bt.709');
+        await platform.setProperty('target-trc', 'bt.1886');
+      }
     } catch (e) {
       // 复位失败不阻塞播放：最坏情况是下一个视频沿用旧 HDR 状态
       debugPrint('[Player] 复位 HDR 状态失败（忽略）: $e');
