@@ -318,8 +318,18 @@ class PlayerState {
 
     // 4) 色域兜底：只有「没有传递函数信息」时才用 bt.2020 猜 HDR。
     //    bt.2020 色域确实常在 HDR 片源里出现，但它本身不等于 HDR
-    //    （UHD 广播的 SDR 内容也允许 bt.2020），所以只作为弱兜底。
-    if (cp.contains('2020')) return 'HDR10';
+    //    （UHD 广播的 SDR 内容也允许 bt.2020）。
+    //
+    //    ⚠ 收紧：tf 为空（元数据未到）时，仅凭 bt.2020 会误判
+    //    「bt.2020 色域 + SDR 传递函数」的片源为 HDR10（与之前
+    //    DOLBY 文件名误判同一根因）。所以要求 sigPeak > 1.0 佐证
+    //    —— HDR 片源峰值亮度显著高于 1.0（SDR 峰值 = 1.0）。
+    if (cp.contains('2020')) {
+      final peak = sigPeak;
+      if (peak != null && peak > 1.0) return 'HDR10';
+      // 有 bt.2020 但峰值不明或 ≤1.0：不猜，等 tf 到齐再说
+      return null;
+    }
 
     // 5) 文件名兜底：**不用**。codec 是 mpv 解析出来的硬证据，文件名是软猜测。
     //    实测 HLG 片源因文件名带 "DOLBY" 被误判成杜比视界，导致 mpv 在
@@ -354,6 +364,24 @@ class PlayerState {
     }
     return false;
   }
+}
+
+/// 规范化色彩参数签名：监听（videoParams 流）与轮询两条路径共用。
+///
+/// 之前两处各自拼签名，格式不一致（监听用 double? toString 得
+/// "1000.0"/"null"，轮询用原始字符串得 "1000"/""/no），导致同一批
+/// 元数据两条路径互相识别不了，重复写 state + 重复色调映射。
+/// 这里统一成「clean 后的 prim/gamma + 规范化后的 peak」。
+String _colorParamsSig(String? prim, String? gamma, double? peak) {
+  String clean(String? s) {
+    final v = (s ?? '').trim();
+    if (v.isEmpty || v == 'no' || v == 'null') return '';
+    return v;
+  }
+
+  // peak 统一用 double 规范化：1000.0 → "1000"，null → ""
+  final peakNorm = (peak == null) ? '' : peak.toStringAsFixed(3);
+  return '${clean(prim)}|${clean(gamma)}|$peakNorm';
 }
 
 class PlayerNotifier extends StateNotifier<PlayerState> {
@@ -433,6 +461,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final needGpuNext =
         savedHdrMode.needsGpuNext || savedAnime4k.needsGpuNext;
     final androidVo = needGpuNext ? 'gpu-next' : 'gpu';
+    // 记录期望 vo：供 widListener 打回 gpu 后的复检恢复。
+    _desiredVo = Platform.isAndroid ? androidVo : null;
     _globalController = VideoController(
       state.player,
       configuration: VideoControllerConfiguration(
@@ -516,7 +546,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 在 open 之后、收到第一帧前后调用。此时 `vo-configured` 才有意义：
   ///   - gpu-next 建成功 → 保持
   ///   - 建失败（vo-configured 为空或退回 gpu）→ 回滚 + 提示用户
-  Future<void> _checkVoAfterOpen() async {
+  ///
+  /// [token] 是调用时的 _loadToken，用于防止「旧片的 2 秒后回滚」误伤
+  /// 新片的 gpu-next（用户在这 2 秒内换片/切换模式时）。
+  Future<void> _checkVoAfterOpen([int? token]) async {
     if (!Platform.isAndroid) return;
     final mode = state.hdrOutputMode;
     final a4k = state.anime4kMode;
@@ -525,20 +558,43 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final platform = state.player.platform;
     if (platform is! NativePlayer) return;
 
-    try {
-      // 给 mpv 一点时间建立渲染管线
-      await Future<void>.delayed(const Duration(seconds: 2));
-      final voConfigured =
-          (await platform.getProperty('vo-configured')).trim();
-      debugPrint('[VO] open 后检查: vo-configured=$voConfigured');
+    // 记录本次检查的期望 vo 与 vo 操作代次，回滚前校验是否仍最新。
+    final expected = _desiredVo ?? 'gpu-next';
+    final voToken = _voToken;
 
-      if (voConfigured.isEmpty ||
-          voConfigured == 'null' ||
-          voConfigured == 'gpu') {
-        debugPrint('[VO] ⚠ gpu-next 未能建立（vo-configured=$voConfigured），'
-            '回滚并提示');
-        await _rollbackShaderFeatures();
+    try {
+      // 轮询 vo-configured（最多 6 次 × 500ms），比固定 2 秒更能容忍
+      // 低端机 gpu-next 建管线的慢启动。
+      for (var i = 0; i < 6; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (token != null && token != _loadToken) return; // 已换片
+        if (voToken != _voToken) return; // vo 已被其它操作重设
+        if (state.hdrOutputMode.needsGpuNext == false &&
+            state.anime4kMode.needsGpuNext == false) {
+          return; // 已回滚/关闭
+        }
+
+        final voConfigured =
+            (await platform.getProperty('vo-configured')).trim();
+        debugPrint('[VO] open 后检查(${i + 1}/6): '
+            'vo-configured=$voConfigured expected=$expected');
+
+        if (voConfigured == 'gpu-next') return; // 成功，无需再查
+        if (voConfigured.isNotEmpty &&
+            voConfigured != 'null' &&
+            voConfigured != 'gpu-next') {
+          // 已经用别的 vo 建起来了 → gpu-next 不支持，回滚
+          debugPrint('[VO] ⚠ vo-configured=$voConfigured（非 gpu-next），'
+              '回滚');
+          await _rollbackShaderFeatures();
+          return;
+        }
+        // 空或 null：还在初始化，继续等下一轮
       }
+
+      // 6 轮后仍没建立 gpu-next，判定失败
+      debugPrint('[VO] ⚠ 6 轮后 gpu-next 仍未建立，回滚');
+      await _rollbackShaderFeatures();
     } catch (e) {
       debugPrint('[VO] open 后检查失败（忽略）: $e');
     }
@@ -549,6 +605,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 注意：**不重建 VideoController**，只切 mpv 的 `vo` 属性回 gpu
   /// （原因见 _switchVo 的说明 —— 重建拿到旧实例，会导致黑屏）。
   Future<void> _rollbackShaderFeatures() async {
+    final token = ++_voToken;
     try {
       state = state.copyWith(
         hdrOutputMode: HdrOutputMode.off,
@@ -557,14 +614,40 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _lastHdrAppliedSig = null;
       _lastVideoFilterSig = null;
       _anime4kAuto.stop();
+      _desiredVo = 'gpu';
 
-      // 切回 gpu（先 null 再 gpu，让 mpv 释放旧上下文）
       final platform = state.player.platform;
       if (platform is NativePlayer) {
         try {
           await platform.setProperty('vo', 'null');
           await Future<void>.delayed(const Duration(milliseconds: 120));
+          if (token != _voToken) return;
           await platform.setProperty('vo', 'gpu');
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          if (token != _voToken) return;
+
+          // 复位 target-colorspace-hint：开过 PQ/HLG 后它会残留 yes，
+          // 导致 SurfaceFlinger 停留在 HDR 合成上下文，换片/关档时可能
+          // native 崩溃（v1.1.8 闪退根因之一）。
+          try {
+            await platform.setProperty('target-colorspace-hint', 'no');
+          } catch (_) {}
+
+          // 清掉残留的 shader 链
+          try {
+            await _clearGlslShaders(platform);
+          } catch (_) {}
+
+          // 校验回滚结果：vo 不能停在 null（无视频输出 = 黑屏）
+          final configured =
+              (await platform.getProperty('vo-configured')).trim();
+          if (configured == 'null' || configured.isEmpty) {
+            // 再重试一次 null→gpu
+            debugPrint('[VO] 回滚后 vo-configured=$configured，重试切 gpu');
+            await platform.setProperty('vo', 'null');
+            await Future<void>.delayed(const Duration(milliseconds: 120));
+            await platform.setProperty('vo', 'gpu');
+          }
         } catch (e) {
           debugPrint('[VO] 回滚切 vo 失败（忽略）: $e');
         }
@@ -1183,15 +1266,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       // ── 5) 设置着色器链 ──
       //
-      // 注意 setProperty 的语义差异：
-      //   `glsl-shader` 是**列表属性**，连续 setProperty 是「追加」还是
-      //   「替换」取决于 mpv 版本。为稳妥，先清空再逐个追加。
-      try {
-        await platform.setProperty('glsl-shader', '');
-      } catch (_) {
-        // 某些版本不接受空值，忽略
-      }
-
+      // 用 change-list 操作真正的 option 名 glsl-shaders（见
+      // _setGlslShaders 的说明：glsl-shader 是 CLI alias，setProperty
+      // 对它静默失败）。
       final files = <String>[];
       for (final rel in mode.shaderChain) {
         final f = File('${root.path}/$rel');
@@ -1204,36 +1281,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       if (files.isEmpty) {
         debugPrint('[HDR-OUT] 没有可用的 shader 文件，回退 SDR');
-        if (mounted) {
-          state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
-          _lastHdrAppliedSig = null;
-        }
+        await _rollbackShaderFeatures();
         return;
       }
 
-      // mpv 的列表属性用 append 语义最可靠
-      for (final p in files) {
-        await platform.setProperty('glsl-shader', p);
-      }
-
-      // ── 6) 着色器参数 ──
-      // glsl-shader-opts-append 是累加的，所以切档前要先清掉旧的。
-      try {
-        await platform.setProperty('glsl-shader-opts-append', '');
-      } catch (_) {}
-      for (final opt in mode.shaderOpts) {
-        await platform.setProperty('glsl-shader-opts-append', opt);
-      }
+      final opts = <String, String>{
+        for (final o in mode.shaderOpts)
+          o.split('=')[0]: o.substring(o.indexOf('=') + 1),
+      };
+      await _setGlslShaders(platform, files, opts: opts);
 
       debugPrint('[HDR-OUT] 已应用 ${mode.id} '
           '(${files.length} 个 shader, target=$prim/$trc, '
           'hint=${mode.colorspaceHint})');
     } catch (e, st) {
       debugPrint('[HDR-OUT] 应用失败，回退 SDR: $e\n$st');
-      if (mounted) {
-        state = state.copyWith(hdrOutputMode: HdrOutputMode.off);
-        _lastHdrAppliedSig = null;
-      }
+      await _rollbackShaderFeatures();
     }
   }
 
@@ -1277,25 +1340,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
       if (files.isEmpty) {
         debugPrint('[Anime4K] 没有可用的 shader，关闭');
-        if (mounted) {
-          state = state.copyWith(anime4kMode: Anime4kMode.off);
-          _lastVideoFilterSig = null;
-        }
+        await _rollbackShaderFeatures();
         return;
       }
 
-      // 先清空，避免上一档的 shader 残留（列表属性是累加的）
-      try {
-        await platform.setProperty('glsl-shader', '');
-      } catch (_) {}
-      for (final p in files) {
-        await platform.setProperty('glsl-shader', p);
-      }
-
-      // Anime4K 不需要 shader opts（它的行为由 //!WHEN 条件控制）
-      try {
-        await platform.setProperty('glsl-shader-opts-append', '');
-      } catch (_) {}
+      // 用 change-list 挂载（glsl-shader 是 CLI alias，setProperty 无效）
+      await _setGlslShaders(platform, files);
 
       debugPrint('[Anime4K] 已应用 ${mode.id}（${files.length} 个 shader）');
 
@@ -1397,24 +1447,40 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         state.hdrOutputMode.needsGpuNext || state.anime4kMode.needsGpuNext;
     final target = needGpuNext ? 'gpu-next' : 'gpu';
 
+    // 记录期望值：供 widListener 打回 gpu 后的复检恢复。
+    _desiredVo = target;
+
+    final token = ++_voToken;
     try {
       final current = (await platform.getProperty('vo')).trim();
+      if (token != _voToken) return;
+
+      // 短路：只有 vo 属性==target 且 vo-configured 也==target 才算
+      // 真的已切好。单独看 vo 会掩盖「名义 gpu-next、实际 gpu」的假成功。
       if (current == target) {
-        debugPrint('[VO] 已是 $target，无需切换');
-        return;
+        final configured =
+            (await platform.getProperty('vo-configured')).trim();
+        if (configured == target || configured.isEmpty) {
+          debugPrint('[VO] 已是 $target（configured=$configured），无需切换');
+          return;
+        }
+        debugPrint('[VO] vo=$target 但 configured=$configured，强制重切');
       }
 
       debugPrint('[VO] 切换 $current → $target');
       // 先卸掉旧 vo，让 mpv 释放视频输出上下文
       await platform.setProperty('vo', 'null');
       await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (token != _voToken) return;
       await platform.setProperty('vo', target);
       await Future<void>.delayed(const Duration(milliseconds: 200));
+      if (token != _voToken) return;
 
+      // 用 vo（请求值）快速确认 mpv 接受了这个后端名；真正是否建起
+      // 管线由 _checkVoAfterOpen 用 vo-configured 判定。
       final actual = (await platform.getProperty('vo')).trim();
       debugPrint('[VO] 切换结果: $actual');
       if (actual != target) {
-        // gpu-next 不被支持时 mpv 会降级。此时回滚，避免黑屏。
         debugPrint('[VO] ⚠ 未能切到 $target（实际 $actual），回滚');
         await _rollbackShaderFeatures();
       }
@@ -1422,6 +1488,90 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       debugPrint('[VO] 切换失败: $e，回滚');
       await _rollbackShaderFeatures();
     }
+  }
+
+  /// 恢复期望的 vo 后端（反制 media_kit widListener 的覆盖）。
+  ///
+  /// widListener 在 surface 尺寸变化（旋转/小窗/进出播放页）时用
+  /// 构造时固定的 `configuration.vo`（通常是 gpu）覆盖 vo，把运行时
+  /// 切好的 gpu-next 打回 gpu。这里读当前 vo，若与 _desiredVo 不符
+  /// 就重新切回去。带 vo token 防并发，且只在确实需要 gpu-next 时做。
+  Future<void> _restoreDesiredVo() async {
+    final desired = _desiredVo;
+    if (desired == null || desired == 'gpu') return;
+    if (!state.hdrOutputMode.needsGpuNext &&
+        !state.anime4kMode.needsGpuNext) {
+      _desiredVo = 'gpu';
+      return;
+    }
+
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+
+    final token = ++_voToken;
+    try {
+      final vo = (await platform.getProperty('vo')).trim();
+      if (token != _voToken) return;
+      if (vo == desired) return; // 没被打回，无需处理
+
+      debugPrint('[VO] ⚠ vo 被 widListener 打回 $vo，恢复 $desired');
+      await platform.setProperty('vo', 'null');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (token != _voToken) return;
+      await platform.setProperty('vo', desired);
+    } catch (e) {
+      debugPrint('[VO] 恢复期望 vo 失败（忽略）: $e');
+    }
+  }
+
+  /// 挂载 mpv 用户着色器链（正确的 libmpv API 路径）。
+  ///
+  /// 查 mpv 源码 `video/out/gpu/video.c`：
+  /// ```c
+  /// {"glsl-shaders", OPT_PATHLIST(user_shaders), .flags = M_OPT_FILE},
+  /// {"glsl-shader", OPT_CLI_ALIAS("glsl-shaders-append")},
+  /// {"glsl-shader-opts", OPT_KEYVALUELIST(user_shader_opts)},
+  /// ```
+  /// `glsl-shader` 是 **CLI alias**，不是 libmpv 的 property 名。
+  /// media_kit 的 `setProperty` 走 `mpv_set_property_string`（且**不检查
+  /// 返回值**），对 CLI alias 名静默失败 —— 之前的 shader 挂载代码
+  /// **从未真正生效**（与 v1.1.8 日志「HDR 检测失效、shader 从未挂载」
+  /// 互相印证）。
+  ///
+  /// 正确做法（mpv 手册 input.rst 明确）：用 `change-list` 命令操作
+  /// 真正的 option 名 `glsl-shaders`：
+  ///   - 清空：`change-list glsl-shaders clr ""`
+  ///   - 追加：`change-list glsl-shaders append <path>`
+  ///
+  /// `command()` 走 `mpv_command`，会返回错误码并抛异常（media_kit
+  /// 内部 _logError 检查返回值），失败不再静默。
+  Future<void> _setGlslShaders(
+    NativePlayer platform,
+    List<String> paths, {
+    Map<String, String> opts = const {},
+  }) async {
+    // 先清空：clr 操作（value 必须给空串）
+    await platform.command(['change-list', 'glsl-shaders', 'clr', '']);
+    for (final p in paths) {
+      await platform.command(['change-list', 'glsl-shaders', 'append', p]);
+    }
+
+    // shader opts：glsl-shader-opts 是 KEYVALUELIST。
+    // 用 set 整体替换（逗号分隔 key=value），空 map 则清空。
+    if (opts.isEmpty) {
+      await platform.command(
+          ['change-list', 'glsl-shader-opts', 'clr', '']);
+    } else {
+      final flat = opts.entries.map((e) => '${e.key}=${e.value}').join(',');
+      await platform.setProperty('glsl-shader-opts', flat);
+    }
+  }
+
+  /// 清空 shader 链与参数（关掉 HDR 输出/Anime4K 或两者皆关时调用）。
+  Future<void> _clearGlslShaders(NativePlayer platform) async {
+    await platform.command(['change-list', 'glsl-shaders', 'clr', '']);
+    await platform.command(
+        ['change-list', 'glsl-shader-opts', 'clr', '']);
   }
 
   /// 应用视频滤镜链（目前只有 Anime4K 一个来源）。
@@ -1453,8 +1603,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 两者都关：清空，避免上一部片源的 shader 残留
     _anime4kAuto.stop();
     try {
-      await platform.setProperty('glsl-shader', '');
-      await platform.setProperty('glsl-shader-opts-append', '');
+      await _clearGlslShaders(platform);
       debugPrint('[Filter] 已清空 glsl-shader');
     } catch (e) {
       debugPrint('[Filter] 清空失败（忽略）: $e');
@@ -1491,7 +1640,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       debugPrint('[HDR-OUT] 保存设置失败: $e');
     }
 
-    state = state.copyWith(hdrOutputMode: mode);
+    // 互斥（与 setAnime4kMode 对称）：开 HDR 档时若 Anime4K 也开着，
+    // 先关掉它，避免两个功能的 shader 链和自动降档逻辑互相打架。
+    final needTurnOffAnime4k =
+        mode.needsGpuNext && state.anime4kMode.needsGpuNext;
+    if (needTurnOffAnime4k) {
+      debugPrint('[HDR-OUT] 与 Anime4K 互斥，先关闭 Anime4K');
+      _anime4kAuto.stop();
+      await AppSettingsService.instance.setAnime4kMode('off');
+    }
+
+    state = state.copyWith(
+      hdrOutputMode: mode,
+      anime4kMode: needTurnOffAnime4k
+          ? Anime4kMode.off
+          : state.anime4kMode,
+    );
     _lastHdrAppliedSig = null;
     _lastVideoFilterSig = null;
 
@@ -1518,6 +1682,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await platform.setProperty('dolbyvision', 'no');
       // 中性峰值，避免残留极值影响新文件探测
       await platform.setProperty('target-peak', '1000');
+      // 关键：复位 target-colorspace-hint。开过 PQ/HLG 档后它残留 yes，
+      // 会让 SurfaceFlinger 停在 HDR 合成上下文，直接 open 新片源可能
+      // native 崩溃（v1.1.8 闪退根因）。这里每次 open 前都拉回 no。
+      await platform.setProperty('target-colorspace-hint', 'no');
       // 色彩空间复位：只在 Android 上做。
       //
       // Android 的 vo=gpu 需要把 target-prim/target-trc 复位成标准 SDR，
@@ -1576,6 +1744,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 轮询已尝试次数（超过 10 次就放弃）。
   int _colorPollTries = 0;
+
+  /// 色彩轮询代次令牌：换片/重启轮询时递增，旧回调 await 回来后
+  /// 发现 token 落后就放弃，避免旧片色彩参数写进新片 state。
+  int _colorPollToken = 0;
+
+  /// vo 操作代次令牌：每次 _switchVo / _rollbackShaderFeatures 递增，
+  /// 防止多个并发 vo 写操作（切换 / 回滚 / open 后自检）互相打断。
+  int _voToken = 0;
+
+  /// 期望的 vo 后端（由当前 HDR/Anime4K 状态推导）。
+  ///
+  /// widListener 会在 surface 尺寸变化时把 vo 打回构造时固定的值
+  /// （通常是 gpu），所以这里记录「我们想要什么」，供复检时恢复。
+  String? _desiredVo;
 
   /// 上次应用的 HDR 状态签名（"模式|hdrType"），相同则跳过整个 setProperty 序列。
   ///
@@ -1772,6 +1954,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         final changed = state.videoWidth != w;
         state = state.copyWith(videoWidth: w);
         if (changed) _applyResolutionScaling();
+        // surface 尺寸变化（旋转/小窗/进出播放页）会触发 media_kit 的
+        // widListener，它用构造时固定的 configuration.vo 覆盖 vo ——
+        // 把运行时切好的 gpu-next 打回 gpu。这里在尺寸变化后复检：
+        // 若期望 gpu-next 但 vo 已被打回 gpu，重新切回去。
+        if (_desiredVo == 'gpu-next') {
+          unawaited(_restoreDesiredVo());
+        }
       }
     });
     state.player.stream.height.listen((h) {
@@ -1794,6 +1983,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     // 视频色彩参数（识别 HDR10 / 杜比视界 / SDR，用于详情展示与色调映射）
     state.player.stream.videoParams.listen((params) {
+      // 先算规范化签名，变了才写 state（避免迟到的 null 事件覆盖轮询
+      // 已写好的正确值，也避免与轮询路径重复应用）。
+      final sig = _colorParamsSig(params.primaries, params.gamma, params.sigPeak);
+      if (sig == _lastVideoParamsSig) return;
+      _lastVideoParamsSig = sig;
+
       state = state.copyWith(
         colorPrimaries: params.primaries,
         transferFunction: params.gamma,
@@ -1801,17 +1996,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       );
       // 元数据到位后按需启用/关闭色调映射（见 applyHdrToneMapping 的说明：
       // open 后立刻调 applyRobustPlayback 时这些参数还没到，必须在这里补一次）
-      //
-      // ⚠ 但 videoParams 在打开一个视频时会触发多次（先 tf=null 再 tf=hlg），
-      // 每次触发都会 applyHdrToneMapping → 里面 setProperty 又可能触发新事件，
-      // 造成「同一视频刷屏多次」甚至近似循环。
-      // 用「参数签名」去重：只有 (primaries, gamma, sigPeak) 三元组真正变化
-      // 才重新应用，避免同一批元数据被处理多次。
-      final sig = '${params.primaries}|${params.gamma}|${params.sigPeak}';
-      if (sig != _lastVideoParamsSig) {
-        _lastVideoParamsSig = sig;
-        applyHdrToneMapping();
-      }
+      applyHdrToneMapping();
     });
 
     // 色彩参数兜底轮询（见 _startColorParamsPolling 的说明：
@@ -1869,9 +2054,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   void _startColorParamsPolling() {
     _colorPollTimer?.cancel();
     _colorPollTries = 0;
+    // 递增 token：旧回调若还挂在 await 上，回来后发现 token 落后就放弃，
+    // 避免旧片源的色彩参数写进新片源 state。
+    final token = ++_colorPollToken;
+
     _colorPollTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
       _colorPollTries++;
       if (_colorPollTries > 10) {
+        t.cancel();
+        return;
+      }
+      if (token != _colorPollToken) {
+        // 已经重启过轮询（换片/再次调用），这个旧 timer 作废
         t.cancel();
         return;
       }
@@ -1894,13 +2088,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
             clean(await platform.getProperty('video-params/gamma'));
         final peakRaw =
             await platform.getProperty('video-params/sig-peak');
+        if (token != _colorPollToken) return; // 换片了，放弃
 
         // 两个都拿不到说明文件还没加载完，下次再试
         if (prim == null && gamma == null) return;
 
-        final sig = '$prim|$gamma|${peakRaw.trim()}';
+        final peak = double.tryParse(peakRaw.trim());
+        final sig = _colorParamsSig(prim, gamma, peak);
         if (sig == _lastVideoParamsSig) {
-          // 已经是同一批数据，无需重复应用
+          // 已经是同一批数据（可能监听路径已应用），无需重复
           t.cancel();
           return;
         }
@@ -1911,9 +2107,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         state = state.copyWith(
           colorPrimaries: prim,
           transferFunction: gamma,
-          sigPeak: double.tryParse(peakRaw.trim()),
+          sigPeak: peak,
         );
         await applyHdrToneMapping();
+        if (token != _colorPollToken) return; // 换片了，不再停这个 timer
 
         // 两个都拿到就停，不用继续
         if (prim != null && gamma != null) t.cancel();
@@ -2129,8 +2326,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (token != _loadToken) return;
 
     // open 之后检查 gpu-next 是否真的建起来了（普通构建会回退 → 黑屏）。
-    // 延迟异步执行，不阻塞加载流程。
-    unawaited(_checkVoAfterOpen());
+    // 传 token 防止旧片的 2 秒后回滚误伤新片。
+    unawaited(_checkVoAfterOpen(token));
+
+    // 换片后重新启动色彩参数轮询。
+    // 之前的实现只在 _setupListeners（构造时）调一次，之后换片若
+    // stream.videoParams 不推送，就再也拿不到新片的色彩参数了。
+    _startColorParamsPolling();
 
     state = state.copyWith(
       currentVideo: effective,
@@ -2167,6 +2369,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastVideoParamsSig = null; // 重置参数签名，新视频的元数据必须重新应用
     _lastHdrAppliedSig = null; // 重置 HDR 应用签名，新视频要重新判断
     _lastScalingSig = null; // 重置分辨率缩放签名，新视频重新判断
+    // 视频滤镜链签名必须重置：否则换片后 _applyAnime4k（唯一会
+    // _anime4kAuto.start 的路径）被去重跳过，监控沿用上一部片的
+    // _lastDropCount（frame-drop-count 按文件归零后 delta 错乱）。
+    _lastVideoFilterSig = null;
+    // 换片时停掉上一部片的降档监控，避免旧片 drop 计数污染新片。
+    _anime4kAuto.stop();
     // hwdec 是「每文件」选项，open 新文件后 mpv 会回到默认值，
     // 必须清掉去重签名让 applyDecodingMode 重新下发。
     _lastDecodingSig = null;
@@ -2366,6 +2574,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     try {
       await state.player.stop();
     } catch (_) {}
+    // 停止后取消色彩轮询（player 已 stop，轮询只会空转打日志）
+    _colorPollTimer?.cancel();
+    _colorPollTimer = null;
     // 关掉串流代理，释放本地端口。
     // 必须在这里而不是播放页 dispose：用户可能从播放页返回首页继续用小窗
     // 听声音，那时代理还要活着；只有真正 stop（关小窗/结束播放）才该释放。
@@ -2878,6 +3089,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   @override
   void dispose() {
     _bufferWatchdog?.cancel();
+    _colorPollTimer?.cancel();
+    _anime4kAuto.stop();
     // 恢复系统亮度 + 收掉前台通知
     _restoreBrightness();
     _forceShutdownBackgroundService();
