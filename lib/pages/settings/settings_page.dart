@@ -316,6 +316,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: SafeBackdropFilter(
         blurSigma: 24,
         child: Container(
+          // 限高半屏：17 档放不下，但撑满全屏体验差。
+          // 半屏 + 内部滚动最合适（与播放页其它菜单一致）。
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
           padding: EdgeInsets.fromLTRB(16, 12, 16, bottomInset),
           decoration: const BoxDecoration(
             color: GlassTheme.bgRaised,

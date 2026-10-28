@@ -2062,64 +2062,81 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   ///
   /// 与设置页那个是同一份枚举、同一个 notifier 方法，只是入口不同：
   /// 这里紧贴画面，切完立刻能看效果。
+  ///
+  /// UI 与播放页其它菜单（音轨/字幕/投屏）保持一致：白色玻璃底、
+  /// 顶部圆角、`maxHeight 0.6 屏` + 可滚动列表。
   void _showHdrOutputModeSheet(PlayerState state) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          margin: const EdgeInsets.all(12),
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
-            border: Border.all(color: Colors.white12, width: 0.5),
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 2, 4, 10),
-                child: Text(
-                  'HDR 输出模式',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'HDR 输出模式',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
-              // 说明一句：切换会重建渲染器，避免用户以为闪一下是 bug
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
-                child: Text(
-                  '切换会重建渲染器，画面闪一下是正常的。'
-                  '非「关闭」档需要安装带 libplacebo 的构建版本。',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
-                ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '切换会重建渲染器，画面闪一下是正常的。'
+              '非「关闭」档需要安装带 libplacebo 的构建版本。',
+              style: TextStyle(
+                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
+                fontSize: 11.5,
+                height: 1.4,
               ),
-              for (final m in HdrOutputMode.values)
-                _hdrModeTile(
-                  mode: m,
-                  selected: m == state.hdrOutputMode,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    ref.read(playerProvider.notifier).setHdrOutputMode(m);
-                  },
-                ),
-              // 平台不支持时给一句明确说明，而不是让用户点了没反应
-              if (!hdrOutputModeSupported)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                  child: Text(
-                    '当前平台不支持 HDR 直通（需要 Android + 带 libplacebo 的构建版本），'
-                    '非「关闭」档已置灰。',
-                    style: TextStyle(color: Colors.orangeAccent, fontSize: 10.5),
-                  ),
-                ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final m in HdrOutputMode.values)
+                    _hdrModeTile(
+                      mode: m,
+                      selected: m == state.hdrOutputMode,
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        ref
+                            .read(playerProvider.notifier)
+                            .setHdrOutputMode(m);
+                      },
+                    ),
+                  if (!hdrOutputModeSupported)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                      child: Text(
+                        '当前平台不支持 HDR 直通'
+                        '（需要 Android + 带 libplacebo 的构建版本）。',
+                        style: TextStyle(
+                            color: Colors.orangeAccent, fontSize: 10.5),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2127,81 +2144,87 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   /// Anime4K 档位选择器（播放页内）。
   ///
-  /// 与 HDR 输出模式互斥：切换时 PlayerNotifier 会自动关掉另一个，
-  /// 这里在说明里写清楚，避免用户以为「开了没反应」。
+  /// 与 HDR 输出模式互斥：切换时 PlayerNotifier 会自动关掉另一个。
+  /// UI 与播放页其它菜单（音轨/字幕/投屏）保持一致：白色玻璃底、
+  /// 顶部圆角、`maxHeight 0.6 屏` + 可滚动列表。
   void _showAnime4kSheet(PlayerState state) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          margin: const EdgeInsets.all(12),
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E),
-            borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
-            border: Border.all(color: Colors.white12, width: 0.5),
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
           ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 2, 4, 8),
-                  child: Text(
-                    '动漫放大（Anime4K）',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
-                  child: Text(
-                    '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显。'
-                    '实拍视频会显得发糊，不建议开。'
-                    '帧率够高时才会真正生效，低倍率下几乎不耗 GPU。',
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
-                  ),
-                ),
-                for (final m in Anime4kMode.values)
-                  Opacity(
-                    opacity: m.isAvailable ? 1.0 : 0.4,
-                    child: _anime4kModeTile(
-                      mode: m,
-                      selected: m == state.anime4kMode,
-                      onTap: !m.isAvailable
-                          ? null
-                          : () {
-                              Navigator.of(ctx).pop();
-                              ref
-                                  .read(playerProvider.notifier)
-                                  .setAnime4kMode(m);
-                            },
-                    ),
-                  ),
-                if (!anime4kSupported)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                    child: Text(
-                      '当前平台不支持（需要 Android + 带 libplacebo 的构建版本）。',
-                      style:
-                          TextStyle(color: Colors.orangeAccent, fontSize: 10.5),
-                    ),
-                  ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                  child: Text(
-                    '与「HDR 输出模式」互斥，开启其一会自动关闭另一个。',
-                    style: TextStyle(color: Colors.white38, fontSize: 10),
-                  ),
-                ),
-              ],
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '动漫放大（Anime4K）',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(
+              '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
+              '实拍视频会显得发糊。掉帧会自动降档。'
+              '与「HDR 输出模式」互斥。',
+              style: TextStyle(
+                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final m in Anime4kMode.values)
+                    Opacity(
+                      opacity: m.isAvailable ? 1.0 : 0.4,
+                      child: _anime4kModeTile(
+                        mode: m,
+                        selected: m == state.anime4kMode,
+                        onTap: !m.isAvailable
+                            ? null
+                            : () {
+                                Navigator.of(ctx).pop();
+                                ref
+                                    .read(playerProvider.notifier)
+                                    .setAnime4kMode(m);
+                              },
+                      ),
+                    ),
+                  if (!anime4kSupported)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                      child: Text(
+                        '当前平台不支持'
+                        '（需要 Android + 带 libplacebo 的构建版本）。',
+                        style: TextStyle(
+                            color: Colors.orangeAccent, fontSize: 10.5),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2224,13 +2247,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: selected
-                  ? GlassTheme.accentPurple.withValues(alpha: 0.22)
-                  : Colors.white.withValues(alpha: 0.04),
+                  ? GlassTheme.accentPurple.withValues(alpha: 0.10)
+                  : GlassTheme.tintWhite,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: selected
-                    ? GlassTheme.accentPurple.withValues(alpha: 0.6)
-                    : Colors.white10,
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.45)
+                    : GlassTheme.textTertiary.withValues(alpha: 0.18),
                 width: 0.5,
               ),
             ),
@@ -2247,7 +2270,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                             style: TextStyle(
                               color: selected
                                   ? GlassTheme.accentPurple
-                                  : Colors.white,
+                                  : GlassTheme.textPrimary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -2259,13 +2282,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
+                                color: GlassTheme.textTertiary
+                                    .withValues(alpha: 0.14),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               child: Text(
                                 'GPU ${mode.gpuWeight}x',
                                 style: const TextStyle(
-                                    color: Colors.white38, fontSize: 9),
+                                    color: GlassTheme.textTertiary,
+                                    fontSize: 9),
                               ),
                             ),
                           ],
@@ -2274,8 +2299,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       const SizedBox(height: 2),
                       Text(
                         mode.description,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 10.5),
+                        style: TextStyle(
+                          color: GlassTheme.textTertiary
+                              .withValues(alpha: 0.9),
+                          fontSize: 10.5,
+                        ),
                       ),
                     ],
                   ),
@@ -2284,8 +2312,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   const Icon(Icons.check_circle_rounded,
                       color: GlassTheme.accentPurple, size: 18),
                 if (!enabled)
-                  const Icon(Icons.block_rounded,
-                      color: Colors.white38, size: 16),
+                  Icon(Icons.block_rounded,
+                      color: GlassTheme.textTertiary.withValues(alpha: 0.5),
+                      size: 16),
               ],
             ),
           ),
@@ -2296,7 +2325,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   Widget _hdrModeTile({
     required HdrOutputMode mode,
-    required bool selected,    required VoidCallback onTap,
+    required bool selected,
+    required VoidCallback onTap,
   }) {
     // 平台不支持时置灰且不可点：切了只会黑屏或没效果
     final enabled = mode.isAvailable;
@@ -2313,13 +2343,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: selected
-                    ? GlassTheme.accentPurple.withValues(alpha: 0.22)
-                    : Colors.white.withValues(alpha: 0.04),
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.10)
+                    : GlassTheme.tintWhite,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: selected
-                      ? GlassTheme.accentPurple.withValues(alpha: 0.6)
-                      : Colors.white10,
+                      ? GlassTheme.accentPurple.withValues(alpha: 0.45)
+                      : GlassTheme.textTertiary.withValues(alpha: 0.18),
                   width: 0.5,
                 ),
               ),
@@ -2334,7 +2364,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                           style: TextStyle(
                             color: selected
                                 ? GlassTheme.accentPurple
-                                : Colors.white,
+                                : GlassTheme.textPrimary,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
@@ -2342,8 +2372,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         const SizedBox(height: 2),
                         Text(
                           mode.description,
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 10.5),
+                          style: TextStyle(
+                            color: GlassTheme.textTertiary
+                                .withValues(alpha: 0.9),
+                            fontSize: 10.5,
+                          ),
                         ),
                       ],
                     ),
@@ -2352,8 +2385,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     const Icon(Icons.check_circle_rounded,
                         color: GlassTheme.accentPurple, size: 18),
                   if (!enabled)
-                    const Icon(Icons.block_rounded,
-                        color: Colors.white38, size: 16),
+                    Icon(Icons.block_rounded,
+                        color: GlassTheme.textTertiary.withValues(alpha: 0.5),
+                        size: 16),
                 ],
               ),
             ),

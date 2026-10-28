@@ -292,6 +292,29 @@ class AppSettingsService {
       await _loadFromPrefs(prefs);
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // v1.1.8 → v1.1.9 一次性安全重置
+    //
+    // v1.1.8 的 gpu-next 有个严重 bug：切换 HDR 输出模式 / Anime4K 时
+    // 会「重建 VideoController」，但 media_kit 以 player handle 缓存
+    // 实例，重建拿到旧实例、Dart 层指向空壳 → 黑屏，且设置被持久化，
+    // **重启也无法恢复**（每次启动都再次尝试 gpu-next）。
+    //
+    // 所以升级到 v1.1.9 时，强制把这两个 gpu-next 依赖的设置重置为
+    // off 一次。用户之后可以重新手动开启（新版已修复 vo 切换逻辑，
+    // 且加了 vo-configured 自检兜底）。
+    // ═══════════════════════════════════════════════════════════
+    const resetKey = 'gpuNextReset_v119';
+    if (!(prefs.getBool(resetKey) ?? false)) {
+      _hdrOutputMode = 'off';
+      _anime4kMode = 'off';
+      await prefs.setBool(resetKey, true);
+      // 同步写回 SP，避免 JSON 里旧值又覆盖回来
+      await prefs.setString(_kHdrOutputMode, 'off');
+      await prefs.setString(_kAnime4kMode, 'off');
+      debugPrint('[PerchPlay] v1.1.9 安全重置：HDR/Anime4K 已回 off');
+    }
+
     // 集合类型 SP 仍作为权威源（JSON 可能不完整）
     _hiddenAutoPlaylists =
         (prefs.getStringList(_kHiddenAutoPlaylists) ?? const <String>[])

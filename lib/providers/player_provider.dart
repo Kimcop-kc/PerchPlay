@@ -452,8 +452,134 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     );
     _setupListeners();
     applyDecodingMode();
+
+    // ── 启动自检：确认 gpu-next 真的可用 ──
+    //
+    // ⚠ 这是一道**安全阀**，因为踩过一次严重的坑：
+    //
+    // `isAvailable` 当时只判断了「平台是不是 Android」，没判断
+    // 「装的是不是带 libplacebo 的构建」。用户装了普通 APK 却开启了
+    // HDR 输出模式，于是 vo=gpu-next 建不起来 —— **黑屏，且重启无效**
+    // （因为设置被持久化了，每次启动都再次尝试 gpu-next）。
+    //
+    // 这里在启动后主动查 mpv 的 `vo-configured`：如果开了 needGpuNext
+    // 但视频输出没建立起来，强制回退到 gpu + 关闭两个功能，并纠正
+    // 持久化值，避免用户被永久锁在黑屏里。
+    if (needGpuNext) {
+      unawaited(_verifyGpuNextOrRollback());
+    }
+
     // iOS 锁屏 / 控制中心的远程控制（播放、暂停、快进、下一集等）
     _registerRemoteControls();
+  }
+
+  /// 启动自检：gpu-next 建不起来就回滚到 gpu。
+  ///
+  /// ⚠ 判据必须是 `vo-configured`（**实际建立成功的**视频输出），
+  /// 而不是 `vo`（**请求的**视频输出）：
+  ///   - `vo` 只是配置值，普通 APK 的 libmpv 也认 "gpu-next" 这个字符串，
+  ///     于是 `getProperty('vo')` 会返回 "gpu-next" —— 看起来「支持」。
+  ///   - 但实际建 Vulkan 管线时会失败，`vo-configured` 会变成 null
+  ///     或退回 libmpv 内部默认。
+  /// 用 `vo` 判断会漏掉「普通 APK 开了 gpu-next → 黑屏」的情况。
+  Future<void> _verifyGpuNextOrRollback() async {
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+
+      // 等 controller 初始化 + mpv 应用 vo。文件还没打开时 vo-configured
+      // 本来就是空，所以这里只能做「属性级」预检；真正的判定在
+      // _checkVoAfterOpen（首次播放后）。
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
+      final voConfigured =
+          (await platform.getProperty('vo-configured')).trim();
+      final vo = (await platform.getProperty('vo')).trim();
+      debugPrint('[VO] 启动自检: vo=$vo vo-configured=$voConfigured');
+
+      // vo-configured 非空且不是 gpu-next，说明已经用别的 vo 建起来了
+      // → gpu-next 不被支持，立即回滚。
+      if (voConfigured.isNotEmpty &&
+          voConfigured != 'gpu-next' &&
+          voConfigured != 'null') {
+        debugPrint('[VO] ⚠ vo-configured=$voConfigured（非 gpu-next），'
+            '普通构建不支持 gpu-next，回滚');
+        await _rollbackShaderFeatures();
+      }
+    } catch (e) {
+      debugPrint('[VO] 启动自检失败（忽略）: $e');
+    }
+  }
+
+  /// 首次播放后检查 vo 是否真的建起来了。
+  ///
+  /// 在 open 之后、收到第一帧前后调用。此时 `vo-configured` 才有意义：
+  ///   - gpu-next 建成功 → 保持
+  ///   - 建失败（vo-configured 为空或退回 gpu）→ 回滚 + 提示用户
+  Future<void> _checkVoAfterOpen() async {
+    if (!Platform.isAndroid) return;
+    final mode = state.hdrOutputMode;
+    final a4k = state.anime4kMode;
+    if (!mode.needsGpuNext && !a4k.needsGpuNext) return;
+
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+
+    try {
+      // 给 mpv 一点时间建立渲染管线
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final voConfigured =
+          (await platform.getProperty('vo-configured')).trim();
+      debugPrint('[VO] open 后检查: vo-configured=$voConfigured');
+
+      if (voConfigured.isEmpty ||
+          voConfigured == 'null' ||
+          voConfigured == 'gpu') {
+        debugPrint('[VO] ⚠ gpu-next 未能建立（vo-configured=$voConfigured），'
+            '回滚并提示');
+        await _rollbackShaderFeatures();
+      }
+    } catch (e) {
+      debugPrint('[VO] open 后检查失败（忽略）: $e');
+    }
+  }
+
+  /// 把两个依赖 gpu-next 的功能强制关掉，并纠正持久化值。
+  ///
+  /// 注意：**不重建 VideoController**，只切 mpv 的 `vo` 属性回 gpu
+  /// （原因见 _switchVo 的说明 —— 重建拿到旧实例，会导致黑屏）。
+  Future<void> _rollbackShaderFeatures() async {
+    try {
+      state = state.copyWith(
+        hdrOutputMode: HdrOutputMode.off,
+        anime4kMode: Anime4kMode.off,
+      );
+      _lastHdrAppliedSig = null;
+      _lastVideoFilterSig = null;
+      _anime4kAuto.stop();
+
+      // 切回 gpu（先 null 再 gpu，让 mpv 释放旧上下文）
+      final platform = state.player.platform;
+      if (platform is NativePlayer) {
+        try {
+          await platform.setProperty('vo', 'null');
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          await platform.setProperty('vo', 'gpu');
+        } catch (e) {
+          debugPrint('[VO] 回滚切 vo 失败（忽略）: $e');
+        }
+      }
+
+      unawaited(
+        AppSettingsService.instance.setHdrOutputMode('off').catchError((_) {}),
+      );
+      unawaited(
+        AppSettingsService.instance.setAnime4kMode('off').catchError((_) {}),
+      );
+      debugPrint('[VO] 已回滚到 gpu，两个着色器功能已关闭');
+    } catch (e) {
+      debugPrint('[VO] 回滚失败: $e');
+    }
   }
 
   /// 注册锁屏 / 控制中心的远程控制回调（iOS）。
@@ -1221,78 +1347,80 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       await AppSettingsService.instance.setHdrOutputMode('off');
     }
 
-    final wasPlaying = state.isPlaying;
-    final resumePos = state.position;
-    final video = state.currentVideo;
+    state = state.copyWith(
+      anime4kMode: mode,
+      hdrOutputMode:
+          needTurnOffHdr ? HdrOutputMode.off : state.hdrOutputMode,
+    );
+    _lastVideoFilterSig = null;
+    _lastHdrAppliedSig = null;
+    _anime4kAuto.updateMode(mode);
 
-    if (!Platform.isAndroid) {
-      state = state.copyWith(
-        anime4kMode: mode,
-        hdrOutputMode: needTurnOffHdr
-            ? HdrOutputMode.off
-            : state.hdrOutputMode,
-      );
-      _lastVideoFilterSig = null;
-      _lastHdrAppliedSig = null;
-      return;
-    }
+    // 注意：**不重建 VideoController**，只切 mpv 的 vo 属性。
+    // 见 _switchVo 的说明（media_kit 的 _controllers 以 player handle
+    // 为 key，重建拿到的还是旧实例，会导致 Dart 层指向空壳 → 黑屏）。
+    await _switchVo();
+    await applyHdrToneMapping();
+    await _applyVideoFilters();
+    debugPrint('[Anime4K] 已切换到 ${mode.id}');
+  }
+
+  /// 按当前功能状态切换 mpv 的 `vo` 后端。
+  ///
+  /// ## 为什么不用「重建 VideoController」
+  ///
+  /// media_kit 的 `AndroidVideoController.create` 里有：
+  /// ```dart
+  /// if (_controllers.containsKey(handle)) {
+  ///   return _controllers[handle]!;   // 直接返回旧实例
+  /// }
+  /// ```
+  /// key 是 **player handle** —— 同一个 Player 永远只能有一个
+  /// PlatformVideoController。我们「新建」VideoController 时拿到的
+  /// 其实是旧实例（vo 还是 gpu），而 Dart 层 state 指向了新壳子，
+  /// Flutter 的 Video widget 用新壳子的 id 拿不到画面 —— **黑屏**。
+  ///
+  /// 所以正确做法是：controller 保持不动，只切 mpv 的 `vo` 属性。
+  /// media_kit 自己也是这么做的（`widListener` 里 `setProperty('vo', …)`）。
+  ///
+  /// ## 切换步骤
+  ///
+  /// 必须先把 vo 设成 `null` 再设目标值：mpv 需要先释放旧的视频输出
+  /// 上下文（纹理 / Vulkan surface），否则新旧管线会打架。
+  /// 这与 media_kit 的 `widListener` 做法一致（L59-65）。
+  Future<void> _switchVo() async {
+    if (!Platform.isAndroid) return;
+    final platform = state.player.platform;
+    if (platform is! NativePlayer) return;
+
+    final needGpuNext =
+        state.hdrOutputMode.needsGpuNext || state.anime4kMode.needsGpuNext;
+    final target = needGpuNext ? 'gpu-next' : 'gpu';
 
     try {
-      // Anime4K 与 HDR 都要求 gpu-next
-      final newVo =
-          (mode.needsGpuNext || state.hdrOutputMode.needsGpuNext)
-              ? 'gpu-next'
-              : 'gpu';
-      state = state.copyWith(
-        anime4kMode: mode,
-        hdrOutputMode:
-            needTurnOffHdr ? HdrOutputMode.off : state.hdrOutputMode,
-      );
-
-      final rebuilt = VideoController(
-        state.player,
-        configuration: VideoControllerConfiguration(vo: newVo),
-      );
-      _globalController = rebuilt;
-      state = state.copyWith(videoController: rebuilt);
-
-      _lastVideoFilterSig = null;
-      _lastHdrAppliedSig = null;
-      _lastScalingSig = null;
-
-      // 让监控器知道档位变了（重置预热期，避免切档瞬间的掉帧被算到新档）
-      _anime4kAuto.updateMode(mode);
-
-      // 重新应用（这个时候 HDR 已是 off，走的是 Anime4K 分支）
-      await applyDecodingMode();
-      await applyHdrToneMapping();
-      await _applyVideoFilters();
-
-      if (video != null && resumePos > Duration.zero) {
-        try {
-          await state.player.seek(resumePos);
-          if (wasPlaying) await state.player.play();
-        } catch (e) {
-          debugPrint('[Anime4K] 恢复播放位置失败（忽略）: $e');
-        }
+      final current = (await platform.getProperty('vo')).trim();
+      if (current == target) {
+        debugPrint('[VO] 已是 $target，无需切换');
+        return;
       }
-      debugPrint('[Anime4K] 已切换到 ${mode.id}（vo=$newVo）');
-    } catch (e, st) {
-      debugPrint('[Anime4K] 重建 VideoController 失败: $e\n$st');
-      try {
-        final fallback = VideoController(
-          state.player,
-          configuration: const VideoControllerConfiguration(vo: 'gpu'),
-        );
-        _globalController = fallback;
-        state = state.copyWith(
-          videoController: fallback,
-          anime4kMode: Anime4kMode.off,
-        );
-        await AppSettingsService.instance.setAnime4kMode('off');
-      } catch (e2) {
-        debugPrint('[Anime4K] 回滚也失败: $e2');
+
+      debugPrint('[VO] 切换 $current → $target');
+      // 先卸掉旧 vo，让 mpv 释放视频输出上下文
+      await platform.setProperty('vo', 'null');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await platform.setProperty('vo', target);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final actual = (await platform.getProperty('vo')).trim();
+      debugPrint('[VO] 切换结果: $actual');
+      if (actual != target) {
+        // gpu-next 不被支持时 mpv 会降级。此时回滚，避免黑屏。
+        debugPrint('[VO] ⚠ 未能切到 $target（实际 $actual），回滚');
+        await _rollbackShaderFeatures();
       }
+    } catch (e) {
+      debugPrint('[VO] 切换失败: $e，回滚');
+      await _rollbackShaderFeatures();
     }
   }
 
@@ -1333,32 +1461,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
-  /// 切换 HDR 输出模式（由设置页调用）。
+  /// 切换 HDR 输出模式。
   ///
-  /// ## 为什么要重建 VideoController
+  /// ## 为什么**不重建 VideoController**
   ///
-  /// `vo` 是 [VideoControllerConfiguration] 的字段，在 `VideoController`
-  /// 构造时传给原生侧并固定下来（Android 侧 `widListener` 里直接用
-  /// `configuration.vo!`）。mpv 虽然允许 `setProperty('vo', ...)`，
-  /// 但 media_kit 的 Flutter 纹理通路是按初始 vo 建立的：
-  /// 从 `gpu`（OpenGL ES 纹理）切到 `gpu-next`（Vulkan Surface）
-  /// 必须重建纹理，否则拿不到画面。
-  ///
-  /// 所以这里保留当前播放位置和播放状态，重建 controller 后恢复。
-  ///
-  /// ## 失败回滚
-  ///
-  /// gpu-next 建不起来时（例如用户装的是官方 libmpv，没有 libplacebo），
-  /// 会立刻回退到 `gpu` 并把模式重置为 off，避免留下黑屏。
+  /// media_kit 的 `AndroidVideoController.create` 以 player handle 为 key
+  /// 缓存实例，同一个 Player 永远只有一个 PlatformVideoController。
+  /// 重建拿到的仍是旧实例，Dart 层却指向新壳子 → Video widget 用新
+  /// 壳子的 id 拿不到画面 → **黑屏**。所以这里只切 mpv 的 `vo` 属性，
+  /// controller 保持不动（见 _switchVo 的完整说明）。
   Future<void> setHdrOutputMode(HdrOutputMode mode) async {
     if (state.hdrOutputMode == mode) return;
 
     // 平台不支持时强制回 off：纯 Dart 层面的最后一道防线。
-    // UI 已经把选项置灰了，但设置可能从别处（比如恢复旧偏好）进来。
     if (!mode.isAvailable) {
       debugPrint('[HDR-OUT] ${mode.id} 在当前平台不可用，忽略');
       if (mode != HdrOutputMode.off) {
-        // 顺手把设置也纠正回 off，避免下次启动又读到无效值
         try {
           await AppSettingsService.instance.setHdrOutputMode('off');
         } catch (_) {}
@@ -1367,83 +1485,21 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
 
     debugPrint('[HDR-OUT] 切换到 ${mode.id}');
-
-    // 先把设置写下去：即使重建失败，用户的选择也保留了
     try {
       await AppSettingsService.instance.setHdrOutputMode(mode.id);
     } catch (e) {
       debugPrint('[HDR-OUT] 保存设置失败: $e');
     }
 
-    // 记录当前播放状态，重建后恢复
-    final wasPlaying = state.isPlaying;
-    final resumePos = state.position;
-    final video = state.currentVideo;
+    state = state.copyWith(hdrOutputMode: mode);
+    _lastHdrAppliedSig = null;
+    _lastVideoFilterSig = null;
 
-    // 非 Android 平台没有 gpu-next，直接改状态、走 SDR 逻辑即可
-    if (!Platform.isAndroid) {
-      state = state.copyWith(
-        hdrOutputMode: mode == HdrOutputMode.off ? HdrOutputMode.off : mode,
-      );
-      _lastHdrAppliedSig = null;
-      await applyHdrToneMapping();
-      return;
-    }
-
-    // ── 重建 VideoController ──
-    try {
-      final newVo = mode.needsGpuNext ? 'gpu-next' : 'gpu';
-      debugPrint('[HDR-OUT] 重建 VideoController, vo=$newVo');
-
-      state = state.copyWith(hdrOutputMode: mode);
-
-      final rebuilt = VideoController(
-        state.player,
-        configuration: VideoControllerConfiguration(vo: newVo),
-      );
-      _globalController = rebuilt;
-      state = state.copyWith(videoController: rebuilt);
-
-      // 旧 controller 不主动 dispose：
-      // media_kit 的 AndroidVideoController 把清理函数注册在
-      // `player.platform.release` 上（只有 Player.dispose 时才触发），
-      // 且 VideoController 本身没有公开的 dispose 方法。
-      // 强行释放会留下悬挂的 native handle，导致后续重建失败。
-      // 这里只把 state 的引用切到新 controller，旧的随 Player 一起回收。
-      debugPrint('[HDR-OUT] 旧 controller 保留（随 Player 释放）');
-
-      _lastHdrAppliedSig = null;
-      _lastScalingSig = null;
-      await applyHdrToneMapping();
-
-      // 恢复播放位置与状态
-      if (video != null && resumePos > Duration.zero) {
-        try {
-          await state.player.seek(resumePos);
-          if (wasPlaying) await state.player.play();
-        } catch (e) {
-          debugPrint('[HDR-OUT] 恢复播放位置失败（忽略）: $e');
-        }
-      }
-      debugPrint('[HDR-OUT] 已切换到 ${mode.id}（vo=$newVo）');
-    } catch (e, st) {
-      debugPrint('[HDR-OUT] 重建 VideoController 失败: $e\n$st');
-      // 回滚到 gpu + 关闭 HDR
-      try {
-        final fallback = VideoController(
-          state.player,
-          configuration: const VideoControllerConfiguration(vo: 'gpu'),
-        );
-        _globalController = fallback;
-        state = state.copyWith(
-          videoController: fallback,
-          hdrOutputMode: HdrOutputMode.off,
-        );
-        await AppSettingsService.instance.setHdrOutputMode('off');
-      } catch (e2) {
-        debugPrint('[HDR-OUT] 回滚也失败: $e2');
-      }
-    }
+    // 只切 vo，不重建 controller（见方法注释与 _switchVo 说明）
+    await _switchVo();
+    await applyHdrToneMapping();
+    await _applyVideoFilters();
+    debugPrint('[HDR-OUT] 已切换到 ${mode.id}');
   }
 
   /// 打开新文件前把 HDR 相关属性复位到中性状态。
@@ -2071,6 +2127,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       return;
     }
     if (token != _loadToken) return;
+
+    // open 之后检查 gpu-next 是否真的建起来了（普通构建会回退 → 黑屏）。
+    // 延迟异步执行，不阻塞加载流程。
+    unawaited(_checkVoAfterOpen());
 
     state = state.copyWith(
       currentVideo: effective,
