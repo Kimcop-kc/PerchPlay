@@ -12,6 +12,7 @@ import '../../services/log_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/hdr_output_mode.dart';
 import '../../services/storage_manager.dart';
 import '../../services/library_prune_service.dart';
 import '../../services/update_service.dart';
@@ -237,7 +238,163 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     fontWeight: FontWeight.w600)),
             onTap: () => _showPlayerOrientationPicker(),
           ),
+          _divider(),
+          // HDR 输出模式：走 gpu-next + hdr-toys，需要自建 libmpv
+          _settingRow(
+            Icons.hdr_strong_rounded,
+            'HDR 输出模式',
+            trailing: Text(
+                HdrOutputModeX.fromId(_settings.hdrOutputMode).shortLabel,
+                style: const TextStyle(
+                    color: GlassTheme.accentPurple,
+                    fontWeight: FontWeight.w600)),
+            onTap: () => _showHdrOutputModePicker(),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '非「关闭」档会改用 GPU-Next 渲染管线做 HDR 直通，'
+              '需要安装带 libplacebo 的构建版本；切换会重建渲染器，画面闪一下是正常的',
+              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// 选择 HDR 输出模式。
+  ///
+  /// 切换会经 `PlayerNotifier.setHdrOutputMode` 重建 VideoController
+  /// （vo 从 gpu 换成 gpu-next），因此会短暂黑屏 —— 选项说明里已写明。
+  void _showHdrOutputModePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _hdrOutputModeSheet(
+        current: _settings.hdrOutputMode,
+        onSelect: (id) async {
+          final mode = HdrOutputModeX.fromId(id);
+          if (mounted) setState(() {});
+          await ref.read(playerProvider.notifier).setHdrOutputMode(mode);
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
+  Widget _hdrOutputModeSheet({
+    required String current,
+    required Future<void> Function(String) onSelect,
+  }) {
+    final bottomInset =
+        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(GlassTheme.radiusXl)),
+      child: SafeBackdropFilter(
+        blurSigma: 24,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, bottomInset),
+          decoration: const BoxDecoration(
+            color: GlassTheme.bgRaised,
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(GlassTheme.radiusXl)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: GlassTheme.textTertiary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 14),
+                  child: Text('HDR 输出模式',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700)),
+                ),
+                for (final m in HdrOutputMode.values)
+                  _hdrOptionTile(
+                    mode: m,
+                    selected: m.id == current,
+                    onTap: () async {
+                      Navigator.of(context).pop();
+                      await onSelect(m.id);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _hdrOptionTile({
+    required HdrOutputMode mode,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: selected
+                  ? GlassTheme.accentPurple.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+              border: Border.all(
+                color: selected
+                    ? GlassTheme.accentPurple.withValues(alpha: 0.5)
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(mode.label,
+                          style: TextStyle(
+                              color: selected
+                                  ? GlassTheme.accentPurple
+                                  : GlassTheme.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 3),
+                      Text(mode.description,
+                          style: const TextStyle(
+                              color: GlassTheme.textTertiary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  const Icon(Icons.check_circle_rounded,
+                      color: GlassTheme.accentPurple, size: 20),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

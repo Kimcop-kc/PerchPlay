@@ -75,6 +75,15 @@ extension HdrOutputModeX on HdrOutputMode {
         HdrOutputMode.linear => '线性 HDR',
       };
 
+  /// 设置页右侧显示的精简名字（放不下完整 label）。
+  String get shortLabel => switch (this) {
+        HdrOutputMode.off => '关闭',
+        HdrOutputMode.bt2100Pq => 'BT.2100 PQ',
+        HdrOutputMode.bt2100Hlg => 'BT.2100 HLG',
+        HdrOutputMode.bt2020 => 'BT.2020',
+        HdrOutputMode.linear => '线性 HDR',
+      };
+
   /// 一句话说明，给设置页做副标题。
   String get description => switch (this) {
         HdrOutputMode.off => '不做 HDR 直通，兼容性最好',
