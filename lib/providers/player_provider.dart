@@ -531,6 +531,21 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final platform = state.player.platform;
       if (platform is! NativePlayer) return;
 
+      // ── 去重 ──
+      // 实测日志：同一部片在同一毫秒内会出现两组
+      //     [Player] hwdec=mediacodec,mediacodec-copy
+      //     [Player] vd-lavc-threads=6 (cores=8)
+      // 因为 loadVideo（open 前）和 applyRobustPlayback（open 后）
+      // 各调一次。重复 setProperty 本身不致命，但 hwdec 会在部分机型上
+      // 触发解码器重新初始化，和渲染上下文重建撞在一起时可能闪黑。
+      //
+      // 用签名去重：只有「硬解开关」真正变化才重新应用。
+      // 注意不能把分辨率/线程数算进签名 —— 那些由 _applyResolutionScaling
+      // 单独管，且它们依赖 videoWidth（open 后才有值）。
+      final sig = on ? 'hwdec:on' : 'hwdec:off';
+      if (sig == _lastDecodingSig) return;
+      _lastDecodingSig = sig;
+
       // 硬解后端分平台精细化。
       //
       // `auto-safe` 只启用 mpv 认为「安全」的硬解后端，在移动端有两个坑：
@@ -1494,6 +1509,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// 上次 videoParams 的参数签名（去重用，避免同批元数据反复触发色调映射）。
   String? _lastVideoParamsSig;
 
+  /// 解码参数签名（去重用）。
+  ///
+  /// ⚠ 换片时必须重置：hwdec / vd-lavc-threads 是 mpv 的「每文件」选项，
+  /// open 新文件后会回到默认值，必须重新下发。
+  String? _lastDecodingSig;
+
+  /// 色彩参数轮询定时器（补偿 stream.videoParams 在 Android 上不推送）。
+  Timer? _colorPollTimer;
+
+  /// 轮询已尝试次数（超过 10 次就放弃）。
+  int _colorPollTries = 0;
+
   /// 上次应用的 HDR 状态签名（"模式|hdrType"），相同则跳过整个 setProperty 序列。
   ///
   /// 用户反馈「一直在检测」：虽然设备检测只在启动做一次，但播放器
@@ -1731,6 +1758,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
     });
 
+    // 色彩参数兜底轮询（见 _startColorParamsPolling 的说明：
+    // Android 上 stream.videoParams 可能完全不推送）
+    _startColorParamsPolling();
+
     // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
     //
     // `stream.subtitle` 返回**两个元素**：
@@ -1754,6 +1785,86 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       unawaited(_handleCompleted().catchError((Object e) {
         debugPrint('[Player] completed 处理失败: $e');
       }));
+    });
+  }
+
+  /// 主动轮询 mpv 的 video-params，补偿 `stream.videoParams` 不推送。
+  ///
+  /// ## 为什么需要
+  ///
+  /// v1.1.8 用户日志实测：Android 上连续播三个杜比片源，日志里都只有
+  ///     [HDR] SDR: clip targetColorspace=true
+  /// 即 `state.hdrType == null`。说明 `stream.videoParams` **一次都没推送**，
+  /// `colorPrimaries` / `transferFunction` 始终为空。
+  ///
+  /// 后果不只是「HDR 角标不显示」：
+  ///   - HDR 片源不做色调映射 → 发灰发暗
+  ///   - HDR 输出模式的 PQ/HLG 档永远匹配不到片源
+  ///
+  /// media_kit 的 videoParams 流依赖 libmpv 的渲染层上报，在
+  /// `vo=gpu`（OpenGL ES 纹理路径）下并不总是触发。而 mpv 的
+  /// `video-params/*` 属性在文件加载完成后**一定可读**，与渲染后端无关。
+  /// 所以补一条主动读取的兜底路径。
+  ///
+  /// ## 轮询策略
+  ///
+  /// 每秒一次、最多 10 次。元数据一般在 open 后 1-3 秒内到齐；
+  /// 之后停止，避免常驻轮询持续占用 IPC 和 CPU。
+  void _startColorParamsPolling() {
+    _colorPollTimer?.cancel();
+    _colorPollTries = 0;
+    _colorPollTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      _colorPollTries++;
+      if (_colorPollTries > 10) {
+        t.cancel();
+        return;
+      }
+      try {
+        final platform = state.player.platform;
+        if (platform is! NativePlayer) {
+          t.cancel();
+          return;
+        }
+
+        String? clean(String s) {
+          final v = s.trim();
+          if (v.isEmpty || v == 'no' || v == 'null') return null;
+          return v;
+        }
+
+        final prim = clean(
+            await platform.getProperty('video-params/primaries'));
+        final gamma =
+            clean(await platform.getProperty('video-params/gamma'));
+        final peakRaw =
+            await platform.getProperty('video-params/sig-peak');
+
+        // 两个都拿不到说明文件还没加载完，下次再试
+        if (prim == null && gamma == null) return;
+
+        final sig = '$prim|$gamma|${peakRaw.trim()}';
+        if (sig == _lastVideoParamsSig) {
+          // 已经是同一批数据，无需重复应用
+          t.cancel();
+          return;
+        }
+        _lastVideoParamsSig = sig;
+
+        debugPrint('[Player] 轮询到色彩参数: '
+            'prim=$prim gamma=$gamma peak=${peakRaw.trim()}');
+        state = state.copyWith(
+          colorPrimaries: prim,
+          transferFunction: gamma,
+          sigPeak: double.tryParse(peakRaw.trim()),
+        );
+        await applyHdrToneMapping();
+
+        // 两个都拿到就停，不用继续
+        if (prim != null && gamma != null) t.cancel();
+      } catch (e) {
+        // 换片中途属性可能一时读不到，忽略继续
+        debugPrint('[Player] 轮询色彩参数失败（忽略）: $e');
+      }
     });
   }
 
@@ -1996,6 +2107,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastVideoParamsSig = null; // 重置参数签名，新视频的元数据必须重新应用
     _lastHdrAppliedSig = null; // 重置 HDR 应用签名，新视频要重新判断
     _lastScalingSig = null; // 重置分辨率缩放签名，新视频重新判断
+    // hwdec 是「每文件」选项，open 新文件后 mpv 会回到默认值，
+    // 必须清掉去重签名让 applyDecodingMode 重新下发。
+    _lastDecodingSig = null;
     _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
