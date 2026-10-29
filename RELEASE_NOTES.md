@@ -2,14 +2,17 @@
 
 修复 **iOS 画面发绿 / 发洋红**，新增 **HDR 输出模式** 与 **动漫放大（Anime4K）**（Android）。
 
-> **本次更新（build 122）**：修复了一批关键问题 ——
+> **本次更新（build 123）**：修复了一批关键问题 ——
 >
+> - **修复切换 HDR 输出模式卡顿 / 黑屏 / 自动回滚**：自建的 libplacebo
+>   编译时关掉了 OpenGL 后端，而 Android 上的 `vo=gpu-next` 走的正是
+>   OpenGL 路径，导致它永远建不起来（日志报
+>   `libplacebo was built without OpenGL support.`）。
+>   现在 OpenGL 后端已开启并校验通过（`pl_has_opengl=1`），
+>   HDR 输出模式与 Anime4K 真正可用。
 > - **修复「部分视频只有声音没有画面」的根本原因**：自建的 libmpv 从未
 >   把 JVM 注册给 FFmpeg，导致 `mediacodec` 硬解和 `vo=gpu` 渲染器
->   **完全无法初始化**（日志报 `No Java virtual machine has been
->   registered` / `Failed initializing any suitable GPU context!`）。
->   现在 libmpv 通过 `JNI_OnLoad` 自动完成注册，硬解与 GPU 渲染恢复。
->   这是本次最重要的一项。
+>   **完全无法初始化**。现在 libmpv 通过 `JNI_OnLoad` 自动完成注册。
 > - HDR 输出模式与 Anime4K 的着色器因 API 用错**从未真正挂载**
 >   （mpv 的 `glsl-shader` 是命令行别名而非属性名），已改用正确的
 >   `change-list` 命令
@@ -17,13 +20,12 @@
 >   路径一直为空，导致所有片源都被判成 SDR、完全不做色调映射（HDR 片源
 >   因此发灰发暗）
 > - 硬解失败时自动降级软解重开（兜底，正常情况不再需要）
-> - 修复切换模式可能黑屏、HDR 合成上下文残留导致的闪退风险
-> - 修复着色器功能互斥不完整
+> - 修复 HDR 合成上下文残留导致的闪退风险、着色器功能互斥不完整
 > - 修复部分视频（如 ProRes 编码的 .mov）缩略图反复解码失败
 > - 解码失败时会把 mpv 原始错误日志带进诊断信息，便于定位
 >
-> 若你之前装过 build 118~121 并遇到 HDR 无效、画面发灰、黑屏、
-> 部分视频打不开或缩略图空白，请安装本版本。
+> 若你之前装过 build 118~122 并遇到 HDR 输出模式卡顿/黑屏、
+> 画面发灰、部分视频打不开或缩略图空白，请安装本版本。
 
 ---
 
