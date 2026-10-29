@@ -388,7 +388,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   final DatabaseService _db = DatabaseService.instance;
   late final VideoController _globalController;
 
-  PlayerNotifier() : super(PlayerState(player: Player())) {
+  PlayerNotifier()
+      : super(PlayerState(
+          player: Player(
+            configuration: const PlayerConfiguration(osc: true),
+          ),
+        )) {
     // VideoController 由 Provider 全局创建，跨页面复用。
     //
     // ⚠ vo 必须**按平台**指定，不能全局写死：
@@ -582,6 +587,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         debugPrint('[VO] open 后检查(${i + 1}/6): '
             'vo-configured=$voConfigured expected=$expected');
 
+        // ⚠ await 之后必须复检：这 500ms+getProperty 期间用户可能换片、
+        // 切档、或 vo 被 widListener 动过。用过期值做回滚会误伤。
+        if (token != null && token != _loadToken) return; // 已换片
+        if (voToken != _voToken) return; // vo 已被其它操作重设
+        if (_switchingVo) return; // 切换中，别用过期值判失败
+
         if (voConfigured == 'gpu-next') return; // 成功，无需再查
         if (voConfigured.isNotEmpty &&
             voConfigured != 'null' &&
@@ -595,7 +606,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         // 空或 null：还在初始化，继续等下一轮
       }
 
-      // 6 轮后仍没建立 gpu-next，判定失败
+      // 6 轮后仍没建立 gpu-next，判定失败。
+      // 同样复检：这段时间可能已经切好/换片了。
+      if (token != null && token != _loadToken) return;
+      if (voToken != _voToken) return;
+      if (_switchingVo) return;
       debugPrint('[VO] ⚠ 6 轮后 gpu-next 仍未建立，回滚');
       await _rollbackShaderFeatures();
     } catch (e) {
@@ -635,20 +650,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           try {
             await platform.setProperty('target-colorspace-hint', 'no');
           } catch (_) {}
+          if (token != _voToken) return; // 期间被别的 vo 操作打断，放弃后续
 
           // 清掉残留的 shader 链
           try {
             await _clearGlslShaders(platform);
           } catch (_) {}
+          if (token != _voToken) return;
 
           // 校验回滚结果：vo 不能停在 null（无视频输出 = 黑屏）
           final configured =
               (await platform.getProperty('vo-configured')).trim();
+          if (token != _voToken) return; // 期间切到别的 vo 了，别乱动
           if (configured == 'null' || configured.isEmpty) {
             // 再重试一次 null→gpu
             debugPrint('[VO] 回滚后 vo-configured=$configured，重试切 gpu');
             await platform.setProperty('vo', 'null');
             await Future<void>.delayed(const Duration(milliseconds: 120));
+            if (token != _voToken) return;
             await platform.setProperty('vo', 'gpu');
           }
         } catch (e) {
@@ -754,7 +773,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 用签名去重：只有「硬解开关」真正变化才重新应用。
       // 注意不能把分辨率/线程数算进签名 —— 那些由 _applyResolutionScaling
       // 单独管，且它们依赖 videoWidth（open 后才有值）。
-      final sig = on ? 'hwdec:on' : 'hwdec:off';
+      // 当前片源是否已因硬解失败强制降级软解。
+      // _swRetryDone=true 时无论设置如何都保持软解，否则会回到
+      // 「mediacodec 初始化失败 → 判失败 → 再降级」的死循环。
+      final effectiveOn = on && !_swRetryDone;
+      final sig = effectiveOn ? 'hwdec:on' : 'hwdec:off';
       if (sig == _lastDecodingSig) return;
       _lastDecodingSig = sig;
 
@@ -771,7 +794,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       //  * iOS: videotoolbox
       //  * 桌面/其他: auto-safe（保持原行为）
       final String hwdecValue;
-      if (!on) {
+      if (!effectiveOn) {
         hwdecValue = 'no';
       } else if (Platform.isAndroid) {
         hwdecValue = 'mediacodec,mediacodec-copy';
@@ -789,7 +812,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // Android 上 mediacodec-copy 模式**不支持** direct rendering
       // （它本身就要拷出来），由 mpv 内部处理；这里对 iOS/桌面开启。
       await platform.setProperty(
-          'vd-lavc-dr', (on && !Platform.isAndroid) ? 'yes' : 'no');
+          'vd-lavc-dr', (effectiveOn && !Platform.isAndroid) ? 'yes' : 'no');
 
       // 解码线程数。
       //
@@ -799,14 +822,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 高码率 4K 下 2 线程容易成为瓶颈，给 4 线程更稳。
       final cores = DeviceInfoService.instance.capabilities.cpuCores;
       final maxThreads = cores <= 0 ? 4 : cores;
-      final threads = on
+      final threads = effectiveOn
           ? (maxThreads >= 8 ? 6 : 4)
           : (maxThreads >= 8 ? 8 : (maxThreads >= 4 ? 4 : 2));
       await platform.setProperty('vd-lavc-threads', '$threads');
       debugPrint('[Player] vd-lavc-threads=$threads (cores=$maxThreads)');
 
       // 硬解多留几帧缓冲：4K 硬解管线吞吐波动大，缓冲太少会周期性卡顿。
-      await platform.setProperty('hwdec-extra-frames', on ? '8' : '0');
+      await platform.setProperty('hwdec-extra-frames', effectiveOn ? '8' : '0');
     } catch (e) {
       debugPrint('[Player] 应用解码参数失败: $e');
     }
@@ -835,6 +858,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // 用户本来就关了硬解 → 已经是软解，重试没有意义
     if (!AppSettingsService.instance.hardwareDecoding) return;
 
+    // 捕获 load token 与当前位置：本方法是 unawaited 调用的异步流程，
+    // 期间用户可能换片，任何 await 之后都要校验 token 防止旧片覆盖新片。
+    final token = _loadToken;
+    final pos = state.position;
+
     _swRetryDone = true;
     debugPrint('[Player] ⚠ 硬解疑似失败，改用软解重开: ${video.name}');
 
@@ -845,11 +873,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       // 先切软解（open 前生效，每文件选项）
       await platform.setProperty('hwdec', 'no');
       await platform.setProperty('vd-lavc-dr', 'no');
-      _lastDecodingSig = null; // 让后续 applyDecodingMode 重新下发
+      if (token != _loadToken) return; // 换片了，放弃
 
-      final pos = state.position;
+      // 去重签名对齐「软解已生效」：applyDecodingMode 现在用
+      // effectiveOn（= on && !_swRetryDone）判断，本片源 _swRetryDone
+      // 已置 true，所以它不会再切回硬解。
+      _lastDecodingSig = 'hwdec:off';
+
       _startColorParamsPolling(); // 重开后再轮询一次
       await state.player.open(Media(video.path));
+      if (token != _loadToken) return; // 换片了，别再 seek 旧片位置
+
+      // 补一次健壮性兜底（open 后每文件选项 + HDR 色调映射）。
+      // 直接 open 绕过了 loadVideo，cache/demuxer/framedrop 等参数会
+      // 回默认值，这里补齐最关键的部分。
+      await applyRobustPlayback();
+      if (token != _loadToken) return;
+
       if (pos > Duration.zero) {
         try {
           await state.player.seek(pos);
@@ -1373,6 +1413,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final root = await anime4kShaderInstaller.ensureInstalled();
       if (root == null) {
         debugPrint('[Anime4K] shader 不可用，关闭该功能');
+        _anime4kAuto.stop(); // 与 catch 分支保持一致，避免残留监控 timer
         if (mounted) {
           state = state.copyWith(anime4kMode: Anime4kMode.off);
           _lastVideoFilterSig = null;
@@ -1644,13 +1685,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final platform = state.player.platform;
     if (platform is! NativePlayer) return;
 
-    final token = ++_voToken;
     try {
       final vo = (await platform.getProperty('vo')).trim();
-      if (token != _voToken) return;
       if (vo == desired) return; // 没被打回，无需处理
 
       debugPrint('[VO] ⚠ vo 被 widListener 打回 $vo，恢复 $desired');
+
+      // ⚠ 只有**确定要切换**时才递增 _voToken。之前无条件 ++，
+      // 导致 no-op（vo 已经是 desired）也会误杀 _checkVoAfterOpen
+      // 的 token 校验（它据此判断「vo 是否被别的操作动过」），
+      // 让 gpu-next 建失败时无人回滚。
+      final token = ++_voToken;
+
       await platform.setProperty('vo', 'null');
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (token != _voToken) return;
@@ -2636,6 +2682,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await setSpeed(state.speed > 0
         ? state.speed
         : AppSettingsService.instance.defaultSpeed);
+    // setSpeed 里有 await，期间可能已换片：旧片的 resume 逻辑不能
+    // 继续跑（会把旧片进度 seek 到新片）。
+    if (token != _loadToken) return;
 
     // iOS：换片后立刻更新锁屏/控制中心的标题（时长要等 duration 事件）
     _syncNowPlaying();
@@ -2661,11 +2710,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           state = state.copyWith(position: clamped);
         }
       } else {
+        // duration 还没到：不要立刻 seek（mpv 还没准备好，会报
+        // "error running command seek"，只是刷一条无意义的错误日志）。
+        // 挂到 pending，等 duration 事件来再 seek（见 duration 监听）。
         _pendingResume = Duration(milliseconds: resumeMs.toInt());
         _pendingResumeLoadId = token; // 绑定到当前 load，旧 duration 事件不会消费
-        try {
-          await state.player.seek(_pendingResume!);
-        } catch (_) {}
       }
     }
 
