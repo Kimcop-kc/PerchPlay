@@ -1983,6 +1983,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     // 视频色彩参数（识别 HDR10 / 杜比视界 / SDR，用于详情展示与色调映射）
     state.player.stream.videoParams.listen((params) {
+      // 诊断：确认这条流到底有没有推送（v1.1.8 日志里从未出现，
+      // 怀疑 Android vo=gpu 下不触发；加日志一次就能确认）
+      debugPrint('[Player] videoParams 流: '
+          'prim=${params.primaries} gamma=${params.gamma} '
+          'peak=${params.sigPeak}');
+
       // 先算规范化签名，变了才写 state（避免迟到的 null 事件覆盖轮询
       // 已写好的正确值，也避免与轮询路径重复应用）。
       final sig = _colorParamsSig(params.primaries, params.gamma, params.sigPeak);
@@ -2082,13 +2088,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           return v;
         }
 
-        final prim = clean(
-            await platform.getProperty('video-params/primaries'));
-        final gamma =
-            clean(await platform.getProperty('video-params/gamma'));
-        final peakRaw =
-            await platform.getProperty('video-params/sig-peak');
+        final primRaw =
+            await platform.getProperty('video-params/primaries');
+        final gammaRaw = await platform.getProperty('video-params/gamma');
+        final peakRaw = await platform.getProperty('video-params/sig-peak');
         if (token != _colorPollToken) return; // 换片了，放弃
+
+        final prim = clean(primRaw);
+        final gamma = clean(gammaRaw);
+
+        // 诊断日志：即使都是空也打一次（第 1 次和第 5 次采样），
+        // 这样日志里能看出「轮询在跑但 mpv 读不到」还是「根本没跑」。
+        // 之前静默 return，导致用户日志里一片空白，无法定位。
+        if (_colorPollTries == 1 || _colorPollTries == 5) {
+          debugPrint('[Player] 色彩轮询 #$_colorPollTries: '
+              'prim="$primRaw" gamma="$gammaRaw" peak="$peakRaw"');
+        }
 
         // 两个都拿不到说明文件还没加载完，下次再试
         if (prim == null && gamma == null) return;
