@@ -376,7 +376,7 @@ else:
 # ── 2) player/client.c：实现 mpv_lavc_set_java_vm + JNI_OnLoad ──
 c = os.path.join(root, 'player', 'client.c')
 src = open(c, encoding='utf-8').read()
-if 'JPEG_ANCHOR_DUMMY' not in src and 'mpv_lavc_set_java_vm' not in src:
+if 'mpv_lavc_set_java_vm' not in src:
     # 加 include
     if 'libavcodec/jni.h' not in src:
         for anchor in ('#include "common/common.h"',

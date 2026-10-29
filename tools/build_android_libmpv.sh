@@ -34,6 +34,9 @@ set -euo pipefail
 BUILD_REPO="${1:?用法: $0 <构建仓库路径> [架构]}"
 ARCH="${2:-arm64}"
 BS="$BUILD_REPO/buildscripts"
+# 本仓库的 tools 目录（patch_libplacebo.sh 在这里）。用脚本自身位置推导，
+# 不依赖调用方的 cwd —— workflow 里 cwd 是仓库根，但本地调试可能不同。
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [ -d "$BS" ] || { echo "❌ 找不到 $BS"; exit 1; }
 
@@ -62,6 +65,39 @@ cd "$BS"
 # 这里只编单架构，省时间。
 echo ""
 echo "▶ [1/6] 编译（shaderc → libplacebo → 其余 → mpv）"
+
+# ⚠ JVM 注册 patch 必须在 mpv 源码**已下载**之后、编译**之前**应用。
+#
+# patch_libplacebo.sh 在 workflow 里跑得比 download-deps.sh 早，那时
+# deps/mpv 还不存在，所以那一步里的 JVM patch 会被跳过（它自己会打
+# 警告并失效）。这里补上：先确保源码在，再幂等应用 patch。
+#
+# 缺了这个 patch，会回到：
+#   hevc_mediacodec: No Java virtual machine has been registered
+#   vo/gpu: Failed initializing any suitable GPU context!
+# 也就是「部分视频没画面」的老问题。
+MPV_SRC="$BS/deps/mpv"
+if [ ! -d "$MPV_SRC" ]; then
+	echo "   下载 mpv 源码（供 patch 用）"
+	( cd "$BS" && chmod +x include/download-deps.sh \
+		&& ./include/download-deps.sh ) || echo "   ⚠ download-deps 失败，继续"
+fi
+if [ -d "$MPV_SRC" ]; then
+	echo "   应用 JVM 注册 patch（幂等）"
+	bash "$TOOLS_DIR/patch_libplacebo.sh" "$BUILD_REPO" "$TOOLS_DIR" 2>&1 \
+		| grep -E 'JVM|patch' || true
+	# 硬校验：patch 没打上就不要继续编（否则必然产出「无 mediacodec」的库）
+	if ! grep -q 'JNI_OnLoad' "$MPV_SRC/player/client.c" 2>/dev/null; then
+		echo "❌ JVM patch 未生效（player/client.c 里没有 JNI_OnLoad）"
+		echo "   继续构建会产出 mediacodec / vo=gpu 全废的库"
+		exit 1
+	fi
+	echo "   ✓ JNI_OnLoad 已注入"
+else
+	echo "❌ mpv 源码目录不存在，无法应用 JVM patch: $MPV_SRC"
+	exit 1
+fi
+
 chmod +x build.sh
 ./build.sh --arch "$ARCH" mpv
 
