@@ -569,6 +569,9 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         if (token != null && token != _loadToken) return; // 已换片
         if (voToken != _voToken) return; // vo 已被其它操作重设
+        // 正在切换中：此时 vo-configured 短暂为 no 是正常的（管线还没
+        // 建完），不要据此判定失败并回滚 —— 否则会和切换流程打架。
+        if (_switchingVo) return;
         if (state.hdrOutputMode.needsGpuNext == false &&
             state.anime4kMode.needsGpuNext == false) {
           return; // 已回滚/关闭
@@ -1432,6 +1435,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
 
     debugPrint('[Anime4K] 切换到 ${mode.id}');
+
+    // 串行化：同 setHdrOutputMode，防并发重建渲染管线
+    if (_switchingVo) {
+      debugPrint('[Anime4K] ⚠ 正在切换中，忽略本次请求');
+      return;
+    }
+    _switchingVo = true;
+
     try {
       await AppSettingsService.instance.setAnime4kMode(mode.id);
     } catch (e) {
@@ -1455,12 +1466,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastHdrAppliedSig = null;
     _anime4kAuto.updateMode(mode);
 
-    // 注意：**不重建 VideoController**，只切 mpv 的 vo 属性。
-    // 见 _switchVo 的说明（media_kit 的 _controllers 以 player handle
-    // 为 key，重建拿到的还是旧实例，会导致 Dart 层指向空壳 → 黑屏）。
-    await _switchVo();
-    await applyHdrToneMapping();
-    await _applyVideoFilters();
+    try {
+      // 与 setHdrOutputMode 同一套顺序：先设属性，最后切 vo，
+      // 避免 gpu-next 初始化与属性变更并发操作同一个 Surface。
+      await applyHdrToneMapping();
+      await _applyVideoFilters();
+
+      _lastHdrAppliedSig = null;
+      _lastVideoFilterSig = null;
+      await _switchVoWithResume();
+      await applyHdrToneMapping();
+      await _applyVideoFilters();
+    } finally {
+      _switchingVo = false;
+    }
     debugPrint('[Anime4K] 已切换到 ${mode.id}');
   }
 
@@ -1539,6 +1558,72 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  /// 切换 vo 并尽量减少画面中断（供 HDR/Anime4K 切换共用）。
+  ///
+  /// ## 为什么切换会「卡一下」
+  ///
+  /// 换 `vo` 等于**销毁并重建整个视频输出上下文**：mpv 要释放旧的
+  /// GL 纹理/EGL surface，再把新后端初始化起来。这期间没有帧输出，
+  /// 屏幕上就表现为卡住几百毫秒。
+  ///
+  /// ## 怎么让它不那么明显
+  ///
+  /// 1. **先暂停**：播放中重建管线时，解码器还在往前推帧，会和
+  ///    vo 重建抢资源，观感更糟（甚至掉很多帧）。暂停能把干扰降到最低。
+  /// 2. **切换后立刻 seek 回当前位置**：这一步最关键 —— 它强制 mpv
+  ///    立刻解出新帧并送进新 vo，不用等下一帧自然到达，画面「瞬间」
+  ///    回来。不 seek 的话要等解码器缓冲耗尽，会有明显的空白。
+  /// 3. **恢复原播放状态**：本来在播就继续播，本来暂停就保持暂停。
+  ///
+  /// 这些都不改变「必须重建」的事实（vo 是管线级配置），但能把
+  /// 用户可感知的中断从「卡顿 + 黑屏」压到「闪一下」。
+  Future<void> _switchVoWithResume() async {
+    final wasPlaying = state.isPlaying;
+    final pos = state.position;
+    final video = state.currentVideo;
+
+    // 1) 暂停，避免重建期间解码器与 vo 抢资源
+    if (wasPlaying) {
+      try {
+        await state.player.pause();
+      } catch (e) {
+        debugPrint('[VO] 切换前暂停失败（忽略）: $e');
+      }
+    }
+
+    try {
+      // 2) 切 vo
+      await _switchVo();
+
+      // 3) 立刻 seek 回去，强制新 vo 马上出帧
+      if (video != null) {
+        try {
+          await state.player.seek(pos);
+        } catch (e) {
+          debugPrint('[VO] 切换后 seek 失败（忽略）: $e');
+        }
+      }
+    } catch (e, st) {
+      // 任何异常都不往上抛：切换失败的最坏结果是「没切成」，
+      // 不该让整个播放流程崩掉。
+      debugPrint('[VO] 切换过程异常，尝试回滚: $e\n$st');
+      try {
+        await _rollbackShaderFeatures();
+      } catch (e2) {
+        debugPrint('[VO] 回滚也失败: $e2');
+      }
+    } finally {
+      // 4) 无论如何都恢复播放状态
+      if (wasPlaying) {
+        try {
+          await state.player.play();
+        } catch (e) {
+          debugPrint('[VO] 切换后恢复播放失败（忽略）: $e');
+        }
+      }
+    }
+  }
+
   /// 恢复期望的 vo 后端（反制 media_kit widListener 的覆盖）。
   ///
   /// widListener 在 surface 尺寸变化（旋转/小窗/进出播放页）时用
@@ -1548,6 +1633,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   Future<void> _restoreDesiredVo() async {
     final desired = _desiredVo;
     if (desired == null || desired == 'gpu') return;
+    // 正在切换中：不要再插一脚，否则会和切换流程交错重设 vo
+    if (_switchingVo) return;
     if (!state.hdrOutputMode.needsGpuNext &&
         !state.anime4kMode.needsGpuNext) {
       _desiredVo = 'gpu';
@@ -1683,6 +1770,16 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
 
     debugPrint('[HDR-OUT] 切换到 ${mode.id}');
+
+    // 串行化：切换期间拒绝新的切换请求（连点档位 / 并发回滚）。
+    // 交错重设 vo 会让 mpv 在管线半初始化状态下被反复销毁重建，
+    // 是「第一次切换闪退」的主要嫌疑。
+    if (_switchingVo) {
+      debugPrint('[HDR-OUT] ⚠ 正在切换中，忽略本次请求');
+      return;
+    }
+    _switchingVo = true;
+
     try {
       await AppSettingsService.instance.setHdrOutputMode(mode.id);
     } catch (e) {
@@ -1708,10 +1805,29 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     _lastHdrAppliedSig = null;
     _lastVideoFilterSig = null;
 
-    // 只切 vo，不重建 controller（见方法注释与 _switchVo 说明）
-    await _switchVo();
-    await applyHdrToneMapping();
-    await _applyVideoFilters();
+    try {
+      // ── 顺序很重要，别随意调换 ──
+      //
+      // 1) **先**把着色器/色彩/TF 等属性设好（此时 vo 还是旧的）
+      // 2) **最后**才切 vo，让它带着完整配置一次性初始化
+      //
+      // 反过来（先切 vo 再设属性）会出现危险窗口：gpu-next 正在初始化
+      // 渲染管线，而 `target-colorspace-hint=yes` 又让 SurfaceFlinger
+      // 同时切换到 HDR 合成上下文 —— 两条路径并发操作同一个 Surface，
+      // 是「第一次切换闪退」的主要嫌疑。
+      await applyHdrToneMapping();
+      await _applyVideoFilters();
+
+      // 切 vo。切完 mpv 的视频输出上下文是全新的，之前设的属性可能
+      // 需要重新下发，所以清掉去重签名，紧跟着再应用一次。
+      _lastHdrAppliedSig = null;
+      _lastVideoFilterSig = null;
+      await _switchVoWithResume();
+      await applyHdrToneMapping();
+      await _applyVideoFilters();
+    } finally {
+      _switchingVo = false;
+    }
     debugPrint('[HDR-OUT] 已切换到 ${mode.id}');
   }
 
@@ -1801,6 +1917,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// vo 操作代次令牌：每次 _switchVo / _rollbackShaderFeatures 递增，
   /// 防止多个并发 vo 写操作（切换 / 回滚 / open 后自检）互相打断。
   int _voToken = 0;
+
+  /// 是否正在切换 HDR/Anime4K（串行化切换，防并发重建渲染管线）。
+  ///
+  /// ## 为什么需要
+  ///
+  /// 用户实测「第一次切换闪退」。切换过程要销毁并重建整个视频输出上下文
+  /// （vo=null → vo=目标），期间若有第二个切换（用户连点档位、或
+  /// `_checkVoAfterOpen` 的轮询判定失败触发回滚）同时进行，就会变成
+  /// 交错的 null→A→null→B 序列。mpv 在渲染管线半初始化状态下被反复
+  /// 重设 vo，native 侧可能直接崩（Surface/EGL 上下文被重复释放）。
+  ///
+  /// 所以用一个简单的门闩：切换期间置 true，后来的切换请求直接忽略。
+  /// 用户连点档位时以第一次为准，不会把管线搞乱。
+  bool _switchingVo = false;
 
   /// 期望的 vo 后端（由当前 HDR/Anime4K 状态推导）。
   ///
