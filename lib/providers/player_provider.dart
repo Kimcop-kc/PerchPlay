@@ -472,6 +472,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       state.player,
       configuration: VideoControllerConfiguration(
         vo: Platform.isAndroid ? androidVo : null,
+        // ── iOS 色彩修复的关键 ──
+        //
+        // media_kit 的 iOS 硬渲染路径（TextureHW，OpenGL ES）有个字节序
+        // bug：PixelBuffer 是 kCVPixelFormatType_32BGRA，但 mpv 渲染进
+        // FBO 时 `mpv_opengl_fbo.internal_format = 0`（让 mpv 自决），
+        // mpv 默认按 RGBA 输出 → R/B 通道交换 → 画面发绿/发洋红。
+        //
+        // 软渲染路径（TextureSW）显式用 `format = "bgr0"`，字节序正确。
+        //
+        // 所以 iOS 上禁用「硬件渲染」，走 TextureSW。注意：这只影响
+        // **渲染**（YUV→RGB 这一跳走 CPU），**解码**仍然由 hwdec 控制
+        // （见 applyDecodingMode，iOS 仍用 videotoolbox 硬解），所以
+        // 耗电/发热的代价可控 —— 只有每帧一次 bgr0 像素转换走 CPU。
+        //
+        // 实测（v1.1.8 build 125 iPad 日志）：SDR 与 HLG 片源在
+        // vo=libmpv + videotoolbox + TextureHW 下都发绿发红，
+        // 正是这个字节序 bug，与色调映射/HDR 参数无关。
+        enableHardwareAcceleration: !Platform.isIOS,
       ),
     );
     state = state.copyWith(
