@@ -15,6 +15,29 @@ fi
 mkdir -p _build$ndk_suffix
 cd _build$ndk_suffix
 
+# ── 配置变化时必须重建 build 目录 ──
+#
+# meson 在非空目录上再 `meson setup` 会直接失败；更糟的是如果复用旧
+# 目录，它会沿用**旧的 option 值**（比如 opengl=disabled），导致改了
+# libplacebo.sh 却编出同样的无 OpenGL 库。
+#
+# CI 用 ~/libmpv-cache/prefix + deps 做缓存，deps/libplacebo/_build
+# 可能被恢复出来。这里用「本条 option 指纹」判断：指纹不一致就整个
+# 清掉重建，保证 -Dopengl=enabled 一定生效。
+LP_OPTS_FINGERPRINT="v2-vulkan-opengl-shaderc"
+STAMP="../.lp_opts_stamp"
+if [ -d . ] && [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$LP_OPTS_FINGERPRINT" ]; then
+	echo "  配置指纹未变（$LP_OPTS_FINGERPRINT），复用现有 build 目录"
+else
+	echo "  配置指纹变化/首次构建 → 清空 build 目录重建"
+	# 回到 deps/libplacebo 再删，避免删掉当前工作目录
+	cd ..
+	rm -rf "_build$ndk_suffix"
+	mkdir -p "_build$ndk_suffix"
+	echo "$LP_OPTS_FINGERPRINT" > "$STAMP"
+	cd "_build$ndk_suffix"
+fi
+
 # ─────────────────────────────────────────────────────────────────────
 # libplacebo —— mpv 的 vo=gpu-next 后端（hdr-toys 着色的执行引擎）
 #
@@ -32,8 +55,18 @@ cd _build$ndk_suffix
 #       Android NDK 自带 shaderc，前面 scripts/shaderc.sh 已编好。
 #   glslang=disabled
 #       用 shaderc 就不用再拉 glslang，省一次编译与体积。
-#   opengl=disabled
-#       只保留 Vulkan。Android 上 gpu-next 走 Vulkan 更稳，且省体积。
+#   opengl=enabled  ★ 必须开！★
+#       mpv 的 vo_gpu_next.c 里：
+#           #if HAVE_GL && defined(PL_HAVE_OPENGL)
+#           #include <libplacebo/opengl.h>
+#           #include "video/out/opengl/ra_gl.h"
+#           #endif
+#       Android 上 gpu-next 走的是 **OpenGL 路径**（ra_gl），
+#       不是直接调 Vulkan。之前这里写 disabled，导致实测报：
+#           [mpv/vo/gpu-next] libplacebo was built without OpenGL support.
+#       → vo=gpu-next 永远建不起来，切换 HDR 输出模式必然黑屏/卡死/
+#         触发回滚。Vulkan 仍然保留（pl_has_vulkan=1 供 mpv 判断），
+#         但 OpenGL 是 gpu-next 在 Android 上真正用的后端。
 #   d3d11=disabled / demos / tests / bench
 #       全部关掉，只要库。
 #
@@ -147,9 +180,9 @@ meson setup .. \
 	--buildtype release \
 	--cross-file "$prefix_dir"/crossfile.txt \
 	-Dvulkan=enabled \
+	-Dopengl=enabled \
 	-Dshaderc=enabled \
 	-Dglslang=disabled \
-	-Dopengl=disabled \
 	-Dd3d11=disabled \
 	-Dlibdovi=disabled \
 	-Ddemos=false \
@@ -175,15 +208,49 @@ for f in "$prefix_dir/usr/local/lib/pkgconfig/libplacebo.pc" \
 	fi
 done
 
-# ── 校验 pl_has_vulkan 是否真的写进了 pkgconfig ──
+# ── 校验 pl_has_vulkan / pl_has_opengl 是否真的写进了 pkgconfig ──
 # mpv 的 meson 用 libplacebo.get_variable('pl_has_vulkan') 判断能不能开
 # Vulkan。如果这里是 0，后续 mpv 的 -Dvulkan=enabled 会直接失败。
-echo "=== 检查 pl_has_vulkan ==="
-PC="$prefix_dir/lib/pkgconfig/libplacebo.pc"
-if [ -f "$PC" ]; then
+#
+# pl_has_opengl 同样关键：Android 的 vo=gpu-next 走 OpenGL 路径，
+# 为 0 时虽然能编过，但运行时报
+#   libplacebo was built without OpenGL support.
+# 然后 vo=gpu-next 建不起来 → 切换 HDR 输出模式黑屏/卡死。
+echo "=== 检查 pl_has_vulkan / pl_has_opengl ==="
+PC=""
+for cand in "$prefix_dir/usr/local/lib/pkgconfig/libplacebo.pc" \
+            "$prefix_dir/lib/pkgconfig/libplacebo.pc"; do
+	[ -f "$cand" ] && { PC="$cand"; break; }
+done
+
+FAIL_PL=0
+if [ -n "$PC" ] && [ -f "$PC" ]; then
 	grep -i 'pl_has_vulkan' "$PC" || echo "⚠️ pkgconfig 里没有 pl_has_vulkan 变量"
-	cat "$PC"
+	grep -i 'pl_has_opengl' "$PC" || echo "⚠️ pkgconfig 里没有 pl_has_opengl 变量"
+
+	# 硬校验 OpenGL：为 0 时 gpu-next 在 Android 上必然不可用
+	if grep -qi 'pl_has_opengl=1' "$PC"; then
+		echo "✅ pl_has_opengl=1（gpu-next 可用）"
+	else
+		echo "❌ pl_has_opengl 不为 1 —— vo=gpu-next 将无法初始化"
+		echo "   检查 meson 参数里是否写成 -Dopengl=enabled"
+		FAIL_PL=1
+	fi
+	if grep -qi 'pl_has_vulkan=1' "$PC"; then
+		echo "✅ pl_has_vulkan=1"
+	else
+		echo "⚠️ pl_has_vulkan 不为 1（mpv 的 vulkan 选项可能被跳过）"
+	fi
+	# 打印完整 pc，便于排查
+	sed 's/^/    /' "$PC"
 else
 	echo "⚠️ 没找到 libplacebo.pc"
-	ls -la "$prefix_dir/lib/pkgconfig" || true
+	ls -la "$prefix_dir/lib/pkgconfig" 2>/dev/null || true
+	ls -la "$prefix_dir/usr/local/lib/pkgconfig" 2>/dev/null || true
+	FAIL_PL=1
+fi
+
+if [ "$FAIL_PL" -ne 0 ]; then
+	echo "❌ libplacebo 校验未通过（gpu-next 会不可用）"
+	exit 1
 fi
