@@ -809,6 +809,55 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  /// 硬解失败时切软解并重开当前片源（每片只试一次）。
+  ///
+  /// ## 为什么需要
+  ///
+  /// v1.1.8 build 120 用户日志：连续打开 5 个视频，只有第一个（854×480）
+  /// 拿到了 videoParams，其余 4 个（手机录像 `VID_*`）的 videoParams
+  /// **始终为 null**，且连 `[Player] 普通分辨率` 都没打 —— 说明 mpv
+  /// 虽然 open 成功，但**没有解码出视频轨**。
+  ///
+  /// 典型原因是 `mediacodec` 后端对某些 profile 初始化失败（10bit HEVC、
+  /// 高码率 4K 手机录像）。此时切到软解重开通常能救回来 —— 慢但能看。
+  ///
+  /// ## 只试一次
+  ///
+  /// 软解也解不出来就不能再重试（无限重开）。`_swRetryDone` 保证每片
+  /// 只降级一次，换片时重置。
+  Future<void> _retryWithSoftwareDecoding() async {
+    if (_swRetryDone) return;
+    final video = state.currentVideo;
+    if (video == null) return;
+    // 用户本来就关了硬解 → 已经是软解，重试没有意义
+    if (!AppSettingsService.instance.hardwareDecoding) return;
+
+    _swRetryDone = true;
+    debugPrint('[Player] ⚠ 硬解疑似失败，改用软解重开: ${video.name}');
+
+    try {
+      final platform = state.player.platform;
+      if (platform is! NativePlayer) return;
+
+      // 先切软解（open 前生效，每文件选项）
+      await platform.setProperty('hwdec', 'no');
+      await platform.setProperty('vd-lavc-dr', 'no');
+      _lastDecodingSig = null; // 让后续 applyDecodingMode 重新下发
+
+      final pos = state.position;
+      _startColorParamsPolling(); // 重开后再轮询一次
+      await state.player.open(Media(video.path));
+      if (pos > Duration.zero) {
+        try {
+          await state.player.seek(pos);
+        } catch (_) {}
+      }
+      debugPrint('[Player] 软解重开已发起');
+    } catch (e) {
+      debugPrint('[Player] 软解重开失败: $e');
+    }
+  }
+
   /// 播放引擎关键参数健壮性兜底：容器/音视频轨道异常时自动跳过坏流，
   /// 同时配置 HDR 色调映射，让 HDR10/HLG 视频在 SDR 屏幕上正确显示。
   /// 按视频来源设置「每文件」mpv 选项（缓存 / demuxer / 网络超时）。
@@ -1759,6 +1808,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   /// （通常是 gpu），所以这里记录「我们想要什么」，供复检时恢复。
   String? _desiredVo;
 
+  /// 当前片源是否已经尝试过「硬解失败 → 切软解重开」。
+  ///
+  /// 用来防止死循环：软解仍然解不出来时不能再重试（无限重开）。
+  /// 换片时重置为 false。
+  bool _swRetryDone = false;
+
   /// 上次应用的 HDR 状态签名（"模式|hdrType"），相同则跳过整个 setProperty 序列。
   ///
   /// 用户反馈「一直在检测」：虽然设备检测只在启动做一次，但播放器
@@ -2009,6 +2064,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // Android 上 stream.videoParams 可能完全不推送）
     _startColorParamsPolling();
 
+    // ── mpv 原始日志转发（定位解码失败的唯一手段）──
+    //
+    // 实测日志：用户连续打开 5 个视频，只有第一个拿到 videoParams
+    // （bt.709/bt.1886），后面四个的 videoParams 全是 null，而且连
+    // `[Player] 普通分辨率` 都没打出来 —— 说明 **mpv 根本没解码出视频**。
+    //
+    // 但 open() 没有抛异常，我们的日志里也就什么都没有。media_kit 的
+    // `stream.error` 只在特定 prefix 的 error 级别下触发，覆盖不全。
+    // `stream.log` 是 mpv 的全量日志（含 vd/ad/cplayer 的每条消息），
+    // 只有看它才能知道是「容器不认」「解码器不支持」还是「文件损坏」。
+    //
+    // 只转 error/warn 级别，避免刷屏；前缀保留，便于 grep。
+    state.player.stream.log.listen((log) {
+      final level = log.level.toLowerCase();
+      if (level != 'error' && level != 'warn') return;
+      debugPrint('[mpv/${log.prefix}] ${log.text}');
+    });
+
     // 当前 mpv 正在显示的字幕文本（统一字幕渲染的唯一事实来源）。
     //
     // `stream.subtitle` 返回**两个元素**：
@@ -2101,10 +2174,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         var prim = clean(mp.primaries);
         var gamma = clean(mp.gamma);
         var peak = mp.sigPeak;
-        var source = 'media_kit';
 
-        // ── 路径 2：直接读 mpv 子属性（路径 1 拿不到时兜底）──
-        if (prim == null && gamma == null) {
+        // ── 路径 2：直接读 mpv 子属性（已实测无效，保留仅作最后兜底）──
+        //
+        // v1.1.8 build 120 日志实证：`getProperty('video-params/primaries')`
+        // 在所有片源上**永远返回空串**（因为 video-params 是 node 类型属性，
+        // mpv_get_property_string 读不了它的子路径）。所以这条路只在
+        // media_kit 那条路也拿不到时试一次，且不再打诊断日志（避免刷屏）。
+        if (prim == null && gamma == null && _colorPollTries <= 2) {
           final primRaw =
               await platform.getProperty('video-params/primaries');
           final gammaRaw =
@@ -2116,23 +2193,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           prim = clean(primRaw);
           gamma = clean(gammaRaw);
           peak = double.tryParse(peakRaw.trim());
-          source = 'getProperty';
+        }
 
-          // 诊断：第 1/5 次采样打原始值，确认这条路径是否可用
-          if (_colorPollTries == 1 || _colorPollTries == 5) {
-            debugPrint('[Player] 色彩轮询 #$_colorPollTries(getProperty): '
-                'prim="$primRaw" gamma="$gammaRaw" peak="$peakRaw"');
+        // 两条路都拿不到说明 mpv 还没解码出视频（或文件根本打不开）。
+        // 只在最后一次采样打一行，避免每个片源刷 10 行。
+        if (prim == null && gamma == null) {
+          if (_colorPollTries >= 10) {
+            debugPrint('[Player] ⚠ 色彩参数始终为空 —— mpv 未解码出视频轨');
+            // 硬解失败兜底：部分 HDR / 高码率片源（尤其手机录像的
+            // 10bit HEVC）在 mediacodec 下会初始化失败，表现为「文件
+            // 能 open 但没有视频轨」。这时切软解重开一次往往能救回来。
+            unawaited(_retryWithSoftwareDecoding());
           }
+          return;
         }
-
-        // 诊断：确认轮询确实在跑（前 2 次各打一行）
-        if (_colorPollTries <= 2) {
-          debugPrint('[Player] 色彩轮询 #$_colorPollTries[$source]: '
-              'prim=$prim gamma=$gamma peak=$peak');
-        }
-
-        // 两条路都拿不到说明文件还没加载完，下次再试
-        if (prim == null && gamma == null) return;
 
         final sig = _colorParamsSig(prim, gamma, peak);
         if (sig == _lastVideoParamsSig) {
@@ -2143,7 +2217,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         _lastVideoParamsSig = sig;
 
         debugPrint('[Player] 轮询到色彩参数: '
-            'prim=$prim gamma=$gamma peak=$peak（来源 $source）');
+            'prim=$prim gamma=$gamma peak=$peak');
         state = state.copyWith(
           colorPrimaries: prim,
           transferFunction: gamma,
@@ -2418,6 +2492,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     // hwdec 是「每文件」选项，open 新文件后 mpv 会回到默认值，
     // 必须清掉去重签名让 applyDecodingMode 重新下发。
     _lastDecodingSig = null;
+    // 换片重置软解降级标记：新片源可以再试一次硬解 → 软解降级
+    _swRetryDone = false;
     _entryHint.clear(); // 清字幕命中缓存，下标从零开始
 
     // 每次换片重新应用解码设置（mpv 在 open 后可能重置）
