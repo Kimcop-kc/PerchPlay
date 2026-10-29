@@ -2082,33 +2082,58 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           return;
         }
 
-        String? clean(String s) {
-          final v = s.trim();
+        String? clean(String? s) {
+          final v = (s ?? '').trim();
           if (v.isEmpty || v == 'no' || v == 'null') return null;
           return v;
         }
 
-        final primRaw =
-            await platform.getProperty('video-params/primaries');
-        final gammaRaw = await platform.getProperty('video-params/gamma');
-        final peakRaw = await platform.getProperty('video-params/sig-peak');
-        if (token != _colorPollToken) return; // 换片了，放弃
+        // ── 路径 1：media_kit 已解析好的结构化 videoParams ──
+        //
+        // media_kit 内部监听**顶层** `video-params`（node 类型），
+        // 自己解析出 primaries/gamma/sig-peak 并存进 PlayerState。
+        // 这条路径不依赖 mpv 的子属性路径语法，最可靠，所以优先用。
+        //
+        // 之前只读 `video-params/primaries` 这种子路径 —— 该写法在
+        // mpv 里对 node 类型属性不一定可用，导致轮询永远读到空、
+        // 静默 return，HDR 检测完全失效（v1.1.8 日志实证）。
+        final mp = state.player.state.videoParams;
+        var prim = clean(mp.primaries);
+        var gamma = clean(mp.gamma);
+        var peak = mp.sigPeak;
+        var source = 'media_kit';
 
-        final prim = clean(primRaw);
-        final gamma = clean(gammaRaw);
+        // ── 路径 2：直接读 mpv 子属性（路径 1 拿不到时兜底）──
+        if (prim == null && gamma == null) {
+          final primRaw =
+              await platform.getProperty('video-params/primaries');
+          final gammaRaw =
+              await platform.getProperty('video-params/gamma');
+          final peakRaw =
+              await platform.getProperty('video-params/sig-peak');
+          if (token != _colorPollToken) return; // 换片了，放弃
 
-        // 诊断日志：即使都是空也打一次（第 1 次和第 5 次采样），
-        // 这样日志里能看出「轮询在跑但 mpv 读不到」还是「根本没跑」。
-        // 之前静默 return，导致用户日志里一片空白，无法定位。
-        if (_colorPollTries == 1 || _colorPollTries == 5) {
-          debugPrint('[Player] 色彩轮询 #$_colorPollTries: '
-              'prim="$primRaw" gamma="$gammaRaw" peak="$peakRaw"');
+          prim = clean(primRaw);
+          gamma = clean(gammaRaw);
+          peak = double.tryParse(peakRaw.trim());
+          source = 'getProperty';
+
+          // 诊断：第 1/5 次采样打原始值，确认这条路径是否可用
+          if (_colorPollTries == 1 || _colorPollTries == 5) {
+            debugPrint('[Player] 色彩轮询 #$_colorPollTries(getProperty): '
+                'prim="$primRaw" gamma="$gammaRaw" peak="$peakRaw"');
+          }
         }
 
-        // 两个都拿不到说明文件还没加载完，下次再试
+        // 诊断：确认轮询确实在跑（前 2 次各打一行）
+        if (_colorPollTries <= 2) {
+          debugPrint('[Player] 色彩轮询 #$_colorPollTries[$source]: '
+              'prim=$prim gamma=$gamma peak=$peak');
+        }
+
+        // 两条路都拿不到说明文件还没加载完，下次再试
         if (prim == null && gamma == null) return;
 
-        final peak = double.tryParse(peakRaw.trim());
         final sig = _colorParamsSig(prim, gamma, peak);
         if (sig == _lastVideoParamsSig) {
           // 已经是同一批数据（可能监听路径已应用），无需重复
@@ -2118,7 +2143,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         _lastVideoParamsSig = sig;
 
         debugPrint('[Player] 轮询到色彩参数: '
-            'prim=$prim gamma=$gamma peak=${peakRaw.trim()}');
+            'prim=$prim gamma=$gamma peak=$peak（来源 $source）');
         state = state.copyWith(
           colorPrimaries: prim,
           transferFunction: gamma,
