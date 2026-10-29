@@ -155,6 +155,20 @@ jobs:
             echo "::warning::libmpv.so 不含 libvulkan，HDR 输出模式将不可用（注入了吗？）"
           fi
 
+          # JNI_OnLoad：mediacodec / vo=gpu 的生死线。
+          #
+          # 缺它时的实测症状（build 121）：
+          #   hevc_mediacodec: No Java virtual machine has been registered
+          #   vo/gpu: Failed initializing any suitable GPU context!
+          # → 「部分视频只有声音没画面」。这一步一定要报出来，
+          # 否则发出去的包看起来正常、实际播不了。
+          if nm -D "$SO" 2>/dev/null | grep -q 'JNI_OnLoad'; then
+            echo "✅ libmpv.so 导出 JNI_OnLoad（mediacodec / vo=gpu 可用）"
+          else
+            echo "::error::libmpv.so 没有 JNI_OnLoad —— mediacodec 与 vo=gpu 会全废"
+            echo "::error::请确认 build-android-libplacebo 的产物已包含 JVM patch"
+          fi
+
       - name: 校验签名
         run: |
           APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort | tail -1)
