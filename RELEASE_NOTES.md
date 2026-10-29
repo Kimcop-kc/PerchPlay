@@ -2,14 +2,16 @@
 
 修复 **iOS 画面发绿 / 发洋红**，新增 **HDR 输出模式** 与 **动漫放大（Anime4K）**（Android）。
 
-> **本次更新（build 123）**：修复了一批关键问题 ——
+> **本次更新（build 124）**：修复了一批关键问题 ——
 >
-> - **修复切换 HDR 输出模式卡顿 / 黑屏 / 自动回滚**：自建的 libplacebo
->   编译时关掉了 OpenGL 后端，而 Android 上的 `vo=gpu-next` 走的正是
->   OpenGL 路径，导致它永远建不起来（日志报
->   `libplacebo was built without OpenGL support.`）。
->   现在 OpenGL 后端已开启并校验通过（`pl_has_opengl=1`），
->   HDR 输出模式与 Anime4K 真正可用。
+> - **修复切换 HDR 输出模式闪退与卡顿**：切换时并发重设渲染管线、
+>   属性设置与 SurfaceFlinger 的 HDR 切换时序冲突，会偶发崩溃；
+>   现在切换串行化、先配好属性再一次性重建，并在切完主动 seek 回
+>   当前帧 —— 把中断从「卡顿+黑屏」压到「闪一下」。
+> - **修复切换 HDR 输出模式黑屏/自动回滚**：自建的 libplacebo 编译时
+>   关掉了 OpenGL 后端，而 Android 上的 `vo=gpu-next` 走的正是 OpenGL
+>   路径，导致它永远建不起来。现在 OpenGL 后端已开启并校验通过
+>   （`pl_has_opengl=1`），HDR 输出模式与 Anime4K 真正可用。
 > - **修复「部分视频只有声音没有画面」的根本原因**：自建的 libmpv 从未
 >   把 JVM 注册给 FFmpeg，导致 `mediacodec` 硬解和 `vo=gpu` 渲染器
 >   **完全无法初始化**。现在 libmpv 通过 `JNI_OnLoad` 自动完成注册。
@@ -24,7 +26,7 @@
 > - 修复部分视频（如 ProRes 编码的 .mov）缩略图反复解码失败
 > - 解码失败时会把 mpv 原始错误日志带进诊断信息，便于定位
 >
-> 若你之前装过 build 118~122 并遇到 HDR 输出模式卡顿/黑屏、
+> 若你之前装过 build 118~123 并遇到 HDR 输出模式卡顿/黑屏/闪退、
 > 画面发灰、部分视频打不开或缩略图空白，请安装本版本。
 
 ---
