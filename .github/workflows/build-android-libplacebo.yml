@@ -212,6 +212,31 @@ jobs:
           echo -n "placebo 相关: "; (nm -D "$SO" 2>/dev/null | grep -ci placebo) || echo 0
           echo -n "shaderc 相关: "; (nm -D "$SO" 2>/dev/null | grep -ci shaderc) || echo 0
 
+          # ── JVM 注册符号：mediacodec / vo=gpu 的生死线 ──
+          #
+          # 缺 JNI_OnLoad 时的实测症状（v1.1.8 build 121）：
+          #   hevc_mediacodec: No Java virtual machine has been registered
+          #   vo/gpu: Failed initializing any suitable GPU context!
+          # → vo=gpu 建不起来、硬解失效，「部分视频没画面」。
+          #
+          # 所以这里必须硬校验：符号不在就直接失败，绝不产出这种库。
+          echo -n "JNI_OnLoad: "
+          if nm -D "$SO" 2>/dev/null | grep -q 'JNI_OnLoad'; then
+            echo "✓ 已导出"
+          else
+            echo "❌ 缺失"
+            echo "   libmpv 没导出 JNI_OnLoad → mediacodec / vo=gpu 会全废"
+            echo "   检查 tools/patch_libplacebo.sh 的 JVM patch 是否生效"
+            nm -D "$SO" 2>/dev/null | grep -i jni || echo "   （无任何 jni 符号）"
+            exit 1
+          fi
+          echo -n "mpv_lavc_set_java_vm: "
+          if nm -D "$SO" 2>/dev/null | grep -q 'mpv_lavc_set_java_vm'; then
+            echo "✓ 已导出"
+          else
+            echo "⚠ 未导出（JNI_OnLoad 已能自动注册，通常不影响）"
+          fi
+
       - name: 上传 JAR
         uses: actions/upload-artifact@v4
         with:
