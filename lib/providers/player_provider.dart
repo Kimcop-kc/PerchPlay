@@ -1599,28 +1599,28 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     List<String> paths, {
     Map<String, String> opts = const {},
   }) async {
-    // 先清空：clr 操作（value 必须给空串）
+    // 先清空（clr 操作，value 必须给空串）
     await platform.command(['change-list', 'glsl-shaders', 'clr', '']);
     for (final p in paths) {
       await platform.command(['change-list', 'glsl-shaders', 'append', p]);
     }
 
     // shader opts：glsl-shader-opts 是 KEYVALUELIST。
-    // 用 set 整体替换（逗号分隔 key=value），空 map 则清空。
-    if (opts.isEmpty) {
-      await platform.command(
-          ['change-list', 'glsl-shader-opts', 'clr', '']);
-    } else {
-      final flat = opts.entries.map((e) => '${e.key}=${e.value}').join(',');
-      await platform.setProperty('glsl-shader-opts', flat);
-    }
+    //
+    // ⚠ 这里**不能**用 `change-list glsl-shader-opts clr ''` ——
+    // 实测报 `property not found`（libmpv 对该 kv 选项不接受 clr 操作）。
+    // 改用 setProperty 整体替换：空 map 等同于清空，非空时传
+    // "k1=v1,k2=v2"。setProperty 走 mpv_set_property_string，
+    // 对 kv list 是 **-set 语义**（整体替换），正是我们要的。
+    final flat = opts.entries.map((e) => '${e.key}=${e.value}').join(',');
+    await platform.setProperty('glsl-shader-opts', flat);
   }
 
   /// 清空 shader 链与参数（关掉 HDR 输出/Anime4K 或两者皆关时调用）。
   Future<void> _clearGlslShaders(NativePlayer platform) async {
     await platform.command(['change-list', 'glsl-shaders', 'clr', '']);
-    await platform.command(
-        ['change-list', 'glsl-shader-opts', 'clr', '']);
+    // 同上：kv 选项用 setProperty 置空，不用 change-list clr
+    await platform.setProperty('glsl-shader-opts', '');
   }
 
   /// 应用视频滤镜链（目前只有 Anime4K 一个来源）。

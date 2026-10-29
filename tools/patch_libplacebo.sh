@@ -295,6 +295,144 @@ if ! grep -q 'Dplain-gl=enabled' "$MPVSH"; then
 fi
 
 echo ""
+echo "=== 5) mpv 源码 patch：补 JVM 注册（mediacodec / vo=gpu 必需）==="
+#
+# ## 为什么必须打这个 patch
+#
+# 实测日志（v1.1.8 build 121）：
+#     [mpv/ffmpeg/video] hevc_mediacodec: No Java virtual machine has been registered
+#     [mpv/vo/gpu/android] No Java virtual machine has been registered
+#     [mpv/vo/gpu] Failed initializing any suitable GPU context!
+#
+# 后果：vo=gpu 完全建不起来 → 只能用兜底 vo；mediacodec 硬解也失效
+# → 只能软解。表现就是「部分视频有画面、部分没有」，4K HDR 更糟。
+#
+# ## 根因（已核对 ffmpeg / mpv 源码）
+#
+# mpv 的 osdep/jni.c：
+#     java_vm = av_jni_get_java_vm(NULL);
+#     if (!java_vm) mp_err(log, "No Java virtual machine has been registered\n");
+#
+# ffmpeg 的 libavcodec/jni.c：
+#     #if CONFIG_JNI
+#     int av_jni_set_java_vm(void *vm, ...) { ... }   ← 真实现
+#     #else
+#     void *av_jni_get_java_vm(...) { return NULL; }  ← 永远 NULL
+#     #endif
+#
+# ffmpeg 用 --enable-jni 打开 CONFIG_JNI（官方 full flavor 已有）。
+# 但**静态链接时 av_jni_set_java_vm 符号不可见**，所以必须由 libmpv
+# 导出一个转发函数。
+#
+# ## 谁来调用它 —— 用 JNI_OnLoad 自动注册（无需 Java 侧配合）
+#
+# JVM 在 `System.loadLibrary("mpv")` 时会自动调用库里的
+# `JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)`，并把
+# **JavaVM\* 直接传进来**。所以只要 libmpv 导出 JNI_OnLoad，
+# 就能在那一刻把 vm 注册给 ffmpeg —— Java/Kotlin 侧零改动，
+# Dart 侧也零改动。
+#
+# 这比「Java 侧反射拿指针再传过来」可靠得多：Kotlin 拿不到 C 指针。
+#
+# media-kit 官方仓库用 patches/mpv/mpv_lavc_set_java_vm.patch 解决，
+# 我们自建 libmpv 时漏了。这里补上，并**主动应用**（官方 build.sh
+# 不会自动跑 patch.sh，那是 CI 的单独步骤）。
+MPV_DEPS="$BS/deps/mpv"
+if [ ! -d "$MPV_DEPS" ]; then
+  echo "  [patch] ⚠ mpv 源码目录不存在（$MPV_DEPS），跳过 JVM patch"
+  echo "  [patch]   这会导致 mediacodec / vo=gpu 不可用"
+  FAIL_JVM=1
+else
+  python3 - "$MPV_DEPS" <<'PYEOF'
+import sys, os, re
+
+root = sys.argv[1]
+
+# ── 1) client.h：声明 mpv_lavc_set_java_vm ──
+h = os.path.join(root, 'libmpv', 'client.h')
+src = open(h, encoding='utf-8').read()
+MARK = 'mpv_lavc_set_java_vm'
+if MARK not in src:
+    anchor = 'MPV_EXPORT void mpv_wakeup(mpv_handle *ctx);'
+    if anchor not in src:
+        print('   ❌ client.h 里找不到 mpv_wakeup 声明')
+        sys.exit(1)
+    decl = anchor + '''
+
+/**
+ * Calls av_jni_set_java_vm() with the given JavaVM*.
+ *
+ * av_jni_set_java_vm() is not visible when statically linking libavcodec,
+ * so libmpv re-exports it here. Must be called from Java after
+ * System.loadLibrary("mpv") for mediacodec / vo=gpu to work.
+ */
+MPV_EXPORT int mpv_lavc_set_java_vm(void *vm);'''
+    src = src.replace(anchor, decl, 1)
+    open(h, 'w', encoding='utf-8').write(src)
+    print('   ✓ client.h 已加声明')
+else:
+    print('   · client.h 已有声明')
+
+# ── 2) player/client.c：实现 mpv_lavc_set_java_vm + JNI_OnLoad ──
+c = os.path.join(root, 'player', 'client.c')
+src = open(c, encoding='utf-8').read()
+if 'JPEG_ANCHOR_DUMMY' not in src and 'mpv_lavc_set_java_vm' not in src:
+    # 加 include
+    if 'libavcodec/jni.h' not in src:
+        for anchor in ('#include "common/common.h"',
+                       '#include <assert.h>'):
+            if anchor in src:
+                src = src.replace(
+                    anchor, '#include <libavcodec/jni.h>\n\n' + anchor, 1)
+                break
+        else:
+            print('   ❌ client.c 里找不到合适的 include 插入点')
+            sys.exit(1)
+    # 加实现（放在 mpv_wakeup 之后）
+    m = re.search(r'(void mpv_wakeup\(mpv_handle \*ctx\)\s*\{.*?\n\}\n)',
+                  src, re.S)
+    if not m:
+        print('   ❌ client.c 里找不到 mpv_wakeup 实现')
+        sys.exit(1)
+    impl = m.group(1) + '''
+int mpv_lavc_set_java_vm(void *vm) {
+    return av_jni_set_java_vm(vm, NULL);
+}
+
+/*
+ * JNI_OnLoad：JVM 在 System.loadLibrary("mpv") 时自动调用，
+ * 并把 JavaVM* 直接传进来。这里立刻注册给 ffmpeg ——
+ * 否则 mediacodec 与 vo=gpu 都会报
+ *   "No Java virtual machine has been registered"
+ * 而完全不可用（v1.1.8 build 121 实测日志）。
+ *
+ * 用弱符号避免在非 Android 平台链接失败。
+ */
+#if defined(__ANDROID__)
+#include <jni.h>
+__attribute__((visibility("default")))
+jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+    (void)reserved;
+    mpv_lavc_set_java_vm((void *)vm);
+    return JNI_VERSION_1_6;
+}
+#endif
+'''
+    src = src[:m.start(1)] + impl + src[m.end(1):]
+    open(c, 'w', encoding='utf-8').write(src)
+    print('   ✓ client.c 已加 mpv_lavc_set_java_vm + JNI_OnLoad')
+else:
+    print('   · client.c 已打过 patch')
+PYEOF
+  if [ $? -ne 0 ]; then
+    echo "  [patch] ❌ JVM patch 应用失败"
+    FAIL_JVM=1
+  else
+    echo "  [patch] ✅ JVM 注册 patch 已应用"
+  fi
+fi
+
+echo ""
 echo "=== 校验 ==="
 echo "--- depinfo.sh ---"
 grep -nE 'v_libplacebo|dep_libplacebo|dep_mpv' "$DEP" || true
@@ -309,6 +447,19 @@ grep -q 'v_libplacebo=' "$DEP" || { echo "❌ 版本号未插入"; FAIL=1; }
 grep -q 'libplacebo' "$DLS" || { echo "❌ 下载项未插入"; FAIL=1; }
 grep -q 'Dlibplacebo=enabled' "$MPVSH" || { echo "❌ mpv.sh 未开启 libplacebo"; FAIL=1; }
 grep -q 'Dvulkan=enabled' "$MPVSH" || { echo "❌ mpv.sh 未开启 vulkan"; FAIL=1; }
+
+# JVM 注册 patch 校验：缺了会导致 mediacodec / vo=gpu 全废
+echo "--- JVM patch ---"
+if [ -d "$BS/deps/mpv" ]; then
+  grep -q 'JNI_OnLoad' "$BS/deps/mpv/player/client.c" \
+    && echo "  ✓ JNI_OnLoad 已注入" \
+    || { echo "❌ JNI_OnLoad 未注入（mediacodec / vo=gpu 会失效）"; FAIL=1; }
+  grep -q 'mpv_lavc_set_java_vm' "$BS/deps/mpv/libmpv/client.h" \
+    && echo "  ✓ mpv_lavc_set_java_vm 已声明" \
+    || { echo "❌ client.h 缺声明"; FAIL=1; }
+else
+  echo "  ⚠ mpv 源码尚未下载，无法校验（构建阶段会应用）"
+fi
 
 if [ "$FAIL" -eq 0 ]; then
   echo "✅ patch 完成"
