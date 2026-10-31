@@ -983,9 +983,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          // 用 bottomSheetInset 而不是 viewPadding：Android 8/9 上
-          // viewPadding.bottom 为 0，弹窗底部按钮会被导航栏压住
-          28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+          // 底部只留安全区 + 固定 16：之前用 28 + bottomSheetInset，
+          // bottomSheetInset 在播放页沉浸式下仍返回导航栏高度（约 20~48dp），
+          // 导致底部一大块空白、内容被压缩显得「太少」。
+          // viewPadding.bottom 是物理安全区，沉浸式下为 0，导航栏显示时才避让。
+          16 + MediaQuery.of(ctx).viewPadding.bottom,
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1082,7 +1084,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+          16 + MediaQuery.of(ctx).viewPadding.bottom,
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -1324,7 +1326,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+          16 + MediaQuery.of(ctx).viewPadding.bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1497,7 +1499,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           20,
           16,
           20,
-          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+          16 + MediaQuery.of(ctx).viewPadding.bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2072,74 +2074,74 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
+      // 必须开：否则 Flutter 默认把 sheet 压到约 9/16 屏，且我们的
+      // maxHeight 0.6 不生效，内容超了就截断而不是滚动。
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
           ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'HDR 输出模式',
-              style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+          decoration: const BoxDecoration(
+            color: Color(0xF2FFFFFF),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(GlassTheme.radiusXl),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '切换会重建渲染器，画面闪一下是正常的。'
-              '非「关闭」档需要安装带 libplacebo 的构建版本。',
-              style: TextStyle(
-                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                fontSize: 11.5,
-                height: 1.4,
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'HDR 输出模式',
+                style: TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final m in HdrOutputMode.values)
-                    _hdrModeTile(
-                      mode: m,
-                      selected: m == state.hdrOutputMode,
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        ref
-                            .read(playerProvider.notifier)
-                            .setHdrOutputMode(m);
-                      },
-                    ),
-                  if (!hdrOutputModeSupported)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                      child: Text(
-                        '当前平台不支持 HDR 直通'
-                        '（需要 Android + 带 libplacebo 的构建版本）。',
-                        style: TextStyle(
-                            color: Colors.orangeAccent, fontSize: 10.5),
+              const SizedBox(height: 4),
+              Text(
+                '切换会重建渲染器，画面闪一下是正常的。'
+                '非「关闭」档需要安装带 libplacebo 的构建版本。',
+                style: TextStyle(
+                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
+                  fontSize: 11.5,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in HdrOutputMode.values)
+                      _hdrModeTile(
+                        mode: m,
+                        selected: m == state.hdrOutputMode,
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          ref
+                              .read(playerProvider.notifier)
+                              .setHdrOutputMode(m);
+                        },
                       ),
-                    ),
-                ],
+                    if (!hdrOutputModeSupported)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                        child: Text(
+                          '当前平台不支持 HDR 直通'
+                          '（需要 Android + 带 libplacebo 的构建版本）。',
+                          style: TextStyle(
+                              color: Colors.orangeAccent, fontSize: 10.5),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2154,80 +2156,79 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
+      // 同 HDR 菜单：必须开，否则默认 9/16 屏约束会让 17 档截断不可滚。
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
           ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          24 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '动漫放大（Anime4K）',
-              style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+          decoration: const BoxDecoration(
+            color: Color(0xF2FFFFFF),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(GlassTheme.radiusXl),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
-              '实拍视频会显得发糊。掉帧会自动降档。'
-              '与「HDR 输出模式」互斥。',
-              style: TextStyle(
-                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                fontSize: 11.5,
-                height: 1.4,
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '动漫放大（Anime4K）',
+                style: TextStyle(
+                  color: GlassTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final m in Anime4kMode.values)
-                    Opacity(
-                      opacity: m.isAvailable ? 1.0 : 0.4,
-                      child: _anime4kModeTile(
-                        mode: m,
-                        selected: m == state.anime4kMode,
-                        onTap: !m.isAvailable
-                            ? null
-                            : () {
-                                Navigator.of(ctx).pop();
-                                ref
-                                    .read(playerProvider.notifier)
-                                    .setAnime4kMode(m);
-                              },
+              const SizedBox(height: 4),
+              Text(
+                '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
+                '实拍视频会显得发糊。掉帧会自动降档。'
+                '与「HDR 输出模式」互斥。',
+                style: TextStyle(
+                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
+                  fontSize: 11.5,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in Anime4kMode.values)
+                      Opacity(
+                        opacity: m.isAvailable ? 1.0 : 0.4,
+                        child: _anime4kModeTile(
+                          mode: m,
+                          selected: m == state.anime4kMode,
+                          onTap: !m.isAvailable
+                              ? null
+                              : () {
+                                  Navigator.of(ctx).pop();
+                                  ref
+                                      .read(playerProvider.notifier)
+                                      .setAnime4kMode(m);
+                                },
+                        ),
                       ),
-                    ),
-                  if (!anime4kSupported)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                      child: Text(
-                        '当前平台不支持'
-                        '（需要 Android + 带 libplacebo 的构建版本）。',
-                        style: TextStyle(
-                            color: Colors.orangeAccent, fontSize: 10.5),
+                    if (!anime4kSupported)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+                        child: Text(
+                          '当前平台不支持'
+                          '（需要 Android + 带 libplacebo 的构建版本）。',
+                          style: TextStyle(
+                              color: Colors.orangeAccent, fontSize: 10.5),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2651,7 +2652,7 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
         20,
         16,
         20,
-        28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)),
+        16 + MediaQuery.of(context).viewPadding.bottom,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
