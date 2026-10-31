@@ -165,16 +165,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: Column(
         children: [
           _settingRow(
-            Icons.speed_rounded,
-            '默认播放速度',
-            trailing: Text('${_settings.defaultSpeed}x',
-                style: const TextStyle(
-                    color: GlassTheme.accentPurple,
-                    fontWeight: FontWeight.w600)),
-            onTap: () => _showSpeedPicker(),
-          ),
-          _divider(),
-          _settingRow(
             Icons.touch_app_rounded,
             '长按倍速',
             trailing: Text('${_settings.longPressSpeed}x',
@@ -2231,22 +2221,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _divider() {
     return Divider(
         height: 1, indent: 52, color: Colors.black.withValues(alpha: 0.06));
-  }
-
-  void _showSpeedPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _pickerSheet(
-        title: '播放速度',
-        items: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
-        current: _settings.defaultSpeed,
-        onSelect: (v) => _settings.setDefaultSpeed(v).then((_) {
-          if (mounted) setState(() {});
-        }),
-        format: (v) => '${v}x',
-      ),
-    );
   }
 
   void _showLongPressSpeedPicker() {

@@ -1790,6 +1790,17 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final isLarge = AppBreakpoints.isLargeScreen(context);
     return Stack(
       children: [
+        // 面板打开时，点其它区域关闭（透明遮罩）。
+        // ⚠ 遮罩必须放在面板**之前**：Stack 里后面的 child 渲染在上层，
+        // 之前把遮罩放在面板后面，导致遮罩盖住面板、拦截了所有点击，
+        // 表现为「点速度没反应、速度不变」。
+        if (_showSpeedSelector)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => setState(() => _showSpeedSelector = false),
+              behavior: HitTestBehavior.translucent,
+            ),
+          ),
         if (_showSpeedSelector)
           // 倍速选择面板：右下角浮层，深色毛玻璃，适配横屏/平板。
           // 用 Align + Padding（而非写死坐标），底部间距随控制栏高度/屏幕尺寸自适应。
@@ -1893,14 +1904,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                 ),
               ),
-            ),
-          ),
-        // 面板打开时，点其它区域关闭（透明遮罩）
-        if (_showSpeedSelector)
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => setState(() => _showSpeedSelector = false),
-              behavior: HitTestBehavior.translucent,
             ),
           ),
       ],
