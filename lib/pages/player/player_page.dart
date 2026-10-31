@@ -1699,10 +1699,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         ],
                       ),
                     ),
-                  SizedBox(height: 4 * scale),
                   // 按钮行
+                  //
+                  // 用户要求：进度条的位置/大小保持原样，只把下面的控件上移到红线处。
+                  //
+                  // 这个 Column 是**底部对齐**（Positioned bottom 固定 + mainAxisSize.min），
+                  // 所以直接删掉按钮上方的 SizedBox 只会让进度条和时间行整体下沉，
+                  // 按钮本身纹丝不动。正确做法是把这段 4*scale 的间距从「按钮上方」
+                  // 挪到「按钮下方」：
+                  //   · Column 总高度不变  → 进度条、时间行的位置完全不动
+                  //   · 按钮下方的空间变成 4*scale → 按钮整体上移 4*scale（≈红线处）
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                    padding: EdgeInsets.fromLTRB(
+                      12 * scale,
+                      0,
+                      12 * scale,
+                      4 * scale,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
