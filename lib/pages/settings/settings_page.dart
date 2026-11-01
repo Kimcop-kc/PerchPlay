@@ -10,8 +10,6 @@ import '../../core/system/system_ui_policy.dart';
 import '../../services/device_info_service.dart';
 import '../../services/log_service.dart';
 import '../../services/native_bridge_service.dart';
-import '../../services/rom_optimization_service.dart';
-import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/hdr_output_mode.dart';
 import '../../services/anime4k_mode.dart';
@@ -118,10 +116,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         const SizedBox(height: 24),
                         _sectionHeader('存储与缓存'),
                         _buildStorageSettings(),
-                        const SizedBox(height: 24),
-                        if (device.brand.isChineseBrand)
-                          _buildChineseRomOptimization(context, device),
-                        if (device.isIPad) _buildIPadFeatures(context),
                         const SizedBox(height: 24),
                         _sectionHeader('关于'),
                         _buildAbout(),
@@ -755,135 +749,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         content: Text('「$feature」暂未支持，敬请期待'),
         duration: const Duration(seconds: 2),
       ),
-    );
-  }
-
-  Widget _buildChineseRomOptimization(
-      BuildContext context, DeviceInfoService device) {
-    final rom = RomOptimizationService.instance;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('系统优化 (${device.brand.displayName})'),
-        GlassCard(
-          radius: GlassTheme.radiusMd,
-          tint: const Color(0x14FF6B9D),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.battery_saver_rounded,
-                      color: GlassTheme.accentPink, size: 18),
-                  SizedBox(width: 8),
-                  Text('电池优化白名单',
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(rom.batteryGuide,
-                  style: const TextStyle(
-                      color: GlassTheme.textSecondary,
-                      fontSize: 12,
-                      height: 1.4)),
-              const SizedBox(height: 12),
-              GlassButton.outlined(
-                label: '去设置',
-                height: 34,
-                foregroundColor: GlassTheme.accentPink,
-                onTap: () => rom.openBatterySettings(),
-              ),
-              const SizedBox(height: 12),
-              if (device.brand.isXiaomi) ...[
-                const Row(
-                  children: [
-                    Icon(Icons.auto_awesome_rounded,
-                        color: GlassTheme.accentPink, size: 18),
-                    SizedBox(width: 8),
-                    Text('自启动管理',
-                        style: TextStyle(
-                            color: GlassTheme.textPrimary,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(rom.autoStartGuide,
-                    style: const TextStyle(
-                        color: GlassTheme.textSecondary,
-                        fontSize: 12,
-                        height: 1.4)),
-                const SizedBox(height: 12),
-                GlassButton.outlined(
-                  label: '开启自启动',
-                  height: 34,
-                  foregroundColor: GlassTheme.accentPink,
-                  onTap: () => rom.openAutoStartSettings(),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIPadFeatures(BuildContext context) {
-    final iPad = IPadOptimizationService.instance;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('iPad Pro 特性'),
-        GlassCard(
-          radius: GlassTheme.radiusMd,
-          tint: GlassTheme.tintWhite,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _ipadFeatureRow(Icons.auto_awesome_mosaic_rounded,
-                  '台前调度 (Stage Manager)', '已适配分屏/侧拉/全屏'),
-              const SizedBox(height: 10),
-              _ipadFeatureRow(
-                  Icons.refresh_rounded, '120Hz ProMotion', '流畅动画已锁定'),
-              const SizedBox(height: 10),
-              _ipadFeatureRow(
-                  Icons.keyboard_rounded, '妙控键盘快捷键', '空格/方向键/F/S/R/P/M 等'),
-              const SizedBox(height: 10),
-              _ipadFeatureRow(Icons.edit_rounded, 'Apple Pencil 悬停', 'M2 芯片专属'),
-              if (iPad.supportXDR)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: _ipadFeatureRow(
-                      Icons.hdr_on_rounded, 'XDR HDR', 'Liquid Retina XDR'),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _ipadFeatureRow(IconData icon, String label, String detail) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: GlassTheme.accentTeal),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: GlassTheme.textPrimary, fontSize: 14)),
-              Text(detail,
-                  style: const TextStyle(
-                      color: GlassTheme.textTertiary, fontSize: 11)),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -1840,45 +1705,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               style: const TextStyle(
                   color: GlassTheme.textTertiary, fontSize: 12)),
           const SizedBox(height: 16),
-          // ── 社区支持 ──
-          Row(
-            children: [
-              const Icon(Icons.forum_rounded,
-                  size: 18, color: GlassTheme.accentTeal),
-              const SizedBox(width: 8),
-              const Text('社区支持',
-                  style: TextStyle(
-                      color: GlassTheme.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
-              const Spacer(),
-              GestureDetector(
-                onTap: _joinQqGroup,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: GlassTheme.accentTeal.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.group_add_rounded,
-                          size: 13, color: GlassTheme.accentTeal),
-                      SizedBox(width: 4),
-                      Text('加入群聊',
-                          style: TextStyle(
-                              color: GlassTheme.accentTeal, fontSize: 12)),
-                    ],
-                  ),
+          // ── 社区支持（QQ 群，整行可点，样式与下方赞赏一致）──
+          GestureDetector(
+            onTap: _joinQqGroup,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: GlassTheme.accentTeal.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+                border: Border.all(
+                  color: GlassTheme.accentTeal.withValues(alpha: 0.25),
                 ),
               ),
-            ],
+              child: Row(
+                children: [
+                  const Icon(Icons.forum_rounded,
+                      size: 22, color: GlassTheme.accentTeal),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('社区支持',
+                            style: TextStyle(
+                                color: GlassTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text('官方交流 QQ 群：1130795147，点击加入',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 20, color: GlassTheme.textTertiary),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 6),
-          const Text('官方交流 QQ 群：1130795147',
-              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
           const SizedBox(height: 14),
           // ── 请作者喝杯咖啡 ──
           GestureDetector(
@@ -1934,14 +1801,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onTap: _checkForUpdate,
           ),
           const SizedBox(height: 10),
-          // 网盘下载：123 云盘（浏览器打开，下载历史版本/备用通道）
+          // 网盘下载：多网盘选择（浏览器打开，下载历史版本/备用通道）
           GlassButton.outlined(
             icon: Icons.cloud_download_rounded,
-            label: '网盘下载（123 云盘）',
+            label: '网盘下载',
             width: double.infinity,
             height: 40,
             foregroundColor: GlassTheme.accentPurple,
-            onTap: () => _openInBrowser(_cloudDriveUrl),
+            onTap: _showCloudDriveSheet,
           ),
           const SizedBox(height: 10),
           // 诊断日志：出问题时一键复制发给开发者
@@ -1973,12 +1840,73 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  /// 123 云盘分享链接（历史版本/备用下载通道）。
-  static const String _cloudDriveUrl =
-      'https://1842453301.share.123pan.cn/123pan/SplKTd-M2nFd?pwd=z76M';
+  /// 网盘下载列表（历史版本/备用下载通道）。
+  static const List<({String name, String url})> _cloudDrives = [
+    (name: '夸克网盘', url: 'https://pan.quark.cn/s/cb3986cea1ba?pwd=NRPg'),
+    (name: '123 云盘', url: 'https://1842453301.share.123pan.cn/123pan/SplKTd-M2nFd?pwd=z76M'),
+    (name: '115 网盘', url: 'https://115cdn.com/s/swsct813f3k?password=j411'),
+  ];
 
   /// 官方交流 QQ 群号。
   static const String _qqGroup = '1130795147';
+
+  /// 网盘选择弹窗：列出可用网盘，点选后用浏览器打开。
+  void _showCloudDriveSheet() {
+    // 底部安全区：用 bottomSheetInset 而不是 viewPadding.bottom ——
+    // Android 沉浸式下 viewPadding.bottom 是 0，会被导航栏遮挡。
+    final safeBottom = SystemUiPolicy.bottomSheetInset(MediaQuery.of(context));
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xF2FFFFFF),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(GlassTheme.radiusXl),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          safeBottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('网盘下载',
+                style: TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const Text('选择一个网盘，用浏览器打开下载页',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 12)),
+            const SizedBox(height: 12),
+            for (final drive in _cloudDrives)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.cloud_rounded,
+                    color: GlassTheme.accentPurple, size: 22),
+                title: Text(drive.name,
+                    style: const TextStyle(
+                        color: GlassTheme.textPrimary, fontSize: 14)),
+                trailing: const Icon(Icons.chevron_right_rounded,
+                    size: 20, color: GlassTheme.textTertiary),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openInBrowser(drive.url);
+                },
+              ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// 用系统浏览器打开链接。
   Future<void> _openInBrowser(String url) async {
@@ -2035,27 +1963,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       fontSize: 17,
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
-              const Text('微信扫码赞赏 · 金额随意 · 心意最重要',
-                  style: TextStyle(
-                      color: GlassTheme.textTertiary, fontSize: 12)),
-              const SizedBox(height: 14),
+              const Text(
+                'PerchPlay 由个人开发者独立维护，无广告与商业推广。'
+                '如果它对你的观影有所帮助，感谢你的暖心赞赏支持！',
+                style: TextStyle(
+                    color: GlassTheme.textTertiary,
+                    fontSize: 12,
+                    height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              // 只保留中间二维码，放大显示便于扫描
               ClipRRect(
                 borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
                 child: Image.asset(
-                  'assets/branding/reward_qrcode.png',
-                  width: 240,
-                  height: 240,
-                  fit: BoxFit.cover,
+                  'assets/branding/reward_qr_cropped.png',
+                  width: 260,
+                  height: 260,
+                  fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => const SizedBox(
-                    width: 240,
-                    height: 240,
+                    width: 260,
+                    height: 260,
                     child: Center(
                         child: Text('图片加载失败',
                             style: TextStyle(color: GlassTheme.textTertiary))),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              const Text('微信扫一扫 · 赞赏支持',
+                  style: TextStyle(
+                      color: GlassTheme.accentPink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
@@ -2477,7 +2418,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
     if (confirmed == null || confirmed == 'cancel' || !mounted) return;
     if (confirmed == 'cloud') {
-      await _openInBrowser(_cloudDriveUrl);
+      _showCloudDriveSheet();
       return;
     }
 
