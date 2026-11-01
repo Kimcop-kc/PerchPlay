@@ -22,6 +22,11 @@ import PencilKit
     ) -> Bool {
         GeneratedPluginRegistrant.register(with: self)
 
+        // ────────── 崩溃日志 ──────────
+        // 必须在最早期安装：启动期崩溃（libmpv 加载、Metal 初始化）
+        // 是最常见的一类，晚装就漏了。
+        CrashLog.install()
+
         // ────────── 音频会话 ──────────
         do {
             try AVAudioSession.sharedInstance().setCategory(
@@ -227,6 +232,17 @@ import PencilKit
             case "requestBatteryOptimization":
                 // iOS 不需要此操作
                 result(true)
+
+            case "takeLastCrashLog":
+                // 取走上一次运行留下的崩溃记录（读完即删）。
+                //
+                // iOS 的崩溃不经过 Dart：libmpv 段错误、Metal/VideoToolbox
+                // 驱动崩溃都是直接 SIGSEGV/SIGABRT。Dart 侧一行都执行不到，
+                // 内存日志全丢。所以这里靠两路证据：
+                //  1. 自己装的 NSSetUncaughtExceptionHandler（OC 异常）
+                //  2. 信号处理器（SIGSEGV/SIGABRT 等）
+                // 都写进 Documents/perchplay_crash.log，下次启动来取。
+                result(CrashLog.takeReport())
 
             case "requestOverlayPermission":
                 result(true)

@@ -35,6 +35,10 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 装崩溃日志收集 —— 必须在**一切之前**。
+        // 早于 Flutter 引擎初始化：启动期崩溃是常见的一类（libmpv 加载失败、
+        // 设备信息读取异常），晚了就漏了。
+        CrashLog.install(this)
         // 冷启动：从外部 App「用其他应用打开」进来的视频
         pendingVideoUri = extractVideoUri(intent)
     }
@@ -282,6 +286,27 @@ class MainActivity : FlutterActivity() {
                                 runOnUiThread { result.success(path) }
                             }.start()
                         }
+                    }
+
+                    // ── 取走上一次运行留下的崩溃日志 ──
+                    //
+                    // 原生崩溃（libmpv 段错误最典型）Dart 侧完全无感知，
+                    // 只能靠原生把证据留在磁盘上。这里读出来交给 Dart 归并
+                    // 进诊断日志，读完即删避免重复上报。
+                    //
+                    // 走后台线程：ApplicationExitInfo 要读系统的 tombstone，
+                    // 可能有几十 KB 的 IO，不能卡主线程。
+                    "takeLastCrashLog" -> {
+                        Thread {
+                            var text: String? = null
+                            try {
+                                text = CrashLog.takeReport(this)
+                            } catch (t: Throwable) {
+                                Log.w("PerchPlayCrash", "读取崩溃日志失败", t)
+                            }
+                            val finalText = text
+                            runOnUiThread { result.success(finalText) }
+                        }.start()
                     }
 
                     // ── 打开应用设置 ──

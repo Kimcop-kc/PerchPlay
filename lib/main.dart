@@ -1,4 +1,4 @@
-import 'dart:async' show runZonedGuarded;
+import 'dart:async' show runZonedGuarded, unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
@@ -30,6 +30,11 @@ void main() async {
   LogService.instance.install();
   LogService.instance.log('[启动] PerchPlay 开始初始化');
 
+  // 落盘日志：闪退时内存里的日志会跟着进程一起消失，只有写进磁盘的
+  // 才能留到下次启动。这里尽早**发起**（不 await，别拖慢启动）——
+  // 初始化期间产生的日志会先进内存队列，就绪后自动补写。
+  unawaited(LogService.instance.initPersistence());
+
   // 兜底错误处理：仅记录，不在启动后重复替换根应用。
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
@@ -40,6 +45,13 @@ void main() async {
       runApp(_CrashScreen(details: details));
     }
   };
+
+  // 原生层崩溃（libmpv 段错误最典型）：Dart 这边拦不到，只能靠原生
+  // 自己把堆栈写进文件。启动时把上次留下的那份取出来并进日志。
+  unawaited(_collectNativeCrash());
+
+  // App 生命周期：切后台时立刻刷盘（之后随时可能被系统回收）。
+  WidgetsBinding.instance.addObserver(_FlushOnPause());
 
   // media_kit native 初始化可能在某些设备上失败
   try {
@@ -120,6 +132,49 @@ void main() async {
       LogService.instance.recordUncaught(error, stack);
     },
   );
+}
+
+/// App 切换后台 / 退出时的日志刷盘。
+///
+/// 为什么需要：Android 上 App 退到后台后随时可能被 LMK 杀掉，进程结束时
+/// 不会走任何 Dart 代码，攒在队列里还没写的日志就丢了。`paused` 是最后
+/// 一个「还保证能执行 Dart」的时机，必须在这里强制落盘。
+///
+/// `detached` 时额外写一个「正常退出」标记：下次启动看到这个标记就知道
+/// 上次不是闪退（虽然被系统回收也走不到这里，但那不算崩溃，本来就不该报）。
+class _FlushOnPause extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+        unawaited(LogService.instance.flushNow());
+      case AppLifecycleState.detached:
+        // 进程即将结束：刷盘 + 留正常退出标记
+        unawaited(() async {
+          await LogService.instance.markCleanExit();
+        }());
+      default:
+        break;
+    }
+  }
+}
+
+/// 把原生层上次留下的崩溃记录并进日志，并清掉文件。
+///
+/// 原生崩溃（libmpv / Vulkan 驱动的段错误）发生时 Dart 侧完全没机会执行，
+/// 唯一能留下痕迹的地方是原生自己的崩溃处理器写出的文件。这里只负责读取
+/// 和归并，写入侧在原生代码里。
+Future<void> _collectNativeCrash() async {
+  try {
+    final text = await NativeBridgeService.instance.takeLastCrashLog();
+    if (text == null || text.trim().isEmpty) return;
+    LogService.instance.markCrashEvidence(text);
+    LogService.instance.log('[原生崩溃] 上次运行原生层崩溃，以下是原生堆栈:\n$text');
+    // 原生崩溃是最需要留证的，立刻落盘
+    await LogService.instance.flushNow();
+  } catch (e) {
+    debugPrint('[PerchPlay] 读取原生崩溃日志失败: $e');
+  }
 }
 
 /// 待处理的「外部打开视频」URI（等路由就绪后再跳转）。

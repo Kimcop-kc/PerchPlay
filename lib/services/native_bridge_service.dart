@@ -436,6 +436,29 @@ class NativeBridgeService {
     }
   }
 
+  // ──────────── 原生崩溃日志 ────────────
+
+  /// 取走上次运行原生层留下的崩溃堆栈（读完即删）。
+  ///
+  /// 为什么需要原生侧参与：**libmpv 是 C 代码，它段错误时 Dart 侧一行都
+  /// 不会执行** —— `runZonedGuarded`、`FlutterError.onError`、甚至
+  /// `addObserver` 的生命周期回调都轮不到。进程直接消失，内存日志全丢。
+  ///
+  /// 所以两个平台都在原生侧装了崩溃钩子，把堆栈写进私有目录文件；
+  /// 这里在下次启动时读出来并进日志：
+  ///  - Android：未捕获异常处理器 + `ApplicationExitInfo`（能拿到 tombstone）
+  ///  - iOS：`NSSetUncaughtExceptionHandler` + 致命信号处理器
+  ///
+  /// 返回 null 表示没有崩溃记录 / 平台不支持（桌面端无实现）。
+  Future<String?> takeLastCrashLog() async {
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return null;
+    try {
+      return await _channel.invokeMethod<String>('takeLastCrashLog');
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ──────────── 一键优化（批量请求权限） ────────────
 
   /// 针对中国品牌 ROM 的一键优化：

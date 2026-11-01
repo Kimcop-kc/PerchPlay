@@ -1,5 +1,36 @@
 # 变更日志
 
+## [1.1.10] — 2026-11-01
+
+### 崩溃日志（新增）
+
+**问题**：App 闪退后什么都留不下。原 `LogService` 只有内存环形缓冲区，
+进程消失时日志一起没；而闪退恰恰多发生在原生层（libmpv 段错误、
+mediacodec/Vulkan 驱动崩溃、ANR），Dart 侧一行都执行不到。
+
+**三层方案**：
+
+- **Dart 落盘**：日志攒 400ms 追加写盘（不 fsync，进程被杀时数据已在
+  页缓存）；文件滚动 `current.log` / `last.log` / `prev.log`，每次启动后移
+  一位，保证「闪退 → 重开 → 查看」拿得到崩溃前那段；切后台强制刷盘。
+- **Android 原生**：`Thread.setDefaultUncaughtExceptionHandler` 兜 Java 层；
+  `ApplicationExitInfo`（API 30+）读系统记录，原生崩溃时 `traceInputStream`
+  即 tombstone。不用 `logcat -b crash`（Android 4.1+ 拿不到别的 UID 日志）。
+- **iOS 原生**：`NSSetUncaughtExceptionHandler` + 6 个致命信号处理器。
+  信号处理函数严格 async-signal-safe —— 所有缓冲区在 `install()` 阶段
+  预分配为 `UnsafeMutablePointer`，函数内只做字节拷贝与
+  `open`/`write`/`close`，写完 `raise` 回原信号。
+
+**UI**：设置页在**真的抓到崩栈时**才显示「上次闪退日志」按钮。不用
+「上次没留退出标记」判断 —— 从任务管理器划掉 App 也不留标记，那不算崩溃。
+
+**盲区**：iOS watchdog 超时、Android SIGKILL 由内核直接杀进程，
+信号处理器不执行，任何方案都捕获不到。
+
+- 新增 `test/crash_log_test.dart`（9 项）
+
+---
+
 ## [1.1.9] — 2026-11-01
 
 ### 倍速面板点不动（修复）

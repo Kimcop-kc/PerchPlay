@@ -1858,7 +1858,173 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             foregroundColor: GlassTheme.accentTeal,
             onTap: _showDiagnosticsSheet,
           ),
+          // 上次闪退提示：只在真的抓到崩溃堆栈时显示。
+          //
+          // 不用「上次没留退出标记」来判断 —— 用户从任务管理器划掉 App
+          // 也不会留标记，那不算闪退，报出来只会制造恐慌。
+          if (LogService.instance.hasCrashEvidence) ...[
+            const SizedBox(height: 10),
+            GlassButton.outlined(
+              icon: Icons.warning_amber_rounded,
+              label: '上次闪退日志',
+              width: double.infinity,
+              height: 40,
+              foregroundColor: GlassTheme.accentPink,
+              onTap: _showCrashLogSheet,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// 上次闪退日志：单独一屏，突出显示崩溃堆栈。
+  ///
+  /// 与「诊断日志」分开是有意的 —— 用户反馈闪退时，让他翻几百行普通日志
+  /// 找崩溃点不现实。这里直接把崩溃堆栈摆在最上面，一屏能看完。
+  Future<void> _showCrashLogSheet() async {
+    final svc = LogService.instance;
+    final buf = StringBuffer();
+    buf.writeln('⚠ 上次运行闪退了');
+    buf.writeln();
+    if (svc.crashSummary.isNotEmpty) {
+      buf.writeln('摘要: ${svc.crashSummary}');
+      buf.writeln();
+    }
+    buf.writeln('下面这段是崩溃时的堆栈，请整段复制发给我。');
+    buf.writeln('普通用户不需要看懂它，它只是给我定位问题用的。');
+    buf.writeln();
+    buf.writeln('──────────────────────');
+    buf.writeln();
+
+    // 崩溃堆栈本体
+    if (svc.crashDetail.isNotEmpty) {
+      buf.writeln(svc.crashDetail);
+    } else {
+      // 退化为上次运行日志尾部（没有原生证据时，至少给点上下文）
+      final tail = svc.lastSessionLog ?? '';
+      if (tail.isNotEmpty) {
+        buf.writeln('（未取得原生堆栈，以下是上次运行日志的末尾 200 行）');
+        buf.writeln();
+        buf.writeln(tail.split('\n').take(200).join('\n'));
+      } else {
+        buf.writeln('（未找到崩溃堆栈；请改用「诊断日志」里的完整报告）');
+      }
+    }
+
+    final report = buf.toString();
+    if (!mounted) return;
+
+    final mq = MediaQuery.of(context);
+    final safeBottom = mq.viewPadding.bottom;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: (MediaQuery.of(ctx).size.height * 0.8)
+            .clamp(0.0, MediaQuery.of(ctx).size.height - safeBottom - 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF7F7FA),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: GlassTheme.accentPink, size: 20),
+                  SizedBox(width: 8),
+                  Text('上次闪退日志',
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border:
+                        Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      report,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        height: 1.45,
+                        color: Color(0xFF2C2C2E),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: GlassButton.filled(
+                      icon: Icons.copy_rounded,
+                      label: '复制崩溃日志',
+                      height: 46,
+                      onTap: () async {
+                        await Clipboard.setData(ClipboardData(text: report));
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          _showSnack('已复制，直接粘贴发给我即可');
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GlassButton.outlined(
+                      icon: Icons.open_in_new_rounded,
+                      label: '完整报告',
+                      height: 46,
+                      foregroundColor: GlassTheme.accentTeal,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showDiagnosticsSheet();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: safeBottom > 56 ? safeBottom : 56),
+          ],
+        ),
       ),
     );
   }
