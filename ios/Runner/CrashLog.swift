@@ -118,12 +118,21 @@ final class CrashLog {
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "?"
-        let header = """
-        ===== native crash (signal) =====
-        app = \(version) (\(build))
-        os = iOS \(UIDevice.current.systemVersion)
-        device = \(UIDevice.current.model)
-        signal = """
+        // 用普通字符串 + 显式 `\n` 拼接，而不是多行字符串字面量。
+        //
+        // 两个原因：
+        //  1. 多行字面量的闭合 `"""` 必须单独占一行，跟在内容后面会编译报错
+        //     （第一版就是这样挂的： "Multi-line string literal closing
+        //     delimiter must begin on a new line"）；
+        //  2. 结尾需要 `signal = `（带尾空格），多行字面量里的尾随空格
+        //     很容易被编辑器/格式化工具吃掉，排查时才发现信号号粘在了等号上。
+        //
+        // 显式拼接下这些都是普通字符，不会被任何工具改写。
+        let header = "===== native crash (signal) =====\n"
+            + "app = \(version) (\(build))\n"
+            + "os = iOS \(UIDevice.current.systemVersion)\n"
+            + "device = \(UIDevice.current.model)\n"
+            + "signal = "
         headerBytes = makeCString(header)
         headerLength = header.utf8.count
     }
