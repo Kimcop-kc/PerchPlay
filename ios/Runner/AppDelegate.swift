@@ -247,6 +247,39 @@ import PencilKit
             case "requestOverlayPermission":
                 result(true)
 
+            case "openUrl":
+                // 用系统浏览器打开 http/https，或用自定义 scheme 拉起其它 App
+                // （如 mqqapi:// 打开 QQ 加群界面）。
+                //
+                // 与 Android 侧的 openExternalUrl 对应。iOS 上白名单在
+                // Info.plist 的 LSApplicationQueriesSchemes 里 —— 没登记
+                // canOpenURL 会恒返回 false，所以这里对 http/https 不做
+                // canOpenURL 预检（Safari 一定在）。
+                //
+                // 回调是异步的：open(_:options:completionHandler:) 要等系统
+                // 给出结果，期间不能重复调用 result(...)，否则 Flutter 会报
+                // "Reply already submitted"。
+                let urlStr = (call.arguments as? [String: Any])?["url"] as? String
+                guard let urlStr = urlStr,
+                      !urlStr.isEmpty,
+                      let url = URL(string: urlStr),
+                      let scheme = url.scheme?.lowercased()
+                else {
+                    result(false)
+                    return
+                }
+
+                let allowed = ["http", "https", "mqqapi", "mqq"]
+                guard allowed.contains(scheme) else {
+                    result(false)
+                    return
+                }
+
+                UIApplication.shared.open(url, options: [:]) { ok in
+                    // 系统会在主线程回调，直接回结果即可
+                    result(ok)
+                }
+
             case "openAppSettings":
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)

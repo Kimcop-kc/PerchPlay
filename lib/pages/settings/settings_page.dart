@@ -79,7 +79,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final device = DeviceInfoService.instance;
     final isLarge = AppBreakpoints.isLargeScreen(context);
 
     return Scaffold(
