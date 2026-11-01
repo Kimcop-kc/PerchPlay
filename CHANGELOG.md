@@ -1,5 +1,61 @@
 # 变更日志
 
+## [1.2.0] — 2026-11-01
+
+### 崩溃日志（新增）
+
+闪退后进程直接消失，Dart 侧一行都执行不到，内存日志全丢。libmpv 段错误、
+mediacodec/Vulkan 驱动崩溃、ANR、iOS 原生崩溃都属于这类。
+
+- **Dart 落盘**：攒批 400ms 追加写盘（不 fsync，进程被杀时数据已在页缓存）；
+  三文件滚动 `current/last/prev`，每次启动后移一位；切后台强制刷盘。
+- **Android 原生**：`UncaughtExceptionHandler` 兜 Java 层；
+  `ApplicationExitInfo`（API 30+）读系统记录，原生崩溃时 `traceInputStream`
+  即 tombstone。不用 `logcat -b crash`（Android 4.1+ 拿不到别的 UID 日志）。
+- **iOS 原生**：`NSSetUncaughtExceptionHandler` + 6 个致命信号处理器。
+  处理函数严格 async-signal-safe —— 缓冲区全部在 `install()` 预分配为
+  `UnsafeMutablePointer`，函数内只做字节拷贝与 `open`/`write`/`close`，
+  写完 `raise` 回原信号。
+- **UI**：只在**真正抓到崩栈**时显示「上次闪退日志」。不用「上次没留退出
+  标记」判断 —— 从任务管理器划掉 App 也不留标记，那不算崩溃。
+- **盲区**：iOS watchdog 超时、Android SIGKILL 由内核直接杀进程，
+  信号处理器不执行，任何方案都捕获不到。
+- 新增 `test/crash_log_test.dart`（9 项）
+
+### 社区支持（新增）
+
+- 官方交流 QQ 群 1130795147，点击用 `mqqapi` scheme 拉起加群界面；
+  没装 QQ 则复制群号兜底
+- 微信 / 支付宝赞赏码弹窗
+
+### 网盘下载通道（新增）
+
+- 夸克 / 123 / 115 三个网盘，用系统浏览器打开
+- 「检查更新」弹窗改为三选：取消 / 网盘下载 / 应用内下载
+- 项目不引入 `url_launcher`，改走原生 `openUrl`，避免多一个 iOS pod
+
+### iOS 链接点不开（修复）
+
+- **根因**：`openUrl` 只实现了 Android 的 `openExternalUrl`，iOS 的
+  `AppDelegate` 没有对应 case。iOS 上点网盘 / QQ 群 / 社区链接全部静默失败
+  —— 方法通道抛 `MissingPluginException` 被 catch 吞掉、返回 false，
+  UI 落到「已复制到剪贴板」兜底，用户看到链接被复制但浏览器没打开。
+- **修复**：补 `openUrl` case，`http`/`https`/`mqqapi`/`mqq` 白名单，
+  在 `UIApplication.open` 的异步回调里回结果（避免 `Reply already submitted`）。
+
+### iOS 构建编译错误（修复）
+
+- `CrashLog.swift` 多行字符串字面量的闭合 `"""` 写在了内容后面，报
+  `Multi-line string literal closing delimiter must begin on a new line`。
+- 改为普通字符串 + 显式 `\n` 拼接，同时避免尾随空格被格式化工具吃掉的隐患。
+
+### 清理
+
+- 移除 `settings_page` build 里未使用的 `device` 变量（CI `flutter analyze`
+  的 warning 会导致构建失败，`--no-fatal-infos` 只放过 info 不放过 warning）
+
+---
+
 ## [1.1.10] — 2026-11-01
 
 ### 崩溃日志（新增）
