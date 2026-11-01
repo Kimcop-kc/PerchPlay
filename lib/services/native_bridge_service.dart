@@ -473,4 +473,19 @@ class NativeBridgeService {
     await Future.delayed(const Duration(milliseconds: 500));
     await requestAutoStart();
   }
+
+  /// 用系统浏览器打开一个 URL（http/https），或跳转其它 App 的 scheme
+  /// （如 mqqapi:// 拉起 QQ 加群）。
+  ///
+  /// 项目刻意不引入 url_launcher（避免多一个 iOS pod 与兼容风险），
+  /// 改走原生 Intent / openURL，用于网盘下载跳转、社区链接等。
+  Future<bool> openUrl(String url) async {
+    if (url.trim().isEmpty) return false;
+    try {
+      final ok = await _channel.invokeMethod<bool>('openUrl', {'url': url});
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

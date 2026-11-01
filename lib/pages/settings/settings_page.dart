@@ -9,6 +9,7 @@ import '../../core/responsive/breakpoints.dart';
 import '../../core/system/system_ui_policy.dart';
 import '../../services/device_info_service.dart';
 import '../../services/log_service.dart';
+import '../../services/native_bridge_service.dart';
 import '../../services/rom_optimization_service.dart';
 import '../../services/ipad_optimization_service.dart';
 import '../../services/app_settings_service.dart';
@@ -1839,6 +1840,90 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               style: const TextStyle(
                   color: GlassTheme.textTertiary, fontSize: 12)),
           const SizedBox(height: 16),
+          // ── 社区支持 ──
+          Row(
+            children: [
+              const Icon(Icons.forum_rounded,
+                  size: 18, color: GlassTheme.accentTeal),
+              const SizedBox(width: 8),
+              const Text('社区支持',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _joinQqGroup,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: GlassTheme.accentTeal.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.group_add_rounded,
+                          size: 13, color: GlassTheme.accentTeal),
+                      SizedBox(width: 4),
+                      Text('加入群聊',
+                          style: TextStyle(
+                              color: GlassTheme.accentTeal, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text('官方交流 QQ 群：1130795147',
+              style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+          const SizedBox(height: 14),
+          // ── 请作者喝杯咖啡 ──
+          GestureDetector(
+            onTap: _showRewardSheet,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: GlassTheme.accentPink.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+                border: Border.all(
+                  color: GlassTheme.accentPink.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.local_cafe_rounded,
+                      size: 22, color: GlassTheme.accentPink),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('请作者喝杯咖啡',
+                            style: TextStyle(
+                                color: GlassTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text('点开查看赞赏码，您的支持是更新的动力',
+                            style: TextStyle(
+                                color: GlassTheme.textTertiary,
+                                fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 20, color: GlassTheme.textTertiary),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0x1A000000)),
+          const SizedBox(height: 12),
           // 检查更新
           GlassButton.outlined(
             icon: Icons.system_update_rounded,
@@ -1847,6 +1932,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             height: 40,
             foregroundColor: GlassTheme.accentPurple,
             onTap: _checkForUpdate,
+          ),
+          const SizedBox(height: 10),
+          // 网盘下载：123 云盘（浏览器打开，下载历史版本/备用通道）
+          GlassButton.outlined(
+            icon: Icons.cloud_download_rounded,
+            label: '网盘下载（123 云盘）',
+            width: double.infinity,
+            height: 40,
+            foregroundColor: GlassTheme.accentPurple,
+            onTap: () => _openInBrowser(_cloudDriveUrl),
           ),
           const SizedBox(height: 10),
           // 诊断日志：出问题时一键复制发给开发者
@@ -1874,6 +1969,104 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 123 云盘分享链接（历史版本/备用下载通道）。
+  static const String _cloudDriveUrl =
+      'https://1842453301.share.123pan.cn/123pan/SplKTd-M2nFd?pwd=z76M';
+
+  /// 官方交流 QQ 群号。
+  static const String _qqGroup = '1130795147';
+
+  /// 用系统浏览器打开链接。
+  Future<void> _openInBrowser(String url) async {
+    final ok = await NativeBridgeService.instance.openUrl(url);
+    if (!mounted) return;
+    if (!ok) {
+      // 打不开（无浏览器）就复制链接兜底
+      await Clipboard.setData(ClipboardData(text: url));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('无法打开浏览器，链接已复制到剪贴板'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 加入 QQ 群：优先用 mqqapi scheme 拉起 QQ 加群界面，
+  /// 没装 QQ / 跳转失败则复制群号兜底。
+  Future<void> _joinQqGroup() async {
+    final scheme =
+        'mqqapi://card/show_pslcard?src_type=internal&version=1&card_type=group&uin=$_qqGroup';
+    final ok = await NativeBridgeService.instance.openUrl(scheme);
+    if (!mounted) return;
+    if (ok) return; // 已拉起 QQ
+    // 跳转失败：复制群号
+    await Clipboard.setData(ClipboardData(text: _qqGroup));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('未检测到 QQ，群号 $_qqGroup 已复制'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// 赞赏码弹窗：展示大图。
+  void _showRewardSheet() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: GlassTheme.bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(GlassTheme.radiusXl),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('请作者喝杯咖啡',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              const Text('微信扫码赞赏 · 金额随意 · 心意最重要',
+                  style: TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12)),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(GlassTheme.radiusMd),
+                child: Image.asset(
+                  'assets/branding/reward_qrcode.png',
+                  width: 240,
+                  height: 240,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox(
+                    width: 240,
+                    height: 240,
+                    child: Center(
+                        child: Text('图片加载失败',
+                            style: TextStyle(color: GlassTheme.textTertiary))),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('关闭',
+                      style: TextStyle(color: GlassTheme.textTertiary)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2251,32 +2444,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     // 有新版本：弹确认框
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: GlassTheme.bg,
         title: const Text('发现新版本',
             style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
         content: Text(
-          '当前 v${AppVersion.display}\n最新 v${info.latestVersion}\n\n是否立即下载并安装？',
+          '当前 v${AppVersion.display}\n最新 v${info.latestVersion}\n\n选择下载方式：',
           style: const TextStyle(
               color: GlassTheme.textSecondary, fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
             child: const Text('取消',
                 style: TextStyle(color: GlassTheme.textTertiary)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('下载',
+            // 应用内直接下载 GitHub：国内网络可能很慢，留个网盘备用通道
+            onPressed: () => Navigator.pop(ctx, 'cloud'),
+            child: const Text('网盘下载',
+                style: TextStyle(color: GlassTheme.accentTeal)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'app'),
+            child: const Text('应用内下载',
                 style: TextStyle(color: GlassTheme.accentPurple)),
           ),
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed == null || confirmed == 'cancel' || !mounted) return;
+    if (confirmed == 'cloud') {
+      await _openInBrowser(_cloudDriveUrl);
+      return;
+    }
 
     // ── iOS：应用无法自安装 IPA ──
     //

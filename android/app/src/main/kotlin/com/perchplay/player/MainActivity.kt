@@ -43,6 +43,29 @@ class MainActivity : FlutterActivity() {
         pendingVideoUri = extractVideoUri(intent)
     }
 
+    /// 用系统浏览器打开 http/https URL，或跳转其它 App 的 scheme
+    /// （如 mqqapi:// 拉起 QQ 加群）。返回是否成功。
+    private fun openExternalUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        return try {
+            val uri = Uri.parse(url)
+            // http/https 走浏览器；mqqapi 等自定义 scheme 走对应 App
+            val allowed = uri.scheme == "http" ||
+                uri.scheme == "https" ||
+                uri.scheme == "mqqapi" ||
+                uri.scheme == "mqq"
+            if (!allowed) return false
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("PerchPlay", "打开 URL 失败: ${e.message}")
+            false
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -255,6 +278,13 @@ class MainActivity : FlutterActivity() {
                         val u = pendingVideoUri
                         pendingVideoUri = null
                         result.success(u)
+                    }
+
+                    // ── 用系统浏览器打开 URL / 拉起其它 App scheme ──
+                    "openUrl" -> {
+                        val url = call.argument<String>("url")
+                        val ok = openExternalUrl(url)
+                        result.success(ok)
                     }
 
                     // Dart 侧注册回调通道，之后热启动的 Intent 会通过
