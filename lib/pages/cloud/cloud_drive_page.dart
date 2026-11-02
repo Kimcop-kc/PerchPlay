@@ -388,6 +388,8 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
   Future<void> _showAddSheet() async {
     final type = await showModalBottomSheet<CloudDriveType>(
       context: context,
+      // 弹到根 Navigator：云盘视图嵌入 NAS 页（Shell 内），会被底栏遮挡
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         margin: const EdgeInsets.all(12),

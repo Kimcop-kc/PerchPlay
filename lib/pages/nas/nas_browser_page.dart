@@ -867,6 +867,8 @@ class _NasBrowserPageState extends ConsumerState<NasBrowserPage> {
 
     showModalBottomSheet(
       context: context,
+      // 弹到根 Navigator：NAS 页在带底栏的 Shell 里，不加这个会被底栏遮挡
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(

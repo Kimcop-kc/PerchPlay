@@ -217,6 +217,8 @@ Future<void> showManualMatchSheet(
 }) async {
   await showModalBottomSheet<void>(
     context: context,
+    // 弹到根 Navigator：首页在带底栏的 Shell 里，会被底栏遮挡
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder: (_) => _ManualMatchSheet(

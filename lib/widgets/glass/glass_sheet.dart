@@ -26,6 +26,9 @@ Future<T?> showGlassSheet<T>({
   return showModalBottomSheet<T>(
     context: context,
     backgroundColor: Colors.transparent,
+    // 弹到根 Navigator：页面带应用内底部导航栏（GlassNavBar）时，
+    // 不加这个 sheet 会画在导航栏**后面**，底部按钮被遮。
+    useRootNavigator: true,
     // 必须为 true，否则高度被系统限制在 9/16，超高内容会被裁掉
     isScrollControlled: true,
     builder: (ctx) {

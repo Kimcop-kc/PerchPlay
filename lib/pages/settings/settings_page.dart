@@ -274,6 +274,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void _showAnime4kPicker() {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _anime4kSheet(
@@ -464,6 +465,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void _showHdrOutputModePicker() {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _hdrOutputModeSheet(
         current: _settings.hdrOutputMode,
@@ -1066,6 +1068,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: false,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => StatefulBuilder(
@@ -1856,6 +1859,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final safeBottom = SystemUiPolicy.bottomSheetInset(MediaQuery.of(context));
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
@@ -2053,6 +2057,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
@@ -2195,6 +2200,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
@@ -2535,6 +2541,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void _showLongPressSpeedPicker() {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _pickerSheet(
         title: '长按倍速',
@@ -2553,6 +2560,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     // 无极滑动选择快进/快退秒数（1-60 秒连续可调）
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _sliderSheet(
         title: '快进/快退秒数',
@@ -2583,6 +2591,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void _showPlayerOrientationPicker() {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _orientationSheet(
         current: _settings.playerOrientation,
