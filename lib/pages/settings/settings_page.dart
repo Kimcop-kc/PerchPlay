@@ -6,7 +6,6 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/responsive/breakpoints.dart';
-import '../../core/system/system_ui_policy.dart';
 import '../../services/device_info_service.dart';
 import '../../services/log_service.dart';
 import '../../services/native_bridge_service.dart';
@@ -23,7 +22,7 @@ import '../../providers/ui_settings_provider.dart';
 import '../../providers/scrape_provider.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/safe_glass.dart';
+import '../../widgets/glass/glass_sheet.dart';
 import '../../widgets/common/app_page_header.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -272,112 +271,51 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   ///
   /// 与 HDR 输出模式互斥：PlayerNotifier 里会自动关掉另一个。
   void _showAnime4kPicker() {
-    showModalBottomSheet(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => _anime4kSheet(
-        current: _settings.anime4kMode,
-        onSelect: (id) async {
-          final mode = Anime4kModeX.fromId(id);
-          if (mounted) setState(() {});
-          await ref.read(playerProvider.notifier).setAnime4kMode(mode);
-          if (mounted) setState(() {});
-        },
-      ),
+      maxHeightFactor: 0.6,
+      title: '动漫放大（Anime4K）',
+      subtitle: '掉帧会自动降档；帧率稳住后不会自动升回，需要手动调。'
+          '与「HDR 输出模式」互斥。',
+      children: _anime4kOptions(_settings.anime4kMode, (id) async {
+        final mode = Anime4kModeX.fromId(id);
+        if (mounted) setState(() {});
+        await ref.read(playerProvider.notifier).setAnime4kMode(mode);
+        if (mounted) setState(() {});
+      }),
     );
   }
 
-  Widget _anime4kSheet({
-    required String current,
-    required Future<void> Function(String) onSelect,
-  }) {
-    final bottomInset =
-        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(GlassTheme.radiusXl)),
-      child: SafeBackdropFilter(
-        blurSigma: 24,
-        child: Container(
-          // 限高半屏：17 档放不下，但撑满全屏体验差。
-          // 半屏 + 内部滚动最合适（与播放页其它菜单一致）。
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.6,
-          ),
-          padding: EdgeInsets.fromLTRB(16, 12, 16, bottomInset),
-          decoration: const BoxDecoration(
-            color: GlassTheme.bgRaised,
-            borderRadius: BorderRadius.vertical(
-                top: Radius.circular(GlassTheme.radiusXl)),
-          ),
-          // 17 档放不下，必须可滚动
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: GlassTheme.textTertiary.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text('动漫放大（Anime4K）',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
-                  child: Text(
-                    '掉帧会自动降档；帧率稳住后不会自动升回，需要手动调。'
-                    '与「HDR 输出模式」互斥。',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: GlassTheme.textTertiary, fontSize: 11),
-                  ),
-                ),
-                for (final m in Anime4kMode.values)
-                  Opacity(
-                    opacity: m.isAvailable ? 1.0 : 0.4,
-                    child: _anime4kOptionTile(
-                      mode: m,
-                      selected: m.id == current,
-                      onTap: !m.isAvailable
-                          ? () {}
-                          : () async {
-                              Navigator.of(context).pop();
-                              await onSelect(m.id);
-                            },
-                    ),
-                  ),
-                if (!anime4kSupported)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
-                    child: Text(
-                      'Anime4K 需要 Android + 带 libplacebo 的构建版本，'
-                      '当前平台已置灰。',
-                      style:
-                          TextStyle(color: Colors.orangeAccent, fontSize: 11),
-                    ),
-                  ),
-              ],
-            ),
+  List<Widget> _anime4kOptions(
+    String current,
+    Future<void> Function(String) onSelect,
+  ) {
+    return [
+      for (final m in Anime4kMode.values)
+        Opacity(
+          opacity: m.isAvailable ? 1.0 : 0.4,
+          child: _anime4kOptionTile(
+            mode: m,
+            selected: m.id == current,
+            onTap: !m.isAvailable
+                ? () {}
+                : () async {
+                    Navigator.of(context).pop();
+                    await onSelect(m.id);
+                  },
           ),
         ),
-      ),
-    );
+      if (!anime4kSupported)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: Text(
+            'Anime4K 需要 Android + 带 libplacebo 的构建版本，'
+            '当前平台已置灰。',
+            style:
+                TextStyle(color: Colors.orangeAccent, fontSize: 11),
+          ),
+        ),
+    ];
   }
 
   Widget _anime4kOptionTile({
@@ -463,13 +401,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// 切换会经 `PlayerNotifier.setHdrOutputMode` 重建 VideoController
   /// （vo 从 gpu 换成 gpu-next），因此会短暂黑屏 —— 选项说明里已写明。
   void _showHdrOutputModePicker() {
-    showModalBottomSheet(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _hdrOutputModeSheet(
-        current: _settings.hdrOutputMode,
-        onSelect: (id) async {
+      title: 'HDR 输出模式',
+      children: _hdrOutputModeOptions(
+        _settings.hdrOutputMode,
+        (id) async {
           final mode = HdrOutputModeX.fromId(id);
           if (mounted) setState(() {});
           await ref.read(playerProvider.notifier).setHdrOutputMode(mode);
@@ -479,80 +416,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _hdrOutputModeSheet({
-    required String current,
-    required Future<void> Function(String) onSelect,
-  }) {
-    final bottomInset =
-        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(GlassTheme.radiusXl)),
-      child: SafeBackdropFilter(
-        blurSigma: 24,
-        child: Container(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, bottomInset),
-          decoration: const BoxDecoration(
-            color: GlassTheme.bgRaised,
-            borderRadius: BorderRadius.vertical(
-                top: Radius.circular(GlassTheme.radiusXl)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: GlassTheme.textTertiary.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 14),
-                  child: Text('HDR 输出模式',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
-                ),
-                for (final m in HdrOutputMode.values)
-                  Opacity(
-                    // 平台不支持时置灰（见 hdr_output_mode.dart 的说明）
-                    opacity: m.isAvailable ? 1.0 : 0.4,
-                    child: _hdrOptionTile(
-                      mode: m,
-                      selected: m.id == current,
-                      onTap: !m.isAvailable
-                          ? () {}
-                          : () async {
-                              Navigator.of(context).pop();
-                              await onSelect(m.id);
-                            },
-                    ),
-                  ),
-                if (!hdrOutputModeSupported)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
-                    child: Text(
-                      'HDR 直通需要 Android + 带 libplacebo 的构建版本，'
-                      '当前平台已置灰。',
-                      style:
-                          TextStyle(color: Colors.orangeAccent, fontSize: 11),
-                    ),
-                  ),
-              ],
-            ),
+  List<Widget> _hdrOutputModeOptions(
+    String current,
+    Future<void> Function(String) onSelect,
+  ) {
+    return [
+      for (final m in HdrOutputMode.values)
+        Opacity(
+          // 平台不支持时置灰（见 hdr_output_mode.dart 的说明）
+          opacity: m.isAvailable ? 1.0 : 0.4,
+          child: _hdrOptionTile(
+            mode: m,
+            selected: m.id == current,
+            onTap: !m.isAvailable
+                ? () {}
+                : () async {
+                    Navigator.of(context).pop();
+                    await onSelect(m.id);
+                  },
           ),
         ),
-      ),
-    );
+      if (!hdrOutputModeSupported)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: Text(
+            'HDR 直通需要 Android + 带 libplacebo 的构建版本，'
+            '当前平台已置灰。',
+            style:
+                TextStyle(color: Colors.orangeAccent, fontSize: 11),
+          ),
+        ),
+    ];
   }
 
   Widget _hdrOptionTile({
@@ -1066,11 +960,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ('end', '右对齐', Icons.format_align_right_rounded),
     ];
 
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: false,
-      backgroundColor: Colors.transparent,
+      maxHeightFactor: 0.5,
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) {
           void persist() {
@@ -1103,90 +995,49 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           final previewSize = fontSize > 0 ? fontSize : 16.0;
 
-          // 半屏弹出：约束高度 50%，超出滚动
-          //
-          // 底部留白必须用 bottomSheetInset 而不是 padding.bottom：
-          // Android 8/9 走 manual 模式时 padding.bottom 是 0，
-          // 而 bottomSheet 仍覆盖整个物理屏幕，会被导航栏压住。
-          final safeBottom =
-              SystemUiPolicy.bottomSheetInset(MediaQuery.of(sheetCtx));
-          return ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(GlassTheme.radiusXl)),
-            child: SafeBackdropFilter(
-              blurSigma: 24,
-              child: Container(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, safeBottom + 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0.85),
-                      Colors.white.withValues(alpha: 0.55),
-                    ],
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.text_fields_rounded,
+                      color: GlassTheme.accentPurple, size: 20),
+                  const SizedBox(width: 8),
+                  const Text('字幕样式',
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () {
+                      setSheetState(() {
+                        fontSize = 0;
+                        position = 0.12;
+                        bgOpacity = 0.62;
+                        textColor = 0xFFFFFFFF;
+                        stroke = true;
+                        secScale = 0.82;
+                        secDim = true;
+                        fontFamily = 'system';
+                        fontWeightIdx = 5;
+                        lineSpacing = 3;
+                        lineHeight = 1.35;
+                        bgRadius = 4;
+                        bgColor = 0xFF000000;
+                        showBg = true;
+                        align = 'center';
+                        useAssPos = true;
+                      });
+                      persist();
+                    },
+                    child: const Text('恢复默认',
+                        style: TextStyle(fontSize: 12)),
                   ),
-                  border: Border(
-                    top: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        width: 0.5),
-                  ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Center(
-                          child: Container(
-                            width: 32,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(2),
-                              color: Colors.black.withValues(alpha: 0.15),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            const Icon(Icons.text_fields_rounded,
-                                color: GlassTheme.accentPurple, size: 20),
-                            const SizedBox(width: 8),
-                            const Text('字幕样式',
-                                style: TextStyle(
-                                    color: GlassTheme.textPrimary,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700)),
-                            const Spacer(),
-                            TextButton(
-                              onPressed: () {
-                                setSheetState(() {
-                                  fontSize = 0;
-                                  position = 0.12;
-                                  bgOpacity = 0.62;
-                                  textColor = 0xFFFFFFFF;
-                                  stroke = true;
-                                  secScale = 0.82;
-                                  secDim = true;
-                                  fontFamily = 'system';
-                                  fontWeightIdx = 5;
-                                  lineSpacing = 3;
-                                  lineHeight = 1.35;
-                                  bgRadius = 4;
-                                  bgColor = 0xFF000000;
-                                  showBg = true;
-                                  align = 'center';
-                                  useAssPos = true;
-                                });
-                                persist();
-                              },
-                              child: const Text('恢复默认',
-                                  style: TextStyle(fontSize: 12)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
+                ],
+              ),
+              const SizedBox(height: 10),
 
                         // ── 实时预览 ──
                         Container(
@@ -1556,14 +1407,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         const Divider(height: 1, color: Colors.white12),
                         const SizedBox(height: 6),
                       ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+                    );
+          },
+        ),
     );
   }
 
@@ -1854,60 +1700,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   /// 网盘选择弹窗：列出可用网盘，点选后用浏览器打开。
   void _showCloudDriveSheet() {
-    // 底部安全区：用 bottomSheetInset 而不是 viewPadding.bottom ——
-    // Android 沉浸式下 viewPadding.bottom 是 0，会被导航栏遮挡。
-    final safeBottom = SystemUiPolicy.bottomSheetInset(MediaQuery.of(context));
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
+      title: '网盘下载',
+      subtitle: '选择一个网盘，用浏览器打开下载页',
+      children: [
+        for (final drive in _cloudDrives)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.cloud_rounded,
+                color: GlassTheme.accentPurple, size: 22),
+            title: Text(drive.name,
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 14)),
+            trailing: const Icon(Icons.chevron_right_rounded,
+                size: 20, color: GlassTheme.textTertiary),
+            onTap: () {
+              Navigator.of(context).pop();
+              _openInBrowser(drive.url);
+            },
           ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          safeBottom + 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('网盘下载',
-                style: TextStyle(
-                    color: GlassTheme.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('选择一个网盘，用浏览器打开下载页',
-                style: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 12)),
-            const SizedBox(height: 12),
-            for (final drive in _cloudDrives)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.cloud_rounded,
-                    color: GlassTheme.accentPurple, size: 22),
-                title: Text(drive.name,
-                    style: const TextStyle(
-                        color: GlassTheme.textPrimary, fontSize: 14)),
-                trailing: const Icon(Icons.chevron_right_rounded,
-                    size: 20, color: GlassTheme.textTertiary),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openInBrowser(drive.url);
-                },
-              ),
-            const SizedBox(height: 4),
-          ],
-        ),
-      ),
+        const SizedBox(height: 4),
+      ],
     );
   }
 
@@ -2052,117 +1867,86 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final report = buf.toString();
     if (!mounted) return;
 
-    final mq = MediaQuery.of(context);
-    final safeBottom = mq.viewPadding.bottom;
-
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: (MediaQuery.of(ctx).size.height * 0.8)
-            .clamp(0.0, MediaQuery.of(ctx).size.height - safeBottom - 24),
-        decoration: const BoxDecoration(
-          color: Color(0xFFF7F7FA),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+      maxHeightFactor: 0.85,
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: GlassTheme.accentPink, size: 20),
+              SizedBox(width: 8),
+              Text('上次闪退日志',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // 原 Expanded 改为固定高度，避免 unbounded 约束
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.45,
             ),
-            const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: GlassTheme.accentPink, size: 20),
-                  SizedBox(width: 8),
-                  Text('上次闪退日志',
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
-                ],
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: Colors.black.withValues(alpha: 0.06)),
               ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border:
-                        Border.all(color: Colors.black.withValues(alpha: 0.06)),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      report,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 10,
-                        height: 1.45,
-                        color: Color(0xFF2C2C2E),
-                      ),
-                    ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  report,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    height: 1.45,
+                    color: Color(0xFF2C2C2E),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: GlassButton.filled(
-                      icon: Icons.copy_rounded,
-                      label: '复制崩溃日志',
-                      height: 46,
-                      onTap: () async {
-                        await Clipboard.setData(ClipboardData(text: report));
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _showSnack('已复制，直接粘贴发给我即可');
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GlassButton.outlined(
-                      icon: Icons.open_in_new_rounded,
-                      label: '完整报告',
-                      height: 46,
-                      foregroundColor: GlassTheme.accentTeal,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showDiagnosticsSheet();
-                      },
-                    ),
-                  ),
-                ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: GlassButton.filled(
+                  icon: Icons.copy_rounded,
+                  label: '复制崩溃日志',
+                  height: 46,
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: report));
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                      _showSnack('已复制，直接粘贴发给我即可');
+                    }
+                  },
+                ),
               ),
-            ),
-            SizedBox(height: safeBottom > 56 ? safeBottom : 56),
-          ],
-        ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GlassButton.outlined(
+                  icon: Icons.open_in_new_rounded,
+                  label: '完整报告',
+                  height: 46,
+                  foregroundColor: GlassTheme.accentTeal,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDiagnosticsSheet();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -2187,170 +1971,103 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
 
     if (!mounted) return;
-    // 底部安全边距。
-    //
-    // 用「实测导航栏高度」与 48dp 的较大值作为**保底**；
-    // 外层再套 SafeArea(bottom:true) 做**二次保险** —— 两处都做不是浪费：
-    //  - SafeArea 依赖 MediaQuery.padding，低版本 manual 模式下可能是 0
-    //  - 我们自己的实测值在个别 ROM 上也可能偏小（用户小米报 20dp）
-    // 取两者中生效的那个，比赌单一来源可靠。
-    final mq = MediaQuery.of(context);
-    final navInset = SystemUiPolicy.bottomSheetInset(mq);
-    final safeBottom = navInset > 56 ? navInset : 56.0;
 
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        // 高度 = min(屏高 * 0.82, 屏高 - 安全区)。
-        //
-        // 为什么减安全区：`showModalBottomSheet` 贴屏幕物理底边，
-        // 如果高度取 82%，面板底边就在最底部，按钮必然落进导航栏区域。
-        // 减掉安全区后，整个面板上移，按钮自然在导航栏之上。
-        // 这是比「在面板内加 padding」更稳的解法 —— padding 只是把内容
-        // 往上推，面板本身的底边仍在导航栏下面。
-        height: (MediaQuery.of(ctx).size.height * 0.82)
-            .clamp(0.0, MediaQuery.of(ctx).size.height - safeBottom - 24),
-        decoration: const BoxDecoration(
-          color: Color(0xFFF7F7FA),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        // 注意：padding 不放在这一层。
-        // Container 的 padding 会挤压内部 Column，配合 Expanded 会让
-        // 底部按钮紧贴 padding 边缘、没有可呼吸的余量。改为下面
-        // 用 Column 末尾的固定高度 SizedBox 来保证安全区。
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+      maxHeightFactor: 0.82,
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题 + 说明
+          Row(
+            children: [
+              const Icon(Icons.bug_report_rounded,
+                  color: GlassTheme.accentTeal, size: 20),
+              const SizedBox(width: 8),
+              const Text('诊断日志',
+                  style: TextStyle(
+                      color: GlassTheme.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('${svc.count} 条',
+                  style: const TextStyle(
+                      color: GlassTheme.textTertiary, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '遇到问题时点「复制全部」发给我，能快速定位原因。'
+            '日志只在本机保存，不会上传。',
+            style: TextStyle(
+                color: GlassTheme.textTertiary, fontSize: 11, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          // 日志正文（原 Expanded 改固定高度，避免 unbounded 约束）
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.45,
             ),
-            const SizedBox(height: 12),
-            // 标题 + 说明（带水平边距）
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  const Icon(Icons.bug_report_rounded,
-                      color: GlassTheme.accentTeal, size: 20),
-                  const SizedBox(width: 8),
-                  const Text('诊断日志',
-                      style: TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  Text('${svc.count} 条',
-                      style: const TextStyle(
-                          color: GlassTheme.textTertiary, fontSize: 12)),
-                ],
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: Colors.black.withValues(alpha: 0.06)),
               ),
-            ),
-            const SizedBox(height: 6),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '遇到问题时点「复制全部」发给我，能快速定位原因。'
-                '日志只在本机保存，不会上传。',
-                style: TextStyle(
-                    color: GlassTheme.textTertiary, fontSize: 11, height: 1.4),
-              ),
-            ),
-            const SizedBox(height: 12),
-            // 日志正文
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border:
-                        Border.all(color: Colors.black.withValues(alpha: 0.06)),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      report,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 10,
-                        height: 1.45,
-                        color: Color(0xFF2C2C2E),
-                      ),
-                    ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  report,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    height: 1.45,
+                    color: Color(0xFF2C2C2E),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            // 按钮行（带水平边距）
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: GlassButton.filled(
-                      icon: Icons.copy_rounded,
-                      label: '复制全部',
-                      height: 46,
-                      onTap: () async {
-                        await Clipboard.setData(ClipboardData(text: report));
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _showSnack('已复制，直接粘贴发给我即可');
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // 清空：复现问题前先清空，日志只保留本次操作
-                  Expanded(
-                    child: GlassButton.outlined(
-                      icon: Icons.delete_sweep_rounded,
-                      label: '清空',
-                      height: 46,
-                      foregroundColor: GlassTheme.textTertiary,
-                      onTap: () {
-                        svc.clear();
-                        svc.log('[日志] 已由用户清空');
-                        Navigator.pop(ctx);
-                        _showSnack('已清空，请复现问题后再来看');
-                      },
-                    ),
-                  ),
-                ],
+          ),
+          const SizedBox(height: 12),
+          // 按钮行
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: GlassButton.filled(
+                  icon: Icons.copy_rounded,
+                  label: '复制全部',
+                  height: 46,
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: report));
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                      _showSnack('已复制，直接粘贴发给我即可');
+                    }
+                  },
+                ),
               ),
-            ),
-            // 底部安全区：**固定高度**占位，不依赖 padding。
-            //
-            // 原来把安全区算进 Container 的 padding，但 Container 高度是
-            // 屏高的百分比，减去 padding 后 Expanded 仍会吃满，按钮就贴在
-            // padding 下沿 —— 视觉上还是被导航栏压住（用户反馈 20dp 的
-            // 导航栏高度也确实太小）。改成这里显式留一个 SizedBox，
-            // 高度取 max(实测导航栏, 48)，保证按钮上下都有余量。
-            SizedBox(height: safeBottom),
-          ],
-        ),
+              const SizedBox(width: 10),
+              // 清空：复现问题前先清空，日志只保留本次操作
+              Expanded(
+                child: GlassButton.outlined(
+                  icon: Icons.delete_sweep_rounded,
+                  label: '清空',
+                  height: 46,
+                  foregroundColor: GlassTheme.textTertiary,
+                  onTap: () {
+                    svc.clear();
+                    svc.log('[日志] 已由用户清空');
+                    Navigator.pop(ctx);
+                    _showSnack('已清空，请复现问题后再来看');
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -2539,10 +2256,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _showLongPressSpeedPicker() {
-    showModalBottomSheet(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => _pickerSheet(
         title: '长按倍速',
         subtitle: '播放时按住画面即可以此速度播放，松手恢复',
@@ -2558,10 +2273,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _showSkipPicker() {
     // 无极滑动选择快进/快退秒数（1-60 秒连续可调）
-    showModalBottomSheet(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => _sliderSheet(
         title: '快进/快退秒数',
         min: 1,
@@ -2589,10 +2302,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _showPlayerOrientationPicker() {
-    showModalBottomSheet(
+    showGlassSheet<void>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => _orientationSheet(
         current: _settings.playerOrientation,
         onSelect: (v) => _settings.setPlayerOrientation(v).then((_) {
@@ -2606,73 +2317,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required String current,
     required void Function(String) onSelect,
   }) {
-    // 同 _pickerSheet：低版本 padding.bottom 为 0，必须用 bottomSheetInset
-    final bottomInset =
-        SystemUiPolicy.bottomSheetInset(MediaQuery.of(context)) + 96;
     const options = <(String, String, String)>[
       ('auto', '自动', '跟随手机当前方向，可自由旋转'),
       ('landscape', '横屏', '打开视频即横屏全屏'),
       ('portrait', '竖屏', '打开视频即竖屏'),
     ];
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(GlassTheme.radiusXl)),
-      child: SafeBackdropFilter(
-        blurSigma: 24,
-        child: Container(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.8),
-                Colors.white.withValues(alpha: 0.5),
-              ],
-            ),
-            border: Border(
-              top: BorderSide(
-                  color: Colors.black.withValues(alpha: 0.06), width: 0.5),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('打开视频方向',
+            style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 12),
+        for (final (key, label, desc) in options)
+          GlassButton(
+            label: '$label · $desc',
+            width: double.infinity,
+            height: 52,
+            ghost: true,
+            filled: false,
+            foregroundColor: current == key
+                ? GlassTheme.accentPurple
+                : GlassTheme.textPrimary,
+            onTap: () {
+              onSelect(key);
+              Navigator.pop(context);
+            },
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 32,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    color: Colors.black.withValues(alpha: 0.15),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('打开视频方向',
-                  style: TextStyle(
-                      color: GlassTheme.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              for (final (key, label, desc) in options)
-                GlassButton(
-                  label: '$label · $desc',
-                  width: double.infinity,
-                  height: 52,
-                  ghost: true,
-                  filled: false,
-                  foregroundColor: current == key
-                      ? GlassTheme.accentPurple
-                      : GlassTheme.textPrimary,
-                  onTap: () {
-                    onSelect(key);
-                    Navigator.pop(context);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -2688,94 +2363,57 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return StatefulBuilder(
       builder: (ctx, setSheetState) {
         double value = current;
-        // 避让悬浮玻璃导航栏 + 底部系统栏
-        // 同 _pickerSheet：低版本 padding.bottom 为 0，必须用 bottomSheetInset
-        final bottomInset =
-            SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)) + 96;
-        return ClipRRect(
-          borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(GlassTheme.radiusXl)),
-          child: SafeBackdropFilter(
-            blurSigma: 24,
-            child: Container(
-              padding: EdgeInsets.fromLTRB(24, 24, 24, bottomInset),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.85),
-                    Colors.white.withValues(alpha: 0.55),
-                  ],
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
+                Text(
+                  format(value),
+                  style: const TextStyle(
+                      color: GlassTheme.accentPurple,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700),
                 ),
-                border: Border(
-                  top: BorderSide(
-                      color: Colors.black.withValues(alpha: 0.06), width: 0.5),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 32,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(2),
-                        color: Colors.black.withValues(alpha: 0.15),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(title,
-                          style: const TextStyle(
-                              color: GlassTheme.textPrimary,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700)),
-                      Text(
-                        format(value),
-                        style: const TextStyle(
-                            color: GlassTheme.accentPurple,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // 无极滑动条：拖拽时只更新本地显示，松手才持久化
-                  Slider(
-                    value: value,
-                    min: min,
-                    max: max,
-                    divisions: divisions,
-                    activeColor: GlassTheme.accentPurple,
-                    inactiveColor: Colors.black.withValues(alpha: 0.08),
-                    onChanged: (v) {
-                      setSheetState(() => value = v);
-                    },
-                    onChangeEnd: (v) {
-                      onChanged(v);
-                    },
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('${min.toInt()}s',
-                          style: const TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 12)),
-                      Text('${max.toInt()}s',
-                          style: const TextStyle(
-                              color: GlassTheme.textTertiary, fontSize: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
+              ],
             ),
-          ),
+            const SizedBox(height: 16),
+            // 无极滑动条：拖拽时只更新本地显示，松手才持久化
+            Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              activeColor: GlassTheme.accentPurple,
+              inactiveColor: Colors.black.withValues(alpha: 0.08),
+              onChanged: (v) {
+                setSheetState(() => value = v);
+              },
+              onChangeEnd: (v) {
+                onChanged(v);
+              },
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('${min.toInt()}s',
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 12)),
+                Text('${max.toInt()}s',
+                    style: const TextStyle(
+                        color: GlassTheme.textTertiary, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
         );
       },
     );
@@ -2789,84 +2427,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required void Function(double) onSelect,
     required String Function(double) format,
   }) {
-    // 避让悬浮玻璃导航栏 + 底部系统栏。
-    //
-    // 底部系统栏用 bottomSheetInset 而非 padding.bottom：
-    // Android 8/9 是 manual 模式，padding.bottom == 0，但 bottomSheet
-    // 覆盖整个物理屏幕，不加就会让最后几个选项被导航栏压住且点不到。
-    final safeBottom = SystemUiPolicy.bottomSheetInset(MediaQuery.of(context));
-    final bottomInset = safeBottom + 96;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(GlassTheme.radiusXl)),
-      child: SafeBackdropFilter(
-        blurSigma: 24,
-        child: Container(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.8),
-                Colors.white.withValues(alpha: 0.5),
-              ],
-            ),
-            border: Border(
-              top: BorderSide(
-                  color: Colors.black.withValues(alpha: 0.06), width: 0.5),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: const TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700)),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(subtitle,
+                style: const TextStyle(
+                    color: GlassTheme.textTertiary, fontSize: 13)),
           ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 32,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      color: Colors.black.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(title,
-                    style: const TextStyle(
-                        color: GlassTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700)),
-                if (subtitle != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(subtitle,
-                        style: const TextStyle(
-                            color: GlassTheme.textTertiary, fontSize: 13)),
-                  ),
-                const SizedBox(height: 12),
-                ...items.map((v) {
-                  final isActive = v == current;
-                  return GlassButton(
-                    label: format(v),
-                    width: double.infinity,
-                    height: 44,
-                    ghost: true,
-                    filled: false,
-                    foregroundColor: isActive
-                        ? GlassTheme.accentPurple
-                        : GlassTheme.textPrimary,
-                    onTap: () {
-                      onSelect(v);
-                      Navigator.pop(context);
-                    },
-                  );
-                }),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
+        const SizedBox(height: 12),
+        ...items.map((v) {
+          final isActive = v == current;
+          return GlassButton(
+            label: format(v),
+            width: double.infinity,
+            height: 44,
+            ghost: true,
+            filled: false,
+            foregroundColor: isActive
+                ? GlassTheme.accentPurple
+                : GlassTheme.textPrimary,
+            onTap: () {
+              onSelect(v);
+              Navigator.pop(context);
+            },
+          );
+        }),
+        const SizedBox(height: 20),
+      ],
     );
   }
 }

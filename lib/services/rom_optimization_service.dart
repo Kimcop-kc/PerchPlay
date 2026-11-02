@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../core/theme/glass_theme.dart';
+import '../widgets/glass/glass_dialog.dart';
 import 'device_info_service.dart';
 import 'native_bridge_service.dart';
 
@@ -132,80 +134,75 @@ class RomOptimizationService {
   Future<bool> showPermissionGuideDialog(BuildContext context) async {
     final completer = Completer<bool>();
 
-    showDialog(
+    showGlassDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFF2F2F7),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(
-              _device.isXiaomi
-                  ? Icons.phone_android_rounded
-                  : Icons.shield_rounded,
-              color: const Color(0xFFFF6900),
-              size: 24,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '$_brandDisplayName 手机优化',
-                style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '为确保 PerchPlay 正常使用，建议进行以下设置：',
-                style: TextStyle(color: Color(0xFF3C3C43), fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              if (needsBatteryOptimizationBypass) ...[
-                _guideStep('1. 关闭电池优化', batteryOptimizationGuideText),
-              ],
-              if (needsOverlayPermissionGuide) ...[
-                const SizedBox(height: 12),
-                _guideStep('2. 开启悬浮窗权限', overlayPermissionGuideText),
-              ],
-              if (needsAutoStartPermission) ...[
-                const SizedBox(height: 12),
-                _guideStep('3. 开启自启动', autoStartGuideText),
-              ],
-              if (_device.isXiaomi) ...[
-                const SizedBox(height: 12),
-                _guideStep('💡 小技巧', miuiVideoToolboxGuide),
-              ],
-            ],
+      title: Row(
+        children: [
+          Icon(
+            _device.isXiaomi
+                ? Icons.phone_android_rounded
+                : Icons.shield_rounded,
+            color: const Color(0xFFFF6900),
+            size: 24,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              completer.complete(false);
-            },
-            child:
-                const Text('稍后设置', style: TextStyle(color: Color(0xFF8E8E93))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6C5CE7),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$_brandDisplayName 手机优化',
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 18),
             ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              completer.complete(true);
-            },
-            child: const Text('我知道了'),
           ),
         ],
       ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '为确保 PerchPlay 正常使用，建议进行以下设置：',
+            style: TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          if (needsBatteryOptimizationBypass) ...[
+            _guideStep('1. 关闭电池优化', batteryOptimizationGuideText),
+          ],
+          if (needsOverlayPermissionGuide) ...[
+            const SizedBox(height: 12),
+            _guideStep('2. 开启悬浮窗权限', overlayPermissionGuideText),
+          ],
+          if (needsAutoStartPermission) ...[
+            const SizedBox(height: 12),
+            _guideStep('3. 开启自启动', autoStartGuideText),
+          ],
+          if (_device.isXiaomi) ...[
+            const SizedBox(height: 12),
+            _guideStep('💡 小技巧', miuiVideoToolboxGuide),
+          ],
+        ],
+      ),
+      scrollable: true,
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            completer.complete(false);
+          },
+          child: const Text('稍后设置',
+              style: TextStyle(color: GlassTheme.textTertiary)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6C5CE7),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            completer.complete(true);
+          },
+          child: const Text('我知道了'),
+        ),
+      ],
     );
 
     return completer.future;
@@ -224,13 +221,13 @@ class RomOptimizationService {
         children: [
           Text(title,
               style: const TextStyle(
-                  color: Color(0xFF1C1C1E),
+                  color: GlassTheme.textPrimary,
                   fontWeight: FontWeight.w600,
                   fontSize: 13)),
           const SizedBox(height: 6),
           Text(content,
               style: const TextStyle(
-                  color: Color(0xFF3C3C43), fontSize: 12, height: 1.5)),
+                  color: GlassTheme.textSecondary, fontSize: 12, height: 1.5)),
         ],
       ),
     );

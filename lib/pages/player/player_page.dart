@@ -36,6 +36,7 @@ import '../../widgets/player/player_gesture_layer.dart';
 import '../../widgets/player/subtitle_overlay.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_slider.dart';
+import '../../widgets/glass/glass_sheet.dart';
 import '../../widgets/glass/safe_glass.dart';
 import '../../widgets/scrape/scrape_widgets.dart';
 import '../../widgets/keyboard_shortcut_handler.dart';
@@ -965,83 +966,50 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             : '从头开始',
       ],
     ];
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.8,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
+      maxHeightFactor: 0.8,
+      title: '视频详情',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 刮削到的影片信息（海报/年份/评分/简介）+ 手动匹配入口。
+          // 之前刮削结果没有任何界面展示，用户看不到匹配结果。
+          ScrapeInfoSection(
+            videoPath: widget.videoPath,
+            initialQuery: MediaNamer.parse(widget.videoPath).fullTitle,
           ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          // 底部只留安全区 + 固定 16：之前用 28 + bottomSheetInset，
-          // bottomSheetInset 在播放页沉浸式下仍返回导航栏高度（约 20~48dp），
-          // 导致底部一大块空白、内容被压缩显得「太少」。
-          // viewPadding.bottom 是物理安全区，沉浸式下为 0，导航栏显示时才避让。
-          16 + MediaQuery.of(ctx).viewPadding.bottom,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '视频详情',
-                style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              // 刮削到的影片信息（海报/年份/评分/简介）+ 手动匹配入口。
-              // 之前刮削结果没有任何界面展示，用户看不到匹配结果。
-              ScrapeInfoSection(
-                videoPath: widget.videoPath,
-                initialQuery: MediaNamer.parse(widget.videoPath).fullTitle,
-              ),
-              const SizedBox(height: 6),
-              ...rows.map(
-                (r) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 84,
-                        child: Text(
-                          r[0],
-                          style: const TextStyle(
-                            color: GlassTheme.textTertiary,
-                            fontSize: 13,
-                          ),
-                        ),
+          const SizedBox(height: 6),
+          ...rows.map(
+            (r) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 84,
+                    child: Text(
+                      r[0],
+                      style: const TextStyle(
+                        color: GlassTheme.textTertiary,
+                        fontSize: 13,
                       ),
-                      Expanded(
-                        child: Text(
-                          r[1],
-                          style: const TextStyle(
-                            color: GlassTheme.textPrimary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  Expanded(
+                    child: Text(
+                      r[1],
+                      style: const TextStyle(
+                        color: GlassTheme.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1050,10 +1018,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   void _showCastSheet() {
     ref.read(castProvider.notifier).startDiscovery();
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
       builder: (ctx) => const _CastDeviceSheet(),
     );
   }
@@ -1066,52 +1032,19 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     // 在可随时关闭的弹窗里 watch 它会在关闭瞬间触发 Riverpod 断言
     final st = ref.read(playerProvider);
     final notifier = ref.read(playerProvider.notifier);
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.75,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
-          ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          16 + MediaQuery.of(ctx).viewPadding.bottom,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '字幕',
-                style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '点右侧 ⇅ 可把字幕设为「第二字幕」，与主字幕同屏显示（如中英对照）',
-                style: TextStyle(
-                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                  fontSize: 11.5,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 8),
+      maxHeightFactor: 0.75,
+      title: '字幕',
+      subtitle: '点右侧 ⇅ 可把字幕设为「第二字幕」，与主字幕同屏显示（如中英对照）',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
 
-              // 关闭字幕
-              ListTile(
+          // 关闭字幕
+          ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(
@@ -1297,8 +1230,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -1309,57 +1240,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final tracks = st.audioTracks;
     if (tracks.isEmpty) return;
 
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
-          ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          16 + MediaQuery.of(ctx).viewPadding.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '音轨',
-              style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${tracks.length} 条音轨，点选即切换',
-              style: TextStyle(
-                color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                fontSize: 11.5,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final t in tracks) _audioTrackTile(t, st, notifier),
-                ],
-              ),
-            ),
-          ],
-        ),
+      maxHeightFactor: 0.6,
+      title: '音轨',
+      subtitle: '${tracks.length} 条音轨，点选即切换',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          for (final t in tracks) _audioTrackTile(t, st, notifier),
+        ],
       ),
     );
   }
@@ -1481,101 +1373,68 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _pickSubtitleFile(String videoPath) async {
     final files = await SubtitleService.findCandidateSubtitles(videoPath);
     if (!mounted) return;
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.7,
-        ),
-        decoration: const BoxDecoration(
-          color: Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(GlassTheme.radiusXl),
-          ),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          16 + MediaQuery.of(ctx).viewPadding.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '选择字幕文件',
-              style: TextStyle(
-                color: GlassTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (files.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text(
-                    '未找到字幕文件\n请把 .srt / .ass / .vtt 放在视频同目录或 Download 文件夹',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: GlassTheme.textTertiary,
-                      fontSize: 13,
-                      height: 1.6,
-                    ),
+      maxHeightFactor: 0.7,
+      title: '选择字幕文件',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          if (files.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  '未找到字幕文件\n请把 .srt / .ass / .vtt 放在视频同目录或 Download 文件夹',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: GlassTheme.textTertiary,
+                    fontSize: 13,
+                    height: 1.6,
                   ),
                 ),
-              )
-            else
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: files.length,
-                  itemBuilder: (context, i) {
-                    final f = files[i];
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.subtitles_rounded,
-                        size: 20,
-                        color: GlassTheme.accentPurple,
-                      ),
-                      title: Text(
-                        f.title,
-                        style: const TextStyle(
-                          color: GlassTheme.textPrimary,
-                          fontSize: 14,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        f.path,
-                        style: const TextStyle(
-                          color: GlassTheme.textTertiary,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onTap: () {
-                        ref.read(playerProvider.notifier).loadExternalSubtitle(
-                              f.path,
-                              language: f.language,
-                              title: f.title,
-                            );
-                        Navigator.pop(ctx);
-                      },
-                    );
-                  },
-                ),
               ),
-          ],
-        ),
+            )
+          else
+            for (final f in files)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.subtitles_rounded,
+                  size: 20,
+                  color: GlassTheme.accentPurple,
+                ),
+                title: Text(
+                  f.title,
+                  style: const TextStyle(
+                    color: GlassTheme.textPrimary,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  f.path,
+                  style: const TextStyle(
+                    color: GlassTheme.textTertiary,
+                    fontSize: 11,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () {
+                  ref.read(playerProvider.notifier).loadExternalSubtitle(
+                        f.path,
+                        language: f.language,
+                        title: f.title,
+                      );
+                  Navigator.pop(ctx);
+                },
+              ),
+        ],
       ),
     );
   }
@@ -2084,78 +1943,39 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// UI 与播放页其它菜单（音轨/字幕/投屏）保持一致：白色玻璃底、
   /// 顶部圆角、`maxHeight 0.6 屏` + 可滚动列表。
   void _showHdrOutputModeSheet(PlayerState state) {
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      // 必须开：否则 Flutter 默认把 sheet 压到约 9/16 屏，且我们的
-      // maxHeight 0.6 不生效，内容超了就截断而不是滚动。
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-          ),
-          decoration: const BoxDecoration(
-            color: Color(0xF2FFFFFF),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(GlassTheme.radiusXl),
+      maxHeightFactor: 0.6,
+      title: 'HDR 输出模式',
+      subtitle: '切换会重建渲染器，画面闪一下是正常的。'
+          '非「关闭」档需要安装带 libplacebo 的构建版本。',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          for (final m in HdrOutputMode.values)
+            _hdrModeTile(
+              mode: m,
+              selected: m == state.hdrOutputMode,
+              onTap: () {
+                Navigator.of(ctx).pop();
+                ref
+                    .read(playerProvider.notifier)
+                    .setHdrOutputMode(m);
+              },
             ),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'HDR 输出模式',
+          if (!hdrOutputModeSupported)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+              child: Text(
+                '当前平台不支持 HDR 直通'
+                '（需要 Android + 带 libplacebo 的构建版本）。',
                 style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
+                    color: Colors.orangeAccent, fontSize: 10.5),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '切换会重建渲染器，画面闪一下是正常的。'
-                '非「关闭」档需要安装带 libplacebo 的构建版本。',
-                style: TextStyle(
-                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                  fontSize: 11.5,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final m in HdrOutputMode.values)
-                      _hdrModeTile(
-                        mode: m,
-                        selected: m == state.hdrOutputMode,
-                        onTap: () {
-                          Navigator.of(ctx).pop();
-                          ref
-                              .read(playerProvider.notifier)
-                              .setHdrOutputMode(m);
-                        },
-                      ),
-                    if (!hdrOutputModeSupported)
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                        child: Text(
-                          '当前平台不支持 HDR 直通'
-                          '（需要 Android + 带 libplacebo 的构建版本）。',
-                          style: TextStyle(
-                              color: Colors.orangeAccent, fontSize: 10.5),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -2166,83 +1986,45 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// UI 与播放页其它菜单（音轨/字幕/投屏）保持一致：白色玻璃底、
   /// 顶部圆角、`maxHeight 0.6 屏` + 可滚动列表。
   void _showAnime4kSheet(PlayerState state) {
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      // 同 HDR 菜单：必须开，否则默认 9/16 屏约束会让 17 档截断不可滚。
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-          ),
-          decoration: const BoxDecoration(
-            color: Color(0xF2FFFFFF),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(GlassTheme.radiusXl),
+      maxHeightFactor: 0.6,
+      title: '动漫放大（Anime4K）',
+      subtitle: '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
+          '实拍视频会显得发糊。掉帧会自动降档。'
+          '与「HDR 输出模式」互斥。',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          for (final m in Anime4kMode.values)
+            Opacity(
+              opacity: m.isAvailable ? 1.0 : 0.4,
+              child: _anime4kModeTile(
+                mode: m,
+                selected: m == state.anime4kMode,
+                onTap: !m.isAvailable
+                    ? null
+                    : () {
+                        Navigator.of(ctx).pop();
+                        ref
+                            .read(playerProvider.notifier)
+                            .setAnime4kMode(m);
+                      },
+              ),
             ),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '动漫放大（Anime4K）',
+          if (!anime4kSupported)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
+              child: Text(
+                '当前平台不支持'
+                '（需要 Android + 带 libplacebo 的构建版本）。',
                 style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
+                    color: Colors.orangeAccent, fontSize: 10.5),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '针对动漫的实时放大与线条修复，老番（480p/720p）效果最明显；'
-                '实拍视频会显得发糊。掉帧会自动降档。'
-                '与「HDR 输出模式」互斥。',
-                style: TextStyle(
-                  color: GlassTheme.textTertiary.withValues(alpha: 0.95),
-                  fontSize: 11.5,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final m in Anime4kMode.values)
-                      Opacity(
-                        opacity: m.isAvailable ? 1.0 : 0.4,
-                        child: _anime4kModeTile(
-                          mode: m,
-                          selected: m == state.anime4kMode,
-                          onTap: !m.isAvailable
-                              ? null
-                              : () {
-                                  Navigator.of(ctx).pop();
-                                  ref
-                                      .read(playerProvider.notifier)
-                                      .setAnime4kMode(m);
-                                },
-                        ),
-                      ),
-                    if (!anime4kSupported)
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(4, 6, 4, 2),
-                        child: Text(
-                          '当前平台不支持'
-                          '（需要 Android + 带 libplacebo 的构建版本）。',
-                          style: TextStyle(
-                              color: Colors.orangeAccent, fontSize: 10.5),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -2654,54 +2436,41 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(castProvider.notifier);
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xF2FFFFFF),
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(GlassTheme.radiusXl),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '投屏到设备',
+              style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            if (_castState.isDiscovering)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: GlassTheme.accentPurple,
+                ),
+              ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              color: GlassTheme.textTertiary,
+              onPressed: () {
+                notifier.refresh();
+                setState(() => _castState = ref.read(castProvider));
+              },
+            ),
+          ],
         ),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        16,
-        20,
-        16 + MediaQuery.of(context).viewPadding.bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                '投屏到设备',
-                style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              if (_castState.isDiscovering)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: GlassTheme.accentPurple,
-                  ),
-                ),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 20),
-                color: GlassTheme.textTertiary,
-                onPressed: () {
-                  notifier.refresh();
-                  setState(() => _castState = ref.read(castProvider));
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
+        const SizedBox(height: 4),
           if (_castState.isConnected && _castState.activeDevice != null)
             ListTile(
               leading: const Icon(
@@ -2835,7 +2604,6 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
               ),
             ),
         ],
-      ),
     );
   }
 }

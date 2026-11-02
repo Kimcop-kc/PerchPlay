@@ -11,6 +11,7 @@ import '../../services/app_settings_service.dart';
 import '../../widgets/glass/glass_card.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/glass/glass_dialog.dart';
 import '../../widgets/common/app_page_header.dart';
 import '../../widgets/video/cover_thumb.dart';
 
@@ -205,33 +206,27 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   /// 删除列表（自动列表会记住删除意图，不再自动重建）
   Future<void> _confirmDelete(Playlist playlist) async {
     final isAuto = playlist.isAuto;
-    final ok = await showDialog<bool>(
+    final ok = await showGlassDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: GlassTheme.surfaceWhite,
-        title: Text('删除「${playlist.name}」',
-            style:
-                const TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
-        content: Text(
-          isAuto
-              ? '这是自动生成的列表。删除后不会再自动重建，'
-                  '随时可以用标题栏的「恢复自动列表」找回。\n列表里的视频文件不会被删除。'
-              : '只会删除这个列表，里面的视频文件不会被删除。',
-          style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消',
-                style: TextStyle(color: GlassTheme.textTertiary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('删除',
-                style: TextStyle(color: GlassTheme.accentPink)),
-          ),
-        ],
+      title: Text('删除「${playlist.name}」'),
+      content: Text(
+        isAuto
+            ? '这是自动生成的列表。删除后不会再自动重建，'
+                '随时可以用标题栏的「恢复自动列表」找回。\n列表里的视频文件不会被删除。'
+            : '只会删除这个列表，里面的视频文件不会被删除。',
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('取消',
+              style: TextStyle(color: GlassTheme.textTertiary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('删除',
+              style: TextStyle(color: GlassTheme.accentPink)),
+        ),
+      ],
     );
     if (ok != true) return;
     await ref.read(playlistProvider.notifier).deletePlaylist(playlist.id);
@@ -321,45 +316,38 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
 
   Future<void> _showCreatePlaylistDialog() async {
     final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final name = await showGlassDialog<String>(
       context: context,
-      // 小屏 / 键盘弹出时避免内容被顶出屏幕（默认 insetPadding 40 太宽）
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFF2F2F7),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        title: const Text('新建播放列表',
-            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 18)),
-        content: SingleChildScrollView(
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            style: const TextStyle(color: GlassTheme.textPrimary),
-            decoration: InputDecoration(
-              hintText: '输入列表名称',
-              hintStyle: const TextStyle(color: GlassTheme.textTertiary),
-              enabledBorder: UnderlineInputBorder(
-                borderSide:
-                    BorderSide(color: Colors.black.withValues(alpha: 0.2)),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: GlassTheme.accentTeal),
-              ),
-            ),
+      title: const Text('新建播放列表'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        style: const TextStyle(color: GlassTheme.textPrimary),
+        decoration: InputDecoration(
+          hintText: '输入列表名称',
+          hintStyle: const TextStyle(color: GlassTheme.textTertiary),
+          enabledBorder: UnderlineInputBorder(
+            borderSide:
+                BorderSide(color: Colors.black.withValues(alpha: 0.2)),
+          ),
+          focusedBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: GlassTheme.accentTeal),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消',
-                style: TextStyle(color: GlassTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('创建',
-                style: TextStyle(color: GlassTheme.accentTeal)),
-          ),
-        ],
       ),
+      scrollable: true,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消',
+              style: TextStyle(color: GlassTheme.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, controller.text.trim()),
+          child: const Text('创建',
+              style: TextStyle(color: GlassTheme.accentTeal)),
+        ),
+      ],
     );
 
     controller.dispose();

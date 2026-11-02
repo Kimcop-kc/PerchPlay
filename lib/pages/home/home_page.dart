@@ -16,6 +16,7 @@ import '../../services/app_settings_service.dart';
 import '../../services/library_query_service.dart';
 import '../../services/media_namer_service.dart';
 import '../../widgets/glass/glass_button.dart';
+import '../../widgets/glass/glass_dialog.dart';
 import '../../widgets/glass/glass_panel.dart';
 import '../../widgets/glass/glass_sheet.dart';
 import '../../widgets/scrape/scrape_widgets.dart';
@@ -839,40 +840,32 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   Future<String?> _askPlaylistName() async {
     final controller = TextEditingController();
-    return showDialog<String>(
+    return showGlassDialog<String>(
       context: context,
-      // 小屏 / 键盘弹出时，AlertDialog 默认的 insetPadding(40) 会让可用高度
-      // 过窄，内容被顶出屏幕、按钮点不到。收到 20 并允许滚动。
-      builder: (ctx) => AlertDialog(
-        backgroundColor: GlassTheme.bg,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        title: const Text('新建播放列表',
-            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
-        content: SingleChildScrollView(
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            style: const TextStyle(color: GlassTheme.textPrimary),
-            decoration: const InputDecoration(
-              hintText: '列表名称',
-              hintStyle: TextStyle(color: GlassTheme.textTertiary),
-            ),
-            onSubmitted: (v) => Navigator.pop(ctx, v),
-          ),
+      title: const Text('新建播放列表'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        style: const TextStyle(color: GlassTheme.textPrimary),
+        decoration: const InputDecoration(
+          hintText: '列表名称',
+          hintStyle: TextStyle(color: GlassTheme.textTertiary),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消',
-                style: TextStyle(color: GlassTheme.textTertiary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('创建',
-                style: TextStyle(color: GlassTheme.accentTeal)),
-          ),
-        ],
+        onSubmitted: (v) => Navigator.pop(context, v),
       ),
+      scrollable: true,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消',
+              style: TextStyle(color: GlassTheme.textTertiary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, controller.text),
+          child: const Text('创建',
+              style: TextStyle(color: GlassTheme.accentTeal)),
+        ),
+      ],
     );
   }
 
@@ -1076,30 +1069,25 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   /// 删除磁盘文件（破坏性，无法恢复）→ 必须二次确认
   Future<void> _confirmDeleteFile(VideoModel video) async {
-    final ok = await showDialog<bool>(
+    final ok = await showGlassDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFF2F2F7),
-        title: const Text('删除文件',
-            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17)),
-        content: Text(
-          '「${video.name}」的文件会从手机上真正删除，无法恢复。\n\n'
-          '只想让它从影库消失、文件保留的话，请用「仅从影库移除」。',
-          style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消',
-                style: TextStyle(color: GlassTheme.textTertiary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除文件',
-                style: TextStyle(color: GlassTheme.accentPink)),
-          ),
-        ],
+      title: const Text('删除文件'),
+      content: Text(
+        '「${video.name}」的文件会从手机上真正删除，无法恢复。\n\n'
+        '只想让它从影库消失、文件保留的话，请用「仅从影库移除」。',
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消',
+              style: TextStyle(color: GlassTheme.textTertiary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('删除文件',
+              style: TextStyle(color: GlassTheme.accentPink)),
+        ),
+      ],
     );
     if (ok != true) return;
 

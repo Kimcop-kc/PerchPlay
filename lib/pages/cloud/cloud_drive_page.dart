@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/glass_theme.dart';
-import '../../core/system/system_ui_policy.dart';
 import '../../models/cloud_drive_model.dart';
 import '../../services/cloud/cloud_drive_service.dart';
 import '../../services/cloud/quark_drive_client.dart';
 import '../../widgets/common/app_page_header.dart';
 import '../../widgets/glass/glass_button.dart';
 import '../../widgets/glass/glass_panel.dart';
+import '../../widgets/glass/glass_sheet.dart';
 import 'cloud_login_page.dart';
 
 /// 云盘页：管理已登录的云盘账号 + 浏览文件。
@@ -386,52 +386,26 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
   // ──────────── 动作 ────────────
 
   Future<void> _showAddSheet() async {
-    final type = await showModalBottomSheet<CloudDriveType>(
+    final type = await showGlassSheet<CloudDriveType>(
       context: context,
-      // 弹到根 Navigator：云盘视图嵌入 NAS 页（Shell 内），会被底栏遮挡
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        margin: const EdgeInsets.all(12),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: GlassTheme.bg,
-          borderRadius: BorderRadius.circular(GlassTheme.radiusLg),
-        ),
-        // 不用 SafeArea：Android 8/9 的 manual 模式下它不提供 bottom 留白，
-        // 弹窗会压到导航栏上。用 bottomSheetInset 拿真实高度。
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
+      title: '选择云盘',
+      children: [
+        const SizedBox(height: 2),
+        for (final t in CloudDriveType.values)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(_iconFor(t), color: GlassTheme.accentPurple),
+            title: Text(t.displayName,
+                style: const TextStyle(
+                    color: GlassTheme.textPrimary, fontSize: 15)),
+            subtitle: Text(
+              t.usesToken ? '需登录网页获取 token' : '网页登录后自动保存',
+              style: const TextStyle(
+                  color: GlassTheme.textTertiary, fontSize: 11),
+            ),
+            onTap: () => Navigator.pop(context, t),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('选择云盘',
-                  style: TextStyle(
-                      color: GlassTheme.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 14),
-              for (final t in CloudDriveType.values)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(_iconFor(t), color: GlassTheme.accentPurple),
-                  title: Text(t.displayName,
-                      style: const TextStyle(
-                          color: GlassTheme.textPrimary, fontSize: 15)),
-                  subtitle: Text(
-                    t.usesToken ? '需登录网页获取 token' : '网页登录后自动保存',
-                    style: const TextStyle(
-                        color: GlassTheme.textTertiary, fontSize: 11),
-                  ),
-                  onTap: () => Navigator.pop(ctx, t),
-                ),
-            ],
-          ),
-        ),
-      ),
+      ],
     );
     if (type == null || !mounted) return;
 

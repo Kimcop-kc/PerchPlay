@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../core/system/system_ui_policy.dart';
+import '../core/theme/glass_theme.dart';
+import '../widgets/glass/glass_sheet.dart';
 import 'device_info_service.dart';
 
 /// iPad 布局模式
@@ -115,80 +116,66 @@ class IPadOptimizationService {
   Future<bool> showIPadWelcomeSheet(BuildContext context) async {
     if (!_device.isIPadPro2022) return false;
 
-    return await showModalBottomSheet<bool>(
+    return await showGlassSheet<bool>(
       context: context,
-      backgroundColor: const Color(0xFFF2F2F7),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          28,
-          28,
-          28,
-          // 底部补真实系统栏高度：Android 8/9 上 SafeArea/viewPadding
-          // 都给 0，最后一个按钮会被导航栏压住
-          28 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(ctx)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.tablet_mac_rounded,
-                      color: Color(0xFF6C5CE7), size: 22),
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 12),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('iPad Pro 已就绪',
-                        style: TextStyle(
-                            color: Color(0xFF1C1C1E),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700)),
-                    Text('M2 芯片 · ProMotion · XDR',
-                        style:
-                            TextStyle(color: Color(0xFF8E8E93), fontSize: 13)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _featureRow(
-                Icons.aspect_ratio_rounded, '台前调度', '支持多窗口、分屏、Slide Over'),
-            const SizedBox(height: 10),
-            _featureRow(
-                Icons.keyboard_rounded, '键盘快捷键', '妙控键盘 Space 播放/暂停，←→ 快进快退'),
-            const SizedBox(height: 10),
-            _featureRow(Icons.draw_rounded, 'Apple Pencil 悬停', '悬停预览进度条、快速定位'),
-            const SizedBox(height: 10),
-            _featureRow(
-                Icons.hdr_on_rounded, 'XDR 显示', '1600nit 峰值亮度，HDR 内容完美呈现'),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C5CE7),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('开始使用', style: TextStyle(fontSize: 16)),
+                child: const Icon(Icons.tablet_mac_rounded,
+                    color: Color(0xFF6C5CE7), size: 22),
               ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('iPad Pro 已就绪',
+                      style: TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  Text('M2 芯片 · ProMotion · XDR',
+                      style: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 13)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _featureRow(
+              Icons.aspect_ratio_rounded, '台前调度', '支持多窗口、分屏、Slide Over'),
+          const SizedBox(height: 10),
+          _featureRow(
+              Icons.keyboard_rounded, '键盘快捷键', '妙控键盘 Space 播放/暂停，←→ 快进快退'),
+          const SizedBox(height: 10),
+          _featureRow(Icons.draw_rounded, 'Apple Pencil 悬停', '悬停预览进度条、快速定位'),
+          const SizedBox(height: 10),
+          _featureRow(
+              Icons.hdr_on_rounded, 'XDR 显示', '1600nit 峰值亮度，HDR 内容完美呈现'),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C5CE7),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('开始使用', style: TextStyle(fontSize: 16)),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     ).then((v) => v ?? false);
   }
@@ -196,7 +183,7 @@ class IPadOptimizationService {
   Widget _featureRow(IconData icon, String title, String subtitle) {
     return Row(
       children: [
-        Icon(icon, color: const Color(0xFF3C3C43), size: 20),
+        Icon(icon, color: GlassTheme.textSecondary, size: 20),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -204,10 +191,10 @@ class IPadOptimizationService {
             children: [
               Text(title,
                   style:
-                      const TextStyle(color: Color(0xFF1C1C1E), fontSize: 14)),
+                      const TextStyle(color: GlassTheme.textPrimary, fontSize: 14)),
               Text(subtitle,
                   style:
-                      const TextStyle(color: Color(0xFF8E8E93), fontSize: 12)),
+                      const TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
             ],
           ),
         ),

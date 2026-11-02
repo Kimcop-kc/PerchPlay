@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/glass_theme.dart';
-import '../../core/system/system_ui_policy.dart';
 import '../../models/scrape_result.dart';
 import '../../providers/scrape_provider.dart';
 import '../glass/glass_button.dart';
 import '../glass/glass_panel.dart';
+import '../glass/glass_sheet.dart';
 
 /// TMDB 海报（带加载中/失败兜底）
 ///
@@ -215,12 +215,8 @@ Future<void> showManualMatchSheet(
   required String videoPath,
   String? initialQuery,
 }) async {
-  await showModalBottomSheet<void>(
+  await showGlassSheet<void>(
     context: context,
-    // 弹到根 Navigator：首页在带底栏的 Shell 里，会被底栏遮挡
-    useRootNavigator: true,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: true,
     builder: (_) => _ManualMatchSheet(
       videoPath: videoPath,
       initialQuery: initialQuery ?? '',
@@ -283,84 +279,69 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
   @override
   Widget build(BuildContext context) {
     final enabled = ref.watch(scrapeProvider.select((s) => s.isEnabled));
-    return Container(
-      constraints:
-          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-      decoration: const BoxDecoration(
-        color: Color(0xF7FFFFFF),
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(GlassTheme.radiusXl)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          // 用 bottomSheetInset：Android 8/9 上 viewPadding.bottom 为 0，
-          // 「手动匹配」底部按钮会被导航栏压住
-          20 + SystemUiPolicy.bottomSheetInset(MediaQuery.of(context))),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('手动匹配',
-              style: TextStyle(
-                  color: GlassTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          const Text('搜不到就换个关键词（试试原名或英文名）',
-              style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
-          const SizedBox(height: 12),
-          if (!enabled)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('刮削未启用：请先在「设置 → 影片刮削」里填 TMDB API Key',
-                  style:
-                      TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
-            )
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: GlassPanel(
-                    radius: GlassTheme.radiusFull,
-                    opacity: GlassTheme.glassLight,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (_) => _search(),
-                      style: const TextStyle(
-                          color: GlassTheme.textPrimary, fontSize: 14),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        hintText: '输入片名',
-                        hintStyle: TextStyle(
-                            color: GlassTheme.textTertiary, fontSize: 14),
-                      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('手动匹配',
+            style: TextStyle(
+                color: GlassTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        const Text('搜不到就换个关键词（试试原名或英文名）',
+            style: TextStyle(color: GlassTheme.textTertiary, fontSize: 12)),
+        const SizedBox(height: 12),
+        if (!enabled)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text('刮削未启用：请先在「设置 → 影片刮削」里填 TMDB API Key',
+                style:
+                    TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+          )
+        else ...[
+          Row(
+            children: [
+              Expanded(
+                child: GlassPanel(
+                  radius: GlassTheme.radiusFull,
+                  opacity: GlassTheme.glassLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _search(),
+                    style: const TextStyle(
+                        color: GlassTheme.textPrimary, fontSize: 14),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: '输入片名',
+                      hintStyle: TextStyle(
+                          color: GlassTheme.textTertiary, fontSize: 14),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                GlassButton.filled(
-                  label: '搜索',
-                  onTap: _search,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_searching)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                    child: CircularProgressIndicator(
-                        color: GlassTheme.accentPurple)),
-              )
-            else if (_searched && _results.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
+              ),
+              const SizedBox(width: 8),
+              GlassButton.filled(
+                label: '搜索',
+                onTap: _search,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_searching)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                  child: CircularProgressIndicator(
+                      color: GlassTheme.accentPurple)),
+            )
+          else if (_searched && _results.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(
                   child: Text('没搜到，换个关键词试试',
                       style: TextStyle(
@@ -376,9 +357,8 @@ class _ManualMatchSheetState extends ConsumerState<_ManualMatchSheet> {
                   itemBuilder: (ctx, i) => _buildRow(_results[i]),
                 ),
               ),
-          ],
         ],
-      ),
+      ],
     );
   }
 

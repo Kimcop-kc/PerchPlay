@@ -3,57 +3,145 @@ import 'package:flutter/material.dart';
 import '../../core/system/system_ui_policy.dart';
 import '../../core/theme/glass_theme.dart';
 
-/// 统一的底部弹窗外壳
+/// 统一的底部弹窗外壳 —— 全 App 所有底部弹窗都应该走这里。
 ///
-/// 解决的实际问题：应用是 edge-to-edge 渲染（内容画到系统栏下面），
-/// 横屏时底部会有系统导航栏 / 平板任务栏盖住弹窗的下沿 ——
-/// 之前「长按视频」菜单的最后一个按钮（从影库移除）就是这么被挡掉的。
+/// 统一收口了全 App 底部弹窗的视觉与行为，避免各页面裸写导致的不一致：
+///  1. 纯色背景 [GlassTheme.bg]，圆角 [GlassTheme.radiusXl]
+///  2. [useRootNavigator] 弹到根 Navigator，不被应用内底栏（GlassNavBar）遮挡
+///  3. 底部安全区用 [SystemUiPolicy.bottomSheetInset]（原生实测值）
+///  4. 内容可滚动 + 限高
+///  5. 统一的顶部拖拽条、标题、副标题布局
 ///
-/// 这里统一做三件事：
-///  1. 底部内边距加上**真实**系统栏高度，内容不再被盖住
-///  2. 内容可滚动：按钮多 / 字体放大时也能全部够到
-///  3. 限高，避免超高内容顶到屏幕最上面
-///
-/// ⚠ 第 1 点不能用 `viewPadding` / `SafeArea`：
-/// Android 8/9 走 manual 模式时它们的 bottom 都是 0，而弹窗仍覆盖整个
-/// 物理屏幕，结果就是最后几个按钮被导航栏压住且点不到。
-/// 必须用 [SystemUiPolicy.bottomSheetInset]（优先取原生实测值）。
+/// ## 两种用法
+///  - 简单：传 [title]/[subtitle]/[children]，自动生成拖拽条+标题+内容
+///  - 自定义：传 [builder]，完全自绘内容（外壳仍统一背景/圆角/安全区/滚动）
 Future<T?> showGlassSheet<T>({
   required BuildContext context,
-  required Widget Function(BuildContext ctx) builder,
+  /// 内容最大高度 = 屏高 × 该系数。默认 0.9。
   double maxHeightFactor = 0.9,
+  /// 面板背景色，默认 GlassTheme.bg。
+  Color backgroundColor = GlassTheme.bg,
+  /// 顶部圆角，默认 radiusXl。
+  double topRadius = GlassTheme.radiusXl,
+  /// 是否显示顶部拖拽条。默认 true。
+  bool showDragHandle = true,
+  /// 标题（可选，自动套用统一标题样式）。
+  String? title,
+  /// 副标题（可选）。
+  String? subtitle,
+  /// 简单用法下的内容 children。
+  List<Widget>? children,
+  /// 自定义内容（与 children 二选一）。
+  Widget Function(BuildContext ctx)? builder,
+  /// 是否弹到根 Navigator。Shell 内页面必须为 true。
+  bool useRootNavigator = true,
 }) {
+  assert((builder != null) != (children != null),
+      'showGlassSheet: builder 与 children 只能二选一');
   return showModalBottomSheet<T>(
     context: context,
     backgroundColor: Colors.transparent,
-    // 弹到根 Navigator：页面带应用内底部导航栏（GlassNavBar）时，
-    // 不加这个 sheet 会画在导航栏**后面**，底部按钮被遮。
-    useRootNavigator: true,
-    // 必须为 true，否则高度被系统限制在 9/16，超高内容会被裁掉
+    useRootNavigator: useRootNavigator,
     isScrollControlled: true,
     builder: (ctx) {
       final media = MediaQuery.of(ctx);
-      // 真实系统栏高度（含 Android 8 的原生实测兜底）
       final systemBottom = SystemUiPolicy.bottomSheetInset(media);
+
+      final Widget body;
+      if (builder != null) {
+        body = builder(ctx);
+      } else {
+        body = _SheetBody(
+          showDragHandle: showDragHandle,
+          title: title,
+          subtitle: subtitle,
+          children: children ?? const [],
+        );
+      }
+
       return Container(
         constraints: BoxConstraints(
           maxHeight: media.size.height * maxHeightFactor,
         ),
-        decoration: const BoxDecoration(
-          color: GlassTheme.bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        // 不用 SafeArea：它在 manual 模式下不给 bottom 留白，
-        // 直接用 padding 把系统栏高度补上，行为最可控
-        child: Padding(
-          padding: EdgeInsets.only(bottom: systemBottom),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: builder(ctx),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(topRadius),
           ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                    20, 16, 20, 20 + systemBottom),
+                child: body,
+              ),
+            ),
+          ],
         ),
       );
     },
   );
+}
+
+/// 简单用法下的标准内容布局：拖拽条 + 标题 + 副标题 + children。
+class _SheetBody extends StatelessWidget {
+  const _SheetBody({
+    required this.showDragHandle,
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final bool showDragHandle;
+  final String? title;
+  final String? subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showDragHandle)
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        if (title != null)
+          Text(
+            title!,
+            style: const TextStyle(
+              color: GlassTheme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              subtitle!,
+              style: const TextStyle(
+                color: GlassTheme.textTertiary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        if (title != null || subtitle != null) const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+  }
 }
