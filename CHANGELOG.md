@@ -1,6 +1,33 @@
 # 变更日志
 
-## [1.2.0] — 2026-11-01
+## [1.2.0] — 2026-11-03
+
+### 全 App 弹窗视觉统一（重构）
+
+**问题**：每个页面的底部弹窗各写各的 —— 有的 `SafeBackdropFilter` 毛玻璃、
+有的半透明白、有的纯色；圆角从 `radiusMd` 到 `radiusXl` 到硬编码 20 都有；
+有的有拖拽条有的没有；标题字号 16/17/18 混用；底部安全区有的算一次、有的
+算两次、有的不算。居中对话框同样散（`AlertDialog` 混 `Dialog`）。
+同一个 App 里点开不同弹窗，像两个产品。
+
+**做法**：抽出两个统一外壳 ——
+
+- `showGlassSheet`：底部弹窗。纯色 `GlassTheme.bg` + `radiusXl` + 统一拖拽条
+  + 统一标题布局 + 底部安全区（走 `bottomSheetInset`，兼容 Android 沉浸式下
+  `viewPadding.bottom` 为 0）
+- `showGlassDialog`：居中对话框。`GlassTheme.bg` + `radiusXl` + 统一 `insetPadding`
+
+替换散落各处的自定义写法，覆盖 30+ 处（设置页 9、播放页 7，其余在首页 /
+NAS / 云盘 / 播放列表 / 刮削 / iPad / ROM）。
+
+### 弹窗被应用内底栏遮挡（修复）
+
+- **根因**：弹窗挂在**页面自己的 Navigator** 上，而底部导航栏在更外层，
+  页面级弹窗 z 序低于它 → 最后几个选项被挡住、点不到。
+- **修复**：全局 `showGlassSheet` 外壳加 `useRootNavigator`，从根 Navigator
+  弹出，压在包括底栏在内的所有应用内元素之上。
+- 覆盖：首页长按菜单、删除文件确认、设置页 9 处、NAS 页、云盘页
+  （嵌套在 NAS 里）、首页「匹配影片信息」。
 
 ### 崩溃日志（新增）
 
