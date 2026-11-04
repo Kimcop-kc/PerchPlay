@@ -131,6 +131,7 @@ class AppRouter {
             cloudAccountId: extra?['cloudAccountId'] as String?,
             cloudDirId: extra?['cloudDirId'] as String?,
             cloudVideoName: extra?['cloudVideoName'] as String?,
+            cloudFileId: extra?['cloudFileId'] as String?,
           );
         },
       ),

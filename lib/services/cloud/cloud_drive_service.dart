@@ -20,8 +20,9 @@ import 'stream_proxy_server.dart';
 /// 把第一个 dispose 掉，导致两个夸克不能同时用。现在改用 `Map<accountId, client>`
 /// 连接池，每个账号独立一个 client，切换不互相影响。
 class CloudDriveService {
-  CloudDriveService._();
-  static final instance = CloudDriveService._();
+  /// 构造公开以便测试注入替身（生产仍用 [instance]）。
+  CloudDriveService();
+  static final instance = CloudDriveService();
 
   static const _kAccounts = 'cloud.accounts';
 
@@ -288,6 +289,51 @@ class CloudDriveService {
       } catch (_) {}
     }
     return '';
+  }
+
+  /// 取某账号「播放/下载资源」时需要的鉴权请求头。
+  ///
+  /// 与播放走的是**同一套**鉴权：夸克/百度/115 靠 Cookie + 精确 UA + Referer，
+  /// 阿里靠 Bearer。字幕下载、缩略图等任何「取资源」的地方都必须用它，
+  /// 否则 CDN 校验失败 → 视频能播但字幕/缩略图下不来（M10）。
+  ///
+  /// 每次调用都重新读取最新 Cookie/Token（可能已被响应轮换），不缓存旧值。
+  Future<Map<String, String>> resourceHeaders(String accountId) async {
+    final matches = _accounts.where((a) => a.id == accountId);
+    if (matches.isEmpty) return const {};
+    final account = matches.first;
+    const desktopAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    switch (account.type) {
+      case CloudDriveType.quark:
+        final fresh = currentCookie(accountId);
+        return {
+          'Cookie': fresh.isEmpty ? account.cookie : fresh,
+          'User-Agent': QuarkDriveClient.userAgent,
+          'Referer': 'https://pan.quark.cn/',
+        };
+      case CloudDriveType.baidu:
+        return {
+          'Cookie': account.cookie,
+          'User-Agent': desktopAgent,
+          'Referer': 'https://pan.baidu.com/',
+        };
+      case CloudDriveType.pan115:
+        final extra = currentExtraCookie(accountId);
+        return {
+          'Cookie': extra.isEmpty ? account.cookie : '${account.cookie}; $extra',
+          'User-Agent': desktopAgent,
+          'Referer': 'https://115.com/',
+        };
+      case CloudDriveType.aliyun:
+        final token = await currentAccessToken(accountId);
+        return {
+          'User-Agent': desktopAgent,
+          'Referer': 'https://www.alipan.com/',
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
+        };
+    }
   }
 
   // ──────────── 串流代理 ────────────

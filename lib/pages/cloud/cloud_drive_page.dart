@@ -599,6 +599,9 @@ class _CloudDrivePageState extends ConsumerState<CloudDrivePage> {
         'cloudAccountId': acc.id,
         'cloudDirId': _dirId,
         'cloudVideoName': f.name,
+        // 文件 id：投屏时据此重新取直链（直链有时效，播放时拿到的可能已过期），
+        // 并复用资源鉴权头走独立转发代理，不依赖播放器的 127.0.0.1 串流代理。
+        'cloudFileId': f.id,
       };
 
       // 各家的「取直链时用的请求头」。必须与实际播放一致，否则 CDN 403。

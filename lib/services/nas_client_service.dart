@@ -648,8 +648,9 @@ class _FtpControl {
 /// 现在改用 Map<connectionId, _NasConnection>，每个连接独立，
 /// 切换不互相影响。
 class NasClientService {
-  NasClientService._();
-  static final instance = NasClientService._();
+  /// 构造公开以便测试注入替身（生产仍用 [instance]）。
+  NasClientService();
+  static final instance = NasClientService();
 
   final Map<String, _NasConnection> _conns = {};
 

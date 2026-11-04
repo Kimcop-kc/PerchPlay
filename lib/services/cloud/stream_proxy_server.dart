@@ -75,12 +75,18 @@ class StreamProxyServer {
       'http://127.0.0.1:$port/${singleProxy ? '' : path}';
 
   /// 启动一个只服务单个文件的代理。
+  ///
+  /// [bindAddress] 默认 loopback（播放器本地拉流用）。投屏给电视时，
+  /// 电视连不上手机回环地址，必须传 [InternetAddress.anyIPv4] 让它
+  /// 绑到局域网接口上（M06）。
   static Future<StreamProxyServer> start({
     required Future<String?> Function() resolveUrl,
     required Map<String, String> Function() headers,
+    InternetAddress? bindAddress,
   }) async {
-    // 绑定 loopback，端口交给系统分配（避免和用户其他服务撞端口）
-    final http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    // 端口交给系统分配（避免和用户其他服务撞端口）
+    final http =
+        await HttpServer.bind(bindAddress ?? InternetAddress.loopbackIPv4, 0);
     final server = StreamProxyServer._(
       http,
       resolveUrl,

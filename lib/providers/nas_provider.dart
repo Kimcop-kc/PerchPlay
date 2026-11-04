@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart'
+    show debugPrint, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/nas_connection_model.dart';
@@ -75,11 +76,31 @@ class NasState {
 }
 
 class NasNotifier extends StateNotifier<NasState> {
-  final NasClientService _service = NasClientService.instance;
+  /// 目录请求版本号：每次 navigateTo 递增，晚到的旧响应据此丢弃。
+  int _navigationVersion = 0;
+
+  /// 连接会话版本号：connect/switchTo/disconnectFrom/backToList 递增，
+  /// 旧会话的迟到结果据此丢弃（切连接/返回列表期间的迟到响应同样受保护）。
+  int _connectionVersion = 0;
+
+  final NasClientService _service;
   static const _kNasConnectionsKey = 'nas.connections';
 
-  NasNotifier() : super(const NasState()) {
+  /// 允许注入服务（测试用），生产代码用 [NasClientService.instance]。
+  NasNotifier({NasClientService? service})
+      : _service = service ?? NasClientService.instance,
+        super(const NasState()) {
     _loadSavedConnections();
+  }
+
+  /// 测试用：播种一个活跃连接，跳过 connect() 的网络流程。
+  @visibleForTesting
+  void seedForTest(NasConnection config) {
+    state = state.copyWith(
+      isConnected: true,
+      activeConnection: config,
+      currentPath: config.remotePath,
+    );
   }
 
   /// 从 SharedPreferences 恢复连接配置
@@ -206,6 +227,10 @@ class NasNotifier extends StateNotifier<NasState> {
   }
 
   Future<bool> connect(NasConnection config) async {
+    // 连接会话版本号：本次连接被新的 connect/switchTo/断开/返回列表取代后，
+    // 迟到的结果（含 navigateTo 触发的目录读取）一律作废。
+    final version = ++_connectionVersion;
+    ++_navigationVersion;
     // 规范化远程路径：补前导 `/`、去掉末尾多余的 `/`。
     //
     // 实测踩到：用户填 `webdav`（没写前导斜杠），拼出来的 URL 变成
@@ -219,6 +244,7 @@ class NasNotifier extends StateNotifier<NasState> {
     state = state.copyWith(isLoading: true, clearError: true);
 
     final ok = await _service.connect(config);
+    if (!mounted || version != _connectionVersion) return false;
     debugPrint('[NAS] service.connect = $ok');
     if (ok) {
       state = state.copyWith(
@@ -229,6 +255,7 @@ class NasNotifier extends StateNotifier<NasState> {
         clearError: true,
       );
       await navigateTo(config.remotePath);
+      if (!mounted || version != _connectionVersion) return false;
       debugPrint('[NAS] 连接后首次读取: '
           'files=${state.currentFiles.length} '
           'err=${state.errorMessage ?? "-"}');
@@ -239,6 +266,7 @@ class NasNotifier extends StateNotifier<NasState> {
         debugPrint('[NAS] 首次读取失败，重建连接后重试');
         await _service.disconnect(config.id);
         final retry = await _service.connect(config);
+        if (!mounted || version != _connectionVersion) return false;
         debugPrint('[NAS] 重建结果 = $retry');
         if (retry) {
           await navigateTo(config.remotePath);
@@ -258,6 +286,8 @@ class NasNotifier extends StateNotifier<NasState> {
 
   /// 断开某个连接并回到列表
   Future<void> disconnectFrom(String id) async {
+    ++_connectionVersion;
+    ++_navigationVersion;
     await _service.disconnect(id);
     if (state.activeConnection?.id == id) {
       state = state.copyWith(
@@ -271,9 +301,12 @@ class NasNotifier extends StateNotifier<NasState> {
 
   /// 切换到另一个 NAS 连接（当前有活跃连接时）
   Future<bool> switchTo(NasConnection config) async {
+    final version = ++_connectionVersion;
+    ++_navigationVersion;
     state = state.copyWith(isLoading: true, clearError: true);
 
     final ok = await _service.connect(config);
+    if (!mounted || version != _connectionVersion) return false;
     if (ok) {
       state = state.copyWith(
         isLoading: false,
@@ -300,6 +333,8 @@ class NasNotifier extends StateNotifier<NasState> {
   /// 列表上那张卡片一直是 isActive=true，点击被跳过 ——
   /// 表现为「返回主页后再点连接毫无反应」。
   void backToList() {
+    ++_connectionVersion;
+    ++_navigationVersion;
     state = state.copyWith(
       isConnected: false,
       clearActiveConnection: true,
@@ -311,6 +346,9 @@ class NasNotifier extends StateNotifier<NasState> {
   // ──── 文件浏览 ────
 
   Future<void> navigateTo(String path) async {
+    // 目录请求序号：每次导航递增。晚到的旧响应据此丢弃，
+    // 不能覆盖用户最后一次选择的目录（M09）。
+    final version = ++_navigationVersion;
     final connId = state.activeConnection?.id;
     if (connId == null) {
       debugPrint('[NAS] navigateTo($path) 被跳过: activeConnection 为 null');
@@ -320,26 +358,33 @@ class NasNotifier extends StateNotifier<NasState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final files = await _service.listDirectory(connId, path);
+      // 迟到的响应：期间又发生了新的导航 / 切连接 / 返回列表，丢弃。
+      if (!mounted ||
+          version != _navigationVersion ||
+          state.activeConnection?.id != connId) {
+        debugPrint('[NAS] navigateTo($path) 结果已过期，丢弃');
+        return;
+      }
       // 服务层把异常转成空数组了，靠标记区分「真的空」和「读取失败」。
       // 不这样处理的话，路径写错 / 认证失败都会显示成「空目录」，
       // 用户完全看不出哪里错了 —— 这正是「连接没报错但看不到文件」的来源。
       final failed = _service.lastListFailed;
       final errDetail = _service.lastListError;
-      if (mounted) {
-        state = state.copyWith(
-          currentFiles: failed ? const [] : files,
-          currentPath: path,
-          isLoading: false,
-          errorMessage: failed
-              ? (errDetail.isNotEmpty
-                  ? '读取目录失败：$errDetail'
-                  : '读取目录失败，请检查连接或目录权限')
-              : null,
-          clearError: !failed,
-        );
-      }
+      state = state.copyWith(
+        currentFiles: failed ? const [] : files,
+        currentPath: path,
+        isLoading: false,
+        errorMessage: failed
+            ? (errDetail.isNotEmpty
+                ? '读取目录失败：$errDetail'
+                : '读取目录失败，请检查连接或目录权限')
+            : null,
+        clearError: !failed,
+      );
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          version == _navigationVersion &&
+          state.activeConnection?.id == connId) {
         state = state.copyWith(
           isLoading: false,
           errorMessage: '读取目录失败：$e',
