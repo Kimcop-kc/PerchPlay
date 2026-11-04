@@ -500,6 +500,9 @@ class _CastPageState extends ConsumerState<CastPage>
             ],
           ),
           const SizedBox(height: 30),
+          // ── 音量 + 进度（M05 音量接口的 UI 入口，闭环「视频→投屏→音量」）──
+          _buildRemoteControls(state),
+          const SizedBox(height: 20),
           // 提示
           GlassPanel(
             radius: GlassTheme.radiusSm,
@@ -513,6 +516,90 @@ class _CastPageState extends ConsumerState<CastPage>
           ),
         ],
       ),
+    );
+  }
+
+  /// 投屏遥控：音量滑条 + 进度拖动。
+  Widget _buildRemoteControls(CastState state) {
+    // 进度目标只作为本地提示态，拖动结束才下发 Seek（避免每帧都打 SOAP）
+    return GlassPanel(
+      radius: GlassTheme.radiusSm,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.volume_down_rounded,
+                  color: GlassTheme.textTertiary, size: 20),
+              Expanded(
+                child: Slider(
+                  value: state.volume.toDouble().clamp(0, 100),
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  label: '${state.volume}',
+                  onChanged: (v) {
+                    // 拖动过程只更新本地显示，不逐帧发命令
+                    ref.read(castProvider.notifier).setVolume(v.round());
+                  },
+                ),
+              ),
+              const Icon(Icons.volume_up_rounded,
+                  color: GlassTheme.textTertiary, size: 20),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // 进度条：DLNA 没有查询当前位置的标准可靠接口，这里做成
+          // 「快退/快进」步进按钮，避免假进度条误导用户。
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _miniButton(
+                icon: Icons.replay_10_rounded,
+                label: '-10s',
+                onTap: () => _seekRelative(-10),
+              ),
+              const SizedBox(width: 12),
+              _miniButton(
+                icon: Icons.forward_10_rounded,
+                label: '+10s',
+                onTap: () => _seekRelative(10),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 相对快进/快退：从本地记录的位置偏移后下发 Seek。
+  void _seekRelative(int deltaSeconds) {
+    final cast = ref.read(castProvider);
+    final cur = cast.seekPosition;
+    final target = (cur + deltaSeconds).clamp(0, 24 * 3600);
+    ref.read(castProvider.notifier).seek(target);
+    // 本地同步进度提示（无真实当前位置源时用「已下发目标」代替）
+    _safeSyncSeek(target);
+  }
+
+  void _safeSyncSeek(int target) {
+    try {
+      ref.read(castProvider.notifier).setSeekPosition(target);
+    } catch (_) {}
+  }
+
+  Widget _miniButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GlassButton(
+      icon: icon,
+      label: label,
+      compact: true,
+      ghost: true,
+      height: 32,
+      onTap: onTap,
     );
   }
 

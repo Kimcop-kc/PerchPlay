@@ -62,6 +62,10 @@ class PlayerPage extends ConsumerStatefulWidget {
   final String? cloudDirId;
   final String? cloudVideoName;
 
+  /// 网盘文件 id：投屏时据此重新取直链（直链有时效），配合 [cloudAccountId]
+  /// 复用资源鉴权头走独立转发代理，不依赖播放器的 127.0.0.1 串流代理。
+  final String? cloudFileId;
+
   const PlayerPage({
     super.key,
     required this.videoPath,
@@ -72,6 +76,7 @@ class PlayerPage extends ConsumerStatefulWidget {
     this.cloudAccountId,
     this.cloudDirId,
     this.cloudVideoName,
+    this.cloudFileId,
   });
 
   @override
@@ -1020,7 +1025,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     ref.read(castProvider.notifier).startDiscovery();
     showGlassSheet<void>(
       context: context,
-      builder: (ctx) => const _CastDeviceSheet(),
+      // 把播放源的鉴权头 + 网盘上下文传进投屏面板：远程源投屏时
+      // 转发代理要靠它们拉源（M06 / 缺口3）。
+      builder: (ctx) => _CastDeviceSheet(
+        headers: widget.headers ?? const {},
+        cloudAccountId: widget.cloudAccountId,
+        cloudFileId: widget.cloudFileId,
+      ),
     );
   }
 
@@ -2253,7 +2264,18 @@ class _LiveSubtitle extends ConsumerWidget {
 }
 
 class _CastDeviceSheet extends ConsumerStatefulWidget {
-  const _CastDeviceSheet();
+  /// 播放源的鉴权头（NAS/网盘），投屏转发代理用它拉源。
+  final Map<String, String> headers;
+
+  /// 网盘上下文：投屏时据此重新取直链 + 复用鉴权头（缺口3）。
+  final String? cloudAccountId;
+  final String? cloudFileId;
+
+  const _CastDeviceSheet({
+    this.headers = const {},
+    this.cloudAccountId,
+    this.cloudFileId,
+  });
 
   @override
   ConsumerState<_CastDeviceSheet> createState() => _CastDeviceSheetState();
@@ -2379,7 +2401,37 @@ class _CastDeviceSheetState extends ConsumerState<_CastDeviceSheet> {
       return;
     }
     messenger.showSnackBar(SnackBar(content: Text('正在投屏到 $deviceName…')));
-    final ok = await castNotifier.castLocalFile(path, title: deviceName);
+    // 网盘来源：投屏时重新取直链 + 复用资源鉴权头，走独立转发代理。
+    // 不能用播放器的 127.0.0.1 串流代理（电视连不上回环，且本地播放停止会关掉它）。
+    if (widget.cloudAccountId != null && widget.cloudFileId != null) {
+      final ok = await castNotifier.castCloudFile(
+        accountId: widget.cloudAccountId!,
+        fileId: widget.cloudFileId!,
+        title: deviceName,
+      );
+      if (!mounted) return;
+      if (ok && ref.read(playerProvider).isPlaying) {
+        try {
+          await ref.read(playerProvider.notifier).togglePlayPause();
+        } catch (_) {}
+        if (!mounted) return;
+      }
+      final after = ref.read(castProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content:
+              Text(ok ? '已投屏到 $deviceName' : (after.errorMessage ?? '投屏失败')),
+        ),
+      );
+      return;
+    }
+    // M06：把当前媒体的鉴权头一起传下去。远程源（NAS/网盘）投屏时，
+    // 转发代理要带这些头拉源；本地文件传空 Map 不影响。
+    final ok = await castNotifier.castLocalFile(
+      path,
+      title: deviceName,
+      headers: widget.headers,
+    );
     if (!mounted) return;
     // 投屏成功后必须**停掉本地播放**：
     // 否则手机扬声器 + 电视同时出声、且两条播放进度各自走，

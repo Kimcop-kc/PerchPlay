@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -21,8 +23,11 @@ import 'cloud/cloud_drive_service.dart';
 ///  3. 对命中的字幕文件 `getDownloadUrl` 取直链，下载到本地缓存；
 ///  4. 返回本地路径，交给现有字幕加载链路（mpv 只能读本地文件）。
 class CloudSubtitleService {
-  CloudSubtitleService._();
-  static final instance = CloudSubtitleService._();
+  /// 允许注入 drive（测试用），生产用 [CloudDriveService.instance]。
+  CloudSubtitleService({CloudDriveService? drive})
+      : _drive = drive ?? CloudDriveService.instance;
+  final CloudDriveService _drive;
+  static final instance = CloudSubtitleService();
 
   /// 字幕缓存目录名（在系统临时目录下，可被系统回收）。
   static const _cacheDirName = 'cloud_subs';
@@ -49,8 +54,8 @@ class CloudSubtitleService {
     if (accountId.isEmpty || dirId.isEmpty) return const [];
 
     try {
-      final files = await CloudDriveService.instance
-          .listDirectory(accountId, dirId, parentPath: parentPath);
+      final files =
+          await _drive.listDirectory(accountId, dirId, parentPath: parentPath);
       if (files == null || files.isEmpty) return const [];
 
       final videoBase = _baseName(videoName);
@@ -97,15 +102,17 @@ class CloudSubtitleService {
 
   /// 取直链并下载到缓存目录，返回本地路径。
   Future<String?> _download(String accountId, dynamic file, Directory dir) async {
-    final url = await CloudDriveService.instance
-        .getDownloadUrl(accountId, file.id as String);
+    final url = await _drive.getDownloadUrl(accountId, file.id as String);
     if (url == null || url.isEmpty) return null;
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     try {
       final req = await client.getUrl(Uri.parse(url));
-      // 网盘直链通常需要与取链一致的 UA
-      req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+      // 关键（M10）：字幕下载必须与**播放**用同一套鉴权头。
+      // 之前只写死 `User-Agent: Mozilla/5.0`，缺 Cookie/Referer/Bearer，
+      // 夸克/百度/115/阿里的 CDN 校验不通过 → 视频能播、字幕下不来。
+      final headers = await _drive.resourceHeaders(accountId);
+      headers.forEach(req.headers.set);
       final resp = await req.close();
       if (resp.statusCode != 200) {
         debugPrint('[CloudSub] 下载 HTTP ${resp.statusCode}: ${file.name}');
@@ -120,9 +127,12 @@ class CloudSubtitleService {
       );
       if (bytes.isEmpty) return null;
 
-      // 用「视频名_字幕名」做本地文件名，避免不同视频的同名字幕互相覆盖
+      // 缓存按 accountId/dirId/fileId 隔离，而非只用 file.name：
+      // 不同账号、不同目录的同名字幕会互相覆盖，导致张冠李戴（M10）。
       final safe = (file.name as String).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final path = p.join(dir.path, safe);
+      final identity =
+          sha256.convert(utf8.encode('$accountId\u0000${file.id}')).toString();
+      final path = p.join(dir.path, '${identity}_$safe');
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     } catch (e) {

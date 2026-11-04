@@ -19,6 +19,14 @@ class CastControlService {
   Uri? _avTransportControlUrl;
   String _avTransportServiceType = 'urn:schemas-upnp-org:service:AVTransport:1';
 
+  /// RenderingControl 控制地址与 serviceType（音量命令走它，不是 AVTransport）。
+  ///
+  /// 之前的 SetVolume 复用 AVTransport 的 URL 与 SOAPAction，电视端收到
+  /// 一个不属于该服务的 action，直接回 Fault/404，音量永远调不动。
+  Uri? _renderingControlUrl;
+  String _renderingServiceType =
+      'urn:schemas-upnp-org:service:RenderingControl:1';
+
   /// 最近一次错误（UI 用来提示，而不是静默失败）
   String? lastError;
 
@@ -34,6 +42,7 @@ class CastControlService {
   Future<bool> connect(CastDevice device) async {
     _activeDevice = device;
     _avTransportControlUrl = null;
+    _renderingControlUrl = null;
     lastError = null;
     _httpClient = HttpClient();
     _httpClient!.connectionTimeout = const Duration(seconds: 5);
@@ -94,9 +103,11 @@ class CastControlService {
       }
     } catch (_) {}
 
-    _httpClient?.close();
+    _httpClient?.close(force: true);
     _httpClient = null;
     _activeDevice = null;
+    _avTransportControlUrl = null;
+    _renderingControlUrl = null;
     _isConnected = false;
 
     _statusController.add(const CastControlEvent(type: CastEventType.disconnected));
@@ -113,7 +124,7 @@ class CastControlService {
     _parseAvTransport(xml, device.location);
   }
 
-  /// 解析 UPnP 设备描述，找出 AVTransport 服务的 controlURL
+  /// 解析 UPnP 设备描述，找出 AVTransport 与 RenderingControl 的 controlURL。
   void _parseAvTransport(String xml, String descriptionUrl) {
     final serviceBlocks = RegExp(r'<service>(.*?)</service>', dotAll: true)
         .allMatches(xml)
@@ -122,7 +133,7 @@ class CastControlService {
 
     for (final block in serviceBlocks) {
       final type = _tag(block, 'serviceType');
-      if (type == null || !type.contains('AVTransport')) continue;
+      if (type == null) continue;
       final control = _tag(block, 'controlURL');
       if (control == null || control.isEmpty) continue;
 
@@ -130,14 +141,21 @@ class CastControlService {
       final uri = control.startsWith('http')
           ? Uri.tryParse(control)
           : base.resolve(control);
-      if (uri != null) {
+      if (uri == null) continue;
+
+      if (type.contains('RenderingControl')) {
+        _renderingControlUrl = uri;
+        _renderingServiceType = type;
+        debugPrint('[Cast] RenderingControl controlURL = $uri');
+      } else if (type.contains('AVTransport')) {
         _avTransportControlUrl = uri;
         _avTransportServiceType = type;
         debugPrint('[Cast] AVTransport controlURL = $uri');
-        return;
       }
     }
-    lastError = '设备描述里没有 AVTransport 控制地址';
+    if (_avTransportControlUrl == null) {
+      lastError = '设备描述里没有 AVTransport 控制地址';
+    }
   }
 
   /// 取标签文本（容忍命名空间前缀与大小写）
@@ -168,18 +186,27 @@ class CastControlService {
   }
 
   /// 发送 DLNA SOAP 命令
+  ///
+  /// [rendering] 为 true 时使用 RenderingControl 的 controlURL 与 serviceType
+  /// （音量命令），否则用 AVTransport（播放/暂停/跳转/停止）。
+  ///
+  /// 返回 null 表示**失败**（HTTP>=400、SOAP Fault、网络异常、地址缺失），
+  /// 非 null 表示成功。调用方必须据此判断，不能再「响应体非空就当成功」。
   Future<String?> _sendDlnaCommand(
     String action, {
     Map<String, String>? params,
+    bool rendering = false,
   }) async {
     if (_activeDevice == null || _httpClient == null) return null;
-    final uri = _avTransportControlUrl;
+    final uri = rendering ? _renderingControlUrl : _avTransportControlUrl;
+    final serviceType =
+        rendering ? _renderingServiceType : _avTransportServiceType;
     if (uri == null) {
-      lastError = '未找到 AVTransport 控制地址';
+      lastError = rendering ? '设备未提供音量控制服务' : '未找到 AVTransport 控制地址';
       return null;
     }
 
-    final soapBody = _buildDlnaSoap(action, params ?? {});
+    final soapBody = _buildDlnaSoap(action, params ?? {}, serviceType);
     final bodyBytes = utf8.encode(soapBody);
 
     // 便宜的 DLNA 设备常在响应后直接关连接，复用 keep-alive 会导致
@@ -192,7 +219,7 @@ class CastControlService {
           'xml',
           charset: 'utf-8',
         );
-        req.headers.set('SOAPACTION', '"$_avTransportServiceType#$action"');
+        req.headers.set('SOAPACTION', '"$serviceType#$action"');
         req.headers.set('User-Agent', 'PerchPlay/1.0 DLNA/1.0');
         req.headers.set(HttpHeaders.connectionHeader, 'close');
         // 显式 Content-Length：不能用 chunked，很多电视不认 chunked 的 SOAP
@@ -201,12 +228,25 @@ class CastControlService {
 
         final res = await req.close();
         final body = await res.transform(utf8.decoder).join();
+
+        // HTTP 错误码 → 失败
         if (res.statusCode >= 400) {
           lastError = 'DLNA $action 失败（HTTP ${res.statusCode}）';
           debugPrint('[Cast] $action -> ${res.statusCode}: $body');
-        } else {
-          lastError = null;
+          return null;
         }
+
+        // SOAP Fault：HTTP 200 但 body 里带 <Fault>，也必须判失败。
+        // 之前只查 HTTP 码，非空 Fault 体会被当成成功穿过，导致
+        // 「电视拒绝播放，业务层仍返回成功」。
+        if (RegExp(r'<(?:[\w-]+:)?Fault(?:\s|>)', caseSensitive: false)
+            .hasMatch(body)) {
+          lastError = 'DLNA $action 失败（SOAP Fault）';
+          debugPrint('[Cast] $action -> SOAP Fault: $body');
+          return null;
+        }
+
+        lastError = null;
         return body;
       } catch (e) {
         debugPrint('[Cast] DLNA $action 第 ${attempt + 1} 次失败: $e');
@@ -228,7 +268,8 @@ class CastControlService {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&apos;');
 
-  String _buildDlnaSoap(String action, Map<String, String> params) {
+  String _buildDlnaSoap(
+      String action, Map<String, String> params, String serviceType) {
     final paramsXml = params.entries
         .map((e) => '<${e.key}>${_esc(e.value)}</${e.key}>')
         .join();
@@ -237,7 +278,7 @@ class CastControlService {
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
   <s:Body>
-    <u:$action xmlns:u="$_avTransportServiceType">
+    <u:$action xmlns:u="$serviceType">
       $paramsXml
     </u:$action>
   </s:Body>
@@ -272,10 +313,12 @@ class CastControlService {
             'CurrentURI': url,
             'CurrentURIMetaData': _buildDlnaMetadata(title, url),
           });
-          if (setRes == null && lastError != null) return false;
+          // null = 失败（HTTP>=400 / SOAP Fault / 网络异常），必须传播。
+          // 之前是 `setRes == null && lastError != null`，非空 Fault 体会穿过。
+          if (setRes == null) return false;
           final playRes = await _sendDlnaCommand('Play',
               params: {'InstanceID': '0', 'Speed': '1'});
-          if (playRes == null && lastError != null) return false;
+          if (playRes == null) return false;
           break;
 
         case CastProtocol.chromecast:
@@ -339,14 +382,22 @@ class CastControlService {
   }
 
   /// 设置音量 (0~100)
+  ///
+  /// 走 RenderingControl 服务（controlURL + SOAPAction 都是 RenderingControl 的），
+  /// 不是 AVTransport。之前复用 AVTransport 导致电视端收不到合法命令。
   Future<void> setVolume(int volume) async {
     final v = volume.clamp(0, 100);
     if (_activeDevice?.protocol == CastProtocol.dlna) {
-      await _sendDlnaCommand('SetVolume', params: {
+      final res = await _sendDlnaCommand('SetVolume', rendering: true, params: {
         'InstanceID': '0',
         'Channel': 'Master',
         'DesiredVolume': '$v',
       });
+      // 失败要透出给 UI，不能静默吞掉
+      if (res == null) {
+        _statusController.add(CastControlEvent(
+            type: CastEventType.error, errorMessage: lastError));
+      }
     }
   }
 
