@@ -1,5 +1,45 @@
 # 变更日志
 
+## [1.2.1] — 2026-11-04
+
+### 投屏错误传播与音量服务（修复）
+
+- **M04**：`_sendDlnaCommand` 对 HTTP≥400 与 SOAP Fault 一律判失败，`playUrl`
+  返回 false，失败时不发 playing 事件、不暂停本地播放（之前失败误报成功）。
+- **M05**：从设备描述分别解析 AVTransport 与 RenderingControl 的 controlURL /
+  serviceType，SetVolume 改走 RenderingControl，播放/跳转仍走 AVTransport。
+
+### 远程视频投屏（M06）与资源清理（M07/M08）
+
+- `castLocalFile` 按 scheme 分流：本地/照片库走 LocalMediaServer，http(s) 走
+  局域网可达转发代理（带鉴权头），smb/ftp/nfs 明确报错。
+- `castVideo` 修复死代码：统一走远程分流，支持 headers 参数。
+- `clearActiveDevice` sentinel 修复断开后 activeDevice 残留。
+- disconnect/dispose 释放 LocalMediaServer + 远程转发代理，会话版本号防止
+  旧清理误关新会话。
+- 网盘投屏绕过 127.0.0.1 串流代理：`castCloudFile` 重新取直链 + resourceHeaders
+  走独立 LAN 代理。
+
+### NAS 目录导航竞态（M09）
+
+- `navigateTo` 增加导航版本号 + 连接会话版本号守卫，慢响应不覆盖较新的
+  目录选择；连接切换/返回列表作废在途请求。
+
+### 网盘字幕下载鉴权（M10）
+
+- CloudDriveService 新增 `resourceHeaders` 统一资源鉴权头。
+- CloudSubtitleService 下载复用 resourceHeaders，缓存按 accountId/fileId 隔离。
+
+### 投屏遥控 UI（缺口1）
+
+- 已连接面板新增音量滑条（RenderingControl）+ 快进/快退（AVTransport）。
+- CastState 新增 volume/seekPosition。
+
+### 测试
+
+- 新增 14 项测试（错误传播、音量服务、断开清理、远程投屏、跨模块闭环、
+  NAS 竞态、字幕鉴权、遥控 UI 状态），全量 446 通过 +3 跳过。
+
 ## [1.2.0] — 2026-11-03
 
 ### 全 App 弹窗视觉统一（重构）
