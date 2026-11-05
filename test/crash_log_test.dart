@@ -73,12 +73,24 @@ void main() {
       expect(report, contains('[测试] 一条普通日志'));
     });
 
-    test('报告里崩溃证据会影响头部摘要', () async {
+    test('报告里异常退出证据会影响头部摘要', () async {
       final svc = LogService.instance;
       svc.markCrashEvidence('===== 未捕获异常 =====\njava.lang.NullPointerException');
       final report = await svc.buildReport(appVersion: 'v0.0.0-test');
-      expect(report, contains('崩溃证据: 有'));
+      expect(report, contains('异常退出: 有'));
       expect(report, contains('未捕获异常'));
+    });
+
+    test('ANR 等非原生崩溃的异常退出也算证据（措辞不再只叫「崩溃」）', () async {
+      final svc = LogService.instance;
+      // 模拟真实流程：main() 里 markCrashEvidence 和 log 是同时调的
+      const detail = '===== 系统记录的异常退出 =====\n'
+          '原因: ANR 无响应被系统杀死（REASON_ANR）\n';
+      svc.markCrashEvidence(detail);
+      svc.log('[上次异常退出记录]\n$detail');
+      final report = await svc.buildReport(appVersion: 'v0.0.0-test');
+      expect(report, contains('异常退出: 有'));
+      expect(report, contains('REASON_ANR'));
     });
   });
 

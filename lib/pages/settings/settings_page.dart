@@ -1668,15 +1668,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             foregroundColor: GlassTheme.accentTeal,
             onTap: _showDiagnosticsSheet,
           ),
-          // 上次闪退提示：只在真的抓到崩溃堆栈时显示。
+          // 上次异常退出提示：只在真的抓到异常退出证据时显示。
           //
+          // 覆盖：原生崩溃（libmpv 段错误）、ANR、被信号杀死、资源占用过高等。
           // 不用「上次没留退出标记」来判断 —— 用户从任务管理器划掉 App
-          // 也不会留标记，那不算闪退，报出来只会制造恐慌。
+          // 也不会留标记，那不算异常，报出来只会制造恐慌。
           if (LogService.instance.hasCrashEvidence) ...[
             const SizedBox(height: 10),
             GlassButton.outlined(
               icon: Icons.warning_amber_rounded,
-              label: '上次闪退日志',
+              label: '上次异常退出日志',
               width: double.infinity,
               height: 40,
               foregroundColor: GlassTheme.accentPink,
@@ -1830,20 +1831,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  /// 上次闪退日志：单独一屏，突出显示崩溃堆栈。
+  /// 上次异常退出日志：单独一屏，突出显示崩溃/异常退出堆栈。
   ///
-  /// 与「诊断日志」分开是有意的 —— 用户反馈闪退时，让他翻几百行普通日志
-  /// 找崩溃点不现实。这里直接把崩溃堆栈摆在最上面，一屏能看完。
+  /// 与「诊断日志」分开是有意的 —— 用户反馈问题时，让他翻几百行普通日志
+  /// 找异常点不现实。这里直接把堆栈摆在最上面，一屏能看完。
   Future<void> _showCrashLogSheet() async {
     final svc = LogService.instance;
     final buf = StringBuffer();
-    buf.writeln('⚠ 上次运行闪退了');
+    buf.writeln('⚠ 上次运行异常退出');
     buf.writeln();
     if (svc.crashSummary.isNotEmpty) {
       buf.writeln('摘要: ${svc.crashSummary}');
       buf.writeln();
     }
-    buf.writeln('下面这段是崩溃时的堆栈，请整段复制发给我。');
+    buf.writeln('下面这段是异常退出时的记录，请整段复制发给我。');
     buf.writeln('普通用户不需要看懂它，它只是给我定位问题用的。');
     buf.writeln();
     buf.writeln('──────────────────────');
@@ -1878,7 +1879,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               Icon(Icons.warning_amber_rounded,
                   color: GlassTheme.accentPink, size: 20),
               SizedBox(width: 8),
-              Text('上次闪退日志',
+              Text('上次异常退出日志',
                   style: TextStyle(
                       color: GlassTheme.textPrimary,
                       fontSize: 18,
@@ -1961,8 +1962,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _showDiagnosticsSheet() async {
     final svc = LogService.instance;
     final device = DeviceInfoService.instance;
-    // 设备信息用 brand/capabilities 拼（DeviceInfoService 没有 model getter）
-    final devInfo = '品牌: ${device.brand.name} · '
+    // 型号 + 品牌 + RAM + 手势导航：让开发者一眼看出是不是低端性能机
+    final model = device.deviceModel;
+    final devInfo = '型号: ${model.isNotEmpty ? model : '未知'} · '
+        '品牌: ${device.brand.name} · '
         'RAM: ${device.ramGB.toStringAsFixed(1)}GB · '
         '手势导航: ${device.capabilities.isGestureNavigation}';
     final report = await svc.buildReport(

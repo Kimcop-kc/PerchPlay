@@ -451,7 +451,7 @@ class LogService {
     buf.writeln('日志条数: ${_entries.length}（本次运行）');
     buf.writeln('落盘: ${_persistReady ? (currentLogPath ?? '已启用') : '未启用'}');
     if (_hasCrashEvidence) {
-      buf.writeln('崩溃证据: 有 —— $_crashSummary');
+      buf.writeln('异常退出: 有 —— $_crashSummary');
     } else if (_lastSessionUnclean) {
       buf.writeln('上次退出: 未留正常退出标记（可能闪退，也可能被系统回收）');
     } else if (hasLastSessionLog) {

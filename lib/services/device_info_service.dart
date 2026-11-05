@@ -87,6 +87,12 @@ class DeviceInfoService {
   DeviceBrand _brand = DeviceBrand.other;
   DeviceBrand get brand => _brand;
 
+  /// 原始设备型号字符串（如 "Xiaomi Redmi Note 12"、"iPhone 15 Pro"）。
+  /// 诊断日志用它让开发者一眼看出是不是低端性能机 —— 之前 init 收到这个
+  /// 值后只用来判断品牌就丢了，日志里只有「品牌」没有「型号」。
+  String _deviceModel = '';
+  String get deviceModel => _deviceModel;
+
   IPadModel _iPadModel = IPadModel.notIPad;
   IPadModel get iPadModel => _iPadModel;
 
@@ -129,6 +135,7 @@ class DeviceInfoService {
   /// 客户端必须调一次 init
   Future<void> init({String? deviceModel, String? systemName}) async {
     if (_initialized) return;
+    _deviceModel = (deviceModel ?? '').trim();
 
     if (Platform.isIOS || (systemName != null && systemName.contains('iOS'))) {
       final model = deviceModel ?? 'iPad';

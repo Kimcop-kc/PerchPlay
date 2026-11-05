@@ -2922,6 +2922,22 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  /// 暂停（若正在播放）。
+  ///
+  /// 切后台/锁屏时调用：停掉视频 surface 产帧，避免 Android 16 后台
+  /// detach FlutterJNI 后，ImageReader 新帧回调触发 `scheduleFrame`
+  /// → 「FlutterJNI is not attached to native」崩溃。
+  /// 用户切回前台后可手动继续播放。
+  Future<void> pause() async {
+    if (!state.isPlaying) return;
+    try {
+      await state.player.pause();
+      state = state.copyWith(isPlaying: false);
+    } catch (e) {
+      debugPrint('[Player] 切后台暂停失败: $e');
+    }
+  }
+
   /// 跳转：钳位到有效区间，并用 seekToken 保护竞态。
   ///
   /// 对网络源（NAS/云盘/直链），若 mpv 不支持该流的精确跳转，

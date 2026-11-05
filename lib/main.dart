@@ -169,8 +169,11 @@ Future<void> _collectNativeCrash() async {
     final text = await NativeBridgeService.instance.takeLastCrashLog();
     if (text == null || text.trim().isEmpty) return;
     LogService.instance.markCrashEvidence(text);
-    LogService.instance.log('[原生崩溃] 上次运行原生层崩溃，以下是原生堆栈:\n$text');
-    // 原生崩溃是最需要留证的，立刻落盘
+    // 中性措辞：这里返回的不只有「原生崩溃」，也可能是 ANR、被信号杀死、
+    // 资源占用过高被系统终止等异常退出。之前硬编码「原生崩溃」会把
+    // 内存不足被系统回收（现已从原生白名单排除）等非崩溃情况也贴上崩溃标签。
+    LogService.instance.log('[上次异常退出记录]\n$text');
+    // 异常退出记录是最需要留证的，立刻落盘
     await LogService.instance.flushNow();
   } catch (e) {
     debugPrint('[PerchPlay] 读取原生崩溃日志失败: $e');

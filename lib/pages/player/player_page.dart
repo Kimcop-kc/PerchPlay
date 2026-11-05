@@ -207,6 +207,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       try {
         ref.read(playerProvider.notifier).saveProgress();
       } catch (_) {}
+      // 切后台/锁屏时完全暂停：停掉视频 surface 产帧，避免 Android 16
+      // 后台 detach FlutterJNI 后 ImageReader 新帧回调触发
+      // 「FlutterJNI is not attached to native」崩溃。
+      // 用户切回前台后手动继续播放即可。
+      try {
+        ref.read(playerProvider.notifier).pause();
+      } catch (_) {}
     }
   }
 

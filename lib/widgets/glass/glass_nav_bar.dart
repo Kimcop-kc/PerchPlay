@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
@@ -5,12 +6,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../providers/ui_settings_provider.dart';
 
-/// 按设置决定是否做实时模糊
+/// 按设置决定是否做实时模糊。
 ///
-/// 默认开启（液态玻璃观感的主要来源）。关掉只是给低端机省电的选项，
-/// 性能优化本身不依赖关闭它。
+/// ⚠ 只有 iOS/macOS 才用真 `BackdropFilter`。Android 上部分 GPU（Mali / 老款
+/// Adreno）的 BackdropFilter 会在合成阶段把整个渲染树变黑或明显掉帧 ——
+/// 与 [SafeBackdropFilter.supportsBackdropBlur] 的判定保持一致：Android 一律
+/// 跳过真模糊，改由 [GlassTrack] 自己的半透明渐变模拟毛玻璃。
+///
+/// 之前这里**没有平台判断**，导航栏（常驻所有 tab 底部）在 Android 上每帧
+/// 对背后内容做 sigma 22 的实时模糊，是低配机「切页/滑动卡」的头号来源。
 Widget _withOptionalBlur({required bool blur, required Widget child}) {
-  if (!blur) return child;
+  if (!blur || Platform.isAndroid) return child;
   return BackdropFilter(
     filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
     child: child,
