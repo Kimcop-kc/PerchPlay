@@ -1,5 +1,40 @@
 # 变更日志
 
+## [1.2.2] — 2026-11-05
+
+### 切后台闪退（修复）
+
+- 播放中切后台/锁屏时，Android 16 后台 detach FlutterJNI，视频 surface 仍产帧
+  触发 `FlutterJNI is not attached to native` 崩溃。
+- `player_provider` 新增 `pause()`，`player_page` 生命周期切后台时调用。
+
+### 低端机卡顿（修复）
+
+- `glass_nav_bar.dart` 的 `_withOptionalBlur` 之前直接 `BackdropFilter`，
+  绕过 Android 降级保护，常驻底栏每帧做 sigma 22 实时模糊。
+- 加 `Platform.isAndroid` 判断，Android 跳过真模糊改用渐变模拟。
+
+### tombstone protobuf 解析（关键）
+
+- Android 12+ 的 REASON_CRASH_NATIVE tombstone 是 protobuf 二进制，
+  之前用 readText() 读导致非 ASCII 字节乱码中断，真实崩溃堆栈全丢。
+- 新增手写 wire-format 解析器（不引入 protobuf 依赖），提取
+  build_fingerprint / signal / fault_address / 线程 backtrace。
+
+### 崩溃日志误报修复
+
+- CrashLog.kt 从崩溃白名单移除 REASON_LOW_MEMORY（内存回收不是崩溃）。
+- main.dart / log_service.dart / settings_page.dart 文案「原生崩溃」→「异常退出」。
+
+### 诊断日志加型号
+
+- DeviceInfoService 新增 deviceModel 字段，诊断日志头部加「型号:」。
+
+### 测试
+
+- 新增 tombstone_proto_parse_test.dart（Dart 等价原型验证 wire-format 解析）。
+- 全量 450 通过 +3 跳过。
+
 ## [1.2.1] — 2026-11-04
 
 ### 投屏错误传播与音量服务（修复）
